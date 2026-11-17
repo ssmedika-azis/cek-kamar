@@ -203,7 +203,7 @@
 
 <script>
   const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
-  const SUPABASE_KEY = 'PASTE_KUNCI_SB_PUBLISHABLE_DISINI';
+  const SUPABASE_KEY = 'sb_publishable_AXcmTZqRh9W-Qs0yoEcUdQ_bxLpar50';
   const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
   let dataLaporan = [], dataFiltered = [], dataKamar = [], dataShift = [], dataAkun = [];
@@ -241,7 +241,8 @@
     const { error } = await db.auth.signInWithPassword({ email: emailFormat, password });
 
     btn.disabled = false; btn.textContent = 'Masuk ke Dashboard';
-    if (error) return alert('❌ Login gagal: Username atau password salah.');
+    if (error) return alert('❌ Error Server: ' + error.message);
+
     cekSesiAktif();
   }
 
