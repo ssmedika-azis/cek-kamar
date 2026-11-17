@@ -75,7 +75,9 @@
 </div>
 
 <script>
-  const db = supabase.createClient('https://ymxpxrrjxnujygabrhsg.supabase.co', 'sb_publishable_AXcmTZqRh9W-QsOyoEcUdQ_bXlpar50');
+  const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_AXcmTZqRh9W-Qs0yoEcUdQ_bxLpar50';
+  const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
   window.onload = async () => {
     const { data: { session } } = await db.auth.getSession();
