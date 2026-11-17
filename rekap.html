@@ -6,6 +6,10 @@
   <title>Manajemen & Analitik Kesiapan Kamar</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Library Ekspor PDF & Excel (.xlsx) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     :root {
       --primary: #0d9488; --primary-dark: #0f766e; --bg: #f1f5f9;
@@ -13,7 +17,7 @@
     }
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { background: var(--bg); color: var(--text); margin: 0; padding: 14px; }
-    .container { max-width: 820px; margin: 0 auto; }
+    .container { max-width: 860px; margin: 0 auto; }
     .login-wrap { max-width: 400px; margin: 40px auto; background: #fff; padding: 24px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
     .login-wrap h2 { margin: 0 0 6px; color: var(--primary-dark); text-align: center; }
     .login-wrap p { margin: 0 0 18px; font-size: 13px; color: #64748b; text-align: center; }
@@ -29,10 +33,13 @@
     input, select, textarea { width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 14px; background: #fff; }
     .form-group { margin-bottom: 12px; }
     .form-group label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 4px; color: #334155; }
-    button { padding: 10px 14px; border: none; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    button { padding: 9px 13px; border: none; border-radius: 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
     .btn-primary { background: var(--primary); color: #fff; }
+    .btn-pdf { background: #dc2626; color: #fff; }
+    .btn-excel { background: #15803d; color: #fff; }
     .btn-outline { background: #e2e8f0; color: var(--text); }
     .btn-danger { background: #fee2e2; color: #b91c1c; }
+    .export-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #cbd5e1; }
     .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
     .kpi-box { background: #fff; padding: 14px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center; }
     .kpi-val { font-size: 22px; font-weight: 800; color: var(--primary-dark); }
@@ -49,6 +56,13 @@
     .list-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 8px; background: #f8fafc; gap: 8px; }
     .modal { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.6); align-items: center; justify-content: center; padding: 16px; z-index: 999; }
     .modal-box { background: #fff; border-radius: 16px; padding: 18px; width: 100%; max-width: 440px; max-height: 88vh; overflow-y: auto; }
+
+    /* Mode Cetak Visual */
+    @media print {
+      body { background: #fff; padding: 0; }
+      .topbar, .nav-tabs, .no-print, .card-actions { display: none !important; }
+      .card { box-shadow: none; border: 1px solid #94a3b8; break-inside: avoid; }
+    }
   </style>
 </head>
 <body>
@@ -64,7 +78,7 @@
     <label>Password</label>
     <input type="password" id="loginPass" placeholder="Masukkan password">
   </div>
-  <button class="btn-primary" id="btnLogin" style="width:100%" onclick="prosesLogin()">Masuk ke Dashboard</button>
+  <button class="btn-primary" id="btnLogin" style="width:100%; padding:12px;" onclick="prosesLogin()">Masuk ke Dashboard</button>
   <p style="margin-top:14px;"><a href="index.html" style="color:var(--primary-dark); text-decoration:none; font-weight:600;">← Ke Halaman Form Petugas</a></p>
 </div>
 
@@ -87,9 +101,9 @@
     <button class="tab-btn" onclick="bukaTab('tabMaster', this)">🚪 Kamar & Shift</button>
   </div>
 
-  <!-- TAB 1: EKSPLORASI DATA -->
+  <!-- TAB 1: EKSPLORASI & EKSPOR DATA -->
   <div id="tabLaporan" class="section active">
-    <div class="card">
+    <div class="card no-print">
       <h3 style="margin:0 0 10px; font-size:15px;">🔍 Eksplorasi & Filter Data Laporan</h3>
       <div class="filter-grid">
         <div><label style="font-size:11px; color:#64748b;">Dari Tanggal</label><input type="date" id="fTglMulai" onchange="renderLaporan()"></div>
@@ -106,13 +120,21 @@
         </div>
         <div><label style="font-size:11px; color:#64748b;">Cari Petugas / Catatan</label><input type="text" id="fCari" placeholder="Ketik kata kunci..." oninput="renderLaporan()"></div>
       </div>
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:10px;">
+
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:8px;">
         <span id="jumlahHasil" style="font-size:13px; font-weight:600; color:#475569;">Menampilkan 0 data</span>
         <div style="display:flex; gap:6px;">
           <button class="btn-outline" onclick="resetFilter()">Reset</button>
           <button class="btn-outline" onclick="muatSemuaData()">🔄 Refresh</button>
-          <button class="btn-primary" onclick="exportCSV()">📥 Ekspor Excel (CSV)</button>
         </div>
+      </div>
+
+      <!-- Tombol Multi-Ekspor -->
+      <div class="export-bar">
+        <button class="btn-pdf" onclick="exportPDF()">📄 Unduh PDF Resmi</button>
+        <button class="btn-excel" onclick="exportExcel()">📊 Unduh Excel (.xlsx)</button>
+        <button class="btn-primary" onclick="exportCSV()">📑 Unduh CSV</button>
+        <button class="btn-outline" onclick="window.print()">🖨️ Cetak / PDF Foto</button>
       </div>
     </div>
     <div id="listLaporanContainer"></div>
@@ -144,7 +166,7 @@
       </div>
       <button class="btn-primary" id="btnTambahAkun" style="width:100%;" onclick="tambahAkun()">Buat Akun Terenkripsi</button>
     </div>
-    <div class="card"><h3 style="margin:0 0 10px; font-size:15px;">👥 Daftar Akun Aktif</h3><div id="listAkunContainer"></div></div>
+    <div class="card"><h3 style="margin:0 0 10px; font-size:15px;">👥 Daftar Akun Terdaftar</h3><div id="listAkunContainer"></div></div>
   </div>
 
   <!-- TAB 4: KAMAR & SHIFT -->
@@ -203,7 +225,7 @@
 
 <script>
   const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_AXcmTZqRh9W-Qs0yoEcUdQ_bxLpar50';
+  const SUPABASE_KEY = 'sb_publishable_AXcmTZqRh9W-QsOyoEcUdQ_bXlpar50';
   const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
   let dataLaporan = [], dataFiltered = [], dataKamar = [], dataShift = [], dataAkun = [];
@@ -242,7 +264,6 @@
 
     btn.disabled = false; btn.textContent = 'Masuk ke Dashboard';
     if (error) return alert('❌ Error Server: ' + error.message);
-
     cekSesiAktif();
   }
 
@@ -338,7 +359,7 @@
             <div class="photo-item"><a href="${item.foto_toilet}" target="_blank"><img src="${item.foto_toilet}"></a><div style="font-size:11px;">Foto Toilet</div></div>
             <div class="photo-item"><a href="${item.foto_kamar}" target="_blank"><img src="${item.foto_kamar}"></a><div style="font-size:11px;">Foto Kamar</div></div>
           </div>
-          <div style="display:flex; gap:8px; margin-top:8px;">
+          <div class="card-actions" style="display:flex; gap:8px; margin-top:8px;">
             <button class="btn-outline" style="flex:1" onclick='bukaEditLaporan(${JSON.stringify(item).replace(/'/g, "&#39;")})'>✏️ Edit</button>
             <button class="btn-danger" style="flex:1" onclick="hapusLaporan(${item.id}, '${item.foto_toilet}', '${item.foto_kamar}')">🗑️ Hapus</button>
           </div>
@@ -434,25 +455,26 @@
     const username = document.getElementById('akunUser').value.trim().toLowerCase().replace(/\s+/g, '');
     const password = document.getElementById('akunPass').value;
     const role = document.getElementById('akunRole').value;
-    if (!nama_lengkap || !username || password.length < 6) return alert('Lengkapi nama, username, dan password minimal 6 karakter.');
+    if (!nama_lengkap || !username || password.length < 6) {
+      return alert('Lengkapi nama, username, dan password minimal 6 karakter.');
+    }
 
     const btn = document.getElementById('btnTambahAkun');
     btn.disabled = true; btn.textContent = '⏳ Mendaftarkan...';
 
-    // Gunakan client sekunder tanpa persistSession agar sesi admin tidak ter-logout
-    const tempClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
-    const { error } = await tempClient.auth.signUp({
-      email: `${username}@ssmedika.local`,
-      password,
-      options: { data: { nama_lengkap, username, role } }
+    const { error } = await db.rpc('admin_buat_akun', {
+      p_nama: nama_lengkap,
+      p_username: username,
+      p_password: password,
+      p_role: role
     });
 
     btn.disabled = false; btn.textContent = 'Buat Akun Terenkripsi';
     if (error) return alert('❌ Gagal membuat akun: ' + error.message);
 
-    alert(`✅ Akun berhasil dibuat!\nUsername: ${username}\nPassword: ${password}`);
+    alert(`✅ Akun ${role.toUpperCase()} berhasil dibuat!\nUsername: ${username}\nPassword: ${password}`);
     ['akunNama','akunUser','akunPass'].forEach(id => document.getElementById(id).value = '');
-    setTimeout(muatSemuaData, 800);
+    muatSemuaData();
   }
 
   async function editAkun(uid, namaLama, roleLama, aktifLama) {
@@ -535,15 +557,87 @@
     muatSemuaData();
   }
 
+  // --- FUNGSI EKSPOR MULTI-FORMAT ---
+  function getDataSiapEkspor() {
+    return dataFiltered.map((r, i) => ({
+      'No': i + 1,
+      'Waktu Pengecekan': new Date(r.created_at).toLocaleString('id-ID'),
+      'Shift': r.shift || '-',
+      'Kamar': r.kamar,
+      'Petugas': r.petugas,
+      'Aroma': r.aroma,
+      'Toilet': r.toilet,
+      'Kelengkapan': r.alat || '-',
+      'Catatan': r.catatan || '-',
+      'Link Foto Toilet': r.foto_toilet || '',
+      'Link Foto Kamar': r.foto_kamar || ''
+    }));
+  }
+
+  function exportPDF() {
+    if (dataFiltered.length === 0) return alert('Tidak ada data hasil filter untuk diekspor.');
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+    const tMulai = document.getElementById('fTglMulai').value || 'Semua';
+    const tAkhir = document.getElementById('fTglAkhir').value || 'Semua';
+    const kamar = document.getElementById('fKamar').value || 'Semua Kamar';
+    const tglCetak = new Date().toLocaleString('id-ID');
+
+    doc.setFontSize(14);
+    doc.setTextColor(15, 118, 110);
+    doc.text('LAPORAN REKAPITULASI KESIAPAN & KEBERSIHAN KAMAR', 14, 15);
+
+    doc.setFontSize(9.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Periode: ${tMulai} s/d ${tAkhir}  |  Filter Kamar: ${kamar}  |  Total Data: ${dataFiltered.length}  |  Dicetak: ${tglCetak}`, 14, 21);
+
+    const rows = dataFiltered.map((r, idx) => [
+      idx + 1,
+      new Date(r.created_at).toLocaleString('id-ID', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }),
+      r.shift || '-',
+      r.kamar,
+      r.petugas,
+      r.aroma,
+      r.toilet,
+      r.alat || '-',
+      r.catatan || '-'
+    ]);
+
+    doc.autoTable({
+      startY: 26,
+      head: [['No', 'Waktu', 'Shift', 'Kamar', 'Petugas', 'Aroma', 'Toilet', 'Kelengkapan', 'Catatan']],
+      body: rows,
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      headStyles: { fillColor: [13, 148, 136], textColor: 255, fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 28 }, 3: { cellWidth: 26 } }
+    });
+
+    doc.save(`Laporan_Kesiapan_Kamar_${new Date().toISOString().slice(0,10)}.pdf`);
+  }
+
+  function exportExcel() {
+    if (dataFiltered.length === 0) return alert('Tidak ada data hasil filter untuk diekspor.');
+    const rows = getDataSiapEkspor();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 5 }, { wch: 20 }, { wch: 15 }, { wch: 18 }, { wch: 20 },
+      { wch: 20 }, { wch: 24 }, { wch: 30 }, { wch: 25 }, { wch: 35 }, { wch: 35 }
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Kesiapan Kamar');
+    XLSX.writeFile(wb, `Laporan_Kesiapan_Kamar_${new Date().toISOString().slice(0,10)}.xlsx`);
+  }
+
   function exportCSV() {
     if (dataFiltered.length === 0) return alert('Tidak ada data hasil filter untuk diekspor.');
-    const headers = ['Waktu', 'Shift', 'Kamar', 'Petugas', 'Aroma', 'Toilet', 'Kelengkapan', 'Catatan', 'Foto Toilet', 'Foto Kamar'];
-    const rows = dataFiltered.map(r => [
-      new Date(r.created_at).toLocaleString('id-ID'), r.shift || '-', r.kamar, r.petugas, r.aroma, r.toilet, r.alat, r.catatan || '', r.foto_toilet, r.foto_kamar
-    ].map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(','));
+    const rowsObj = getDataSiapEkspor();
+    const headers = Object.keys(rowsObj[0]);
+    const csvRows = rowsObj.map(obj => headers.map(h => `"${String(obj[h]).replace(/"/g, '""')}"`).join(','));
     const link = document.createElement('a');
-    link.href = encodeURI('data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n'));
-    link.download = `ekspor_kesiapan_kamar_${new Date().toISOString().slice(0,10)}.csv`;
+    link.href = encodeURI('data:text/csv;charset=utf-8,' + [headers.join(','), ...csvRows].join('\n'));
+    link.download = `Laporan_Kesiapan_Kamar_${new Date().toISOString().slice(0,10)}.csv`;
     link.click();
   }
 </script>
