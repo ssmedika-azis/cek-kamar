@@ -3,121 +3,183 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin Rekap Kesiapan Kamar</title>
+  <title>Manajemen & Analitik Kesiapan Kamar</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {
-      --primary: #0d9488;
-      --primary-dark: #0f766e;
-      --bg: #f1f5f9;
-      --card: #ffffff;
-      --text: #1e293b;
-      --border: #cbd5e1;
-      --danger: #ef4444;
+      --primary: #0d9488; --primary-dark: #0f766e; --bg: #f1f5f9;
+      --card: #ffffff; --text: #1e293b; --border: #cbd5e1; --danger: #ef4444;
     }
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { background: var(--bg); color: var(--text); margin: 0; padding: 14px; }
-    .container { max-width: 720px; margin: 0 auto; }
-    .header-card {
-      background: var(--card); border-radius: 16px; padding: 16px; margin-bottom: 14px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-    }
-    h2 { margin: 0 0 4px; color: var(--primary-dark); font-size: 20px; }
-    p.subtitle { margin: 0 0 14px; font-size: 13px; color: #64748b; }
-    .toolbar { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; }
-    select, input[type="text"], textarea {
-      width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 14px; background: #fff;
-    }
-    button {
-      padding: 10px 14px; border: none; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer;
-    }
+    .container { max-width: 820px; margin: 0 auto; }
+    .login-wrap { max-width: 400px; margin: 40px auto; background: #fff; padding: 24px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+    .login-wrap h2 { margin: 0 0 6px; color: var(--primary-dark); text-align: center; }
+    .login-wrap p { margin: 0 0 18px; font-size: 13px; color: #64748b; text-align: center; }
+    .topbar { background: var(--card); border-radius: 16px; padding: 16px; margin-bottom: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .topbar h2 { margin: 0; font-size: 18px; color: var(--primary-dark); }
+    .user-info { font-size: 12.5px; color: #64748b; }
+    .nav-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 12px; }
+    .tab-btn { padding: 10px 14px; border-radius: 10px; border: 1.5px solid var(--border); background: #fff; font-weight: 600; font-size: 13px; color: #475569; cursor: pointer; white-space: nowrap; }
+    .tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .card { background: var(--card); border-radius: 14px; padding: 16px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid #e2e8f0; }
+    .section { display: none; }
+    .section.active { display: block; }
+    input, select, textarea { width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 14px; background: #fff; }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 4px; color: #334155; }
+    button { padding: 10px 14px; border: none; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; }
     .btn-primary { background: var(--primary); color: #fff; }
     .btn-outline { background: #e2e8f0; color: var(--text); }
     .btn-danger { background: #fee2e2; color: #b91c1c; }
-    .stats { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; font-size: 13px; color: #475569; }
-    .badge { padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; display: inline-block; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+    .kpi-box { background: #fff; padding: 14px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center; }
+    .kpi-val { font-size: 22px; font-weight: 800; color: var(--primary-dark); }
+    .kpi-lbl { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .filter-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 10px; }
+    @media (min-width: 640px) { .filter-grid { grid-template-columns: repeat(3, 1fr); } }
+    .badge { padding: 4px 10px; border-radius: 99px; font-size: 11.5px; font-weight: 600; display: inline-block; margin-right: 4px; margin-bottom: 4px; }
     .badge-ok { background: #ccfbf1; color: #0f766e; }
     .badge-warn { background: #fee2e2; color: #b91c1c; }
-
-    .report-card {
-      background: var(--card); border-radius: 14px; padding: 15px; margin-bottom: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid #e2e8f0;
-    }
-    .report-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
-    .room-title { font-size: 17px; font-weight: 700; color: var(--primary-dark); }
-    .time-text { font-size: 12px; color: #64748b; }
-    .meta-row { font-size: 13.5px; margin-bottom: 6px; line-height: 1.45; }
+    .badge-info { background: #e0f2fe; color: #0369a1; }
     .photo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
     .photo-item { text-align: center; background: #f8fafc; padding: 6px; border-radius: 10px; border: 1px solid #e2e8f0; }
-    .photo-item img { width: 100%; height: 140px; object-fit: cover; border-radius: 8px; cursor: pointer; }
-    .photo-label { font-size: 11.5px; color: #475569; margin-top: 4px; font-weight: 600; }
-    .card-actions { display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f1f5f9; }
-    .card-actions button { flex: 1; }
-
-    /* Modal */
-    .modal {
-      display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.6);
-      align-items: center; justify-content: center; padding: 16px; z-index: 999;
-    }
-    .modal-box {
-      background: #fff; border-radius: 16px; padding: 18px; width: 100%; max-width: 440px;
-      max-height: 85vh; overflow-y: auto;
-    }
-    .modal-box h3 { margin: 0 0 12px; font-size: 17px; color: var(--primary-dark); }
-    .form-group { margin-bottom: 12px; }
-    .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
-    .room-list-item {
-      display: flex; justify-content: space-between; align-items: center; padding: 8px 10px;
-      border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 8px; background: #f8fafc;
-    }
-    .room-list-actions { display: flex; gap: 6px; }
-    .room-list-actions button { padding: 6px 10px; font-size: 12px; }
-    #statusInfo { text-align: center; padding: 24px; color: #64748b; font-size: 14px; }
+    .photo-item img { width: 100%; height: 130px; object-fit: cover; border-radius: 8px; }
+    .list-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 8px; background: #f8fafc; gap: 8px; }
+    .modal { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.6); align-items: center; justify-content: center; padding: 16px; z-index: 999; }
+    .modal-box { background: #fff; border-radius: 16px; padding: 18px; width: 100%; max-width: 440px; max-height: 88vh; overflow-y: auto; }
   </style>
 </head>
 <body>
 
-<div class="container">
-  <div class="header-card">
-    <h2>📋 Manajemen Rekap Kamar</h2>
-    <p class="subtitle">Pantau, Edit, dan Unduh Laporan Kesiapan Ruangan</p>
+<div id="loginSection" class="login-wrap">
+  <h2>🔐 Login Manajemen</h2>
+  <p>Akses terproteksi khusus Kepala Ruangan & Admin</p>
+  <div class="form-group">
+    <label>Username</label>
+    <input type="text" id="loginUser" placeholder="Contoh: admin">
+  </div>
+  <div class="form-group">
+    <label>Password</label>
+    <input type="password" id="loginPass" placeholder="Masukkan password">
+  </div>
+  <button class="btn-primary" id="btnLogin" style="width:100%" onclick="prosesLogin()">Masuk ke Dashboard</button>
+  <p style="margin-top:14px;"><a href="index.html" style="color:var(--primary-dark); text-decoration:none; font-weight:600;">← Ke Halaman Form Petugas</a></p>
+</div>
 
-    <div class="toolbar">
-      <select id="filterKamar" onchange="renderData()">
-        <option value="">Semua Kamar</option>
-      </select>
-      <button class="btn-outline" onclick="loadSemua()">🔄 Muat</button>
-      <button class="btn-primary" onclick="exportCSV()">📥 CSV</button>
+<div id="appSection" class="container" style="display:none;">
+  <div class="topbar">
+    <div>
+      <h2>🏥 Sistem Manajemen Kamar</h2>
+      <div class="user-info" id="infoUserLogin">Memuat sesi...</div>
     </div>
-
-    <div class="stats">
-      <span id="totalLaporan">Total laporan: 0</span>
-      <span>•</span>
-      <button class="btn-outline" style="padding:6px 10px; font-size:12px;" onclick="bukaModalKamar()">🚪 Kelola Kamar</button>
-      <a href="index.html" style="color: var(--primary-dark); font-weight: 600; text-decoration: none;">+ Isi Form Baru</a>
+    <div style="display:flex; gap:6px;">
+      <a href="index.html"><button class="btn-outline">+ Form</button></a>
+      <button class="btn-danger" onclick="logout()">Keluar</button>
     </div>
   </div>
 
-  <div id="statusInfo">⏳ Memuat data laporan...</div>
-  <div id="listContainer"></div>
+  <div class="nav-tabs">
+    <button class="tab-btn active" onclick="bukaTab('tabLaporan', this)">📋 Eksplor & Laporan</button>
+    <button class="tab-btn" onclick="bukaTab('tabAnalitik', this)">📊 Analitik</button>
+    <button class="tab-btn" onclick="bukaTab('tabAkun', this)">👥 Manajemen & Petugas</button>
+    <button class="tab-btn" onclick="bukaTab('tabMaster', this)">🚪 Kamar & Shift</button>
+  </div>
+
+  <!-- TAB 1: EKSPLORASI DATA -->
+  <div id="tabLaporan" class="section active">
+    <div class="card">
+      <h3 style="margin:0 0 10px; font-size:15px;">🔍 Eksplorasi & Filter Data Laporan</h3>
+      <div class="filter-grid">
+        <div><label style="font-size:11px; color:#64748b;">Dari Tanggal</label><input type="date" id="fTglMulai" onchange="renderLaporan()"></div>
+        <div><label style="font-size:11px; color:#64748b;">Sampai Tanggal</label><input type="date" id="fTglAkhir" onchange="renderLaporan()"></div>
+        <div><label style="font-size:11px; color:#64748b;">Kamar</label><select id="fKamar" onchange="renderLaporan()"><option value="">Semua Kamar</option></select></div>
+        <div><label style="font-size:11px; color:#64748b;">Shift</label><select id="fShift" onchange="renderLaporan()"><option value="">Semua Shift</option></select></div>
+        <div>
+          <label style="font-size:11px; color:#64748b;">Status Kondisi</label>
+          <select id="fKondisi" onchange="renderLaporan()">
+            <option value="">Semua Kondisi</option>
+            <option value="layak">Layak / Bersih & Wangi</option>
+            <option value="masalah">Perlu Tindak Lanjut</option>
+          </select>
+        </div>
+        <div><label style="font-size:11px; color:#64748b;">Cari Petugas / Catatan</label><input type="text" id="fCari" placeholder="Ketik kata kunci..." oninput="renderLaporan()"></div>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:10px;">
+        <span id="jumlahHasil" style="font-size:13px; font-weight:600; color:#475569;">Menampilkan 0 data</span>
+        <div style="display:flex; gap:6px;">
+          <button class="btn-outline" onclick="resetFilter()">Reset</button>
+          <button class="btn-outline" onclick="muatSemuaData()">🔄 Refresh</button>
+          <button class="btn-primary" onclick="exportCSV()">📥 Ekspor Excel (CSV)</button>
+        </div>
+      </div>
+    </div>
+    <div id="listLaporanContainer"></div>
+  </div>
+
+  <!-- TAB 2: ANALITIK -->
+  <div id="tabAnalitik" class="section">
+    <div class="kpi-grid">
+      <div class="kpi-box"><div class="kpi-val" id="kpiTotal">0</div><div class="kpi-lbl">Total Pengecekan</div></div>
+      <div class="kpi-box"><div class="kpi-val" id="kpiLayak" style="color:#0d9488;">0%</div><div class="kpi-lbl">Tingkat Kelayakan</div></div>
+      <div class="kpi-box"><div class="kpi-val" id="kpiMasalah" style="color:#ef4444;">0</div><div class="kpi-lbl">Temuan Bau / Kotor</div></div>
+    </div>
+    <div class="card"><h3 style="margin:0 0 10px; font-size:15px;">📈 Grafik Jumlah Pengecekan per Kamar</h3><canvas id="chartKamar" height="170"></canvas></div>
+    <div class="card"><h3 style="margin:0 0 10px; font-size:15px;">⏱️ Distribusi Laporan per Shift</h3><canvas id="chartShift" height="150"></canvas></div>
+  </div>
+
+  <!-- TAB 3: KELOLA AKUN -->
+  <div id="tabAkun" class="section">
+    <div class="card">
+      <h3 style="margin:0 0 12px; font-size:15px;">➕ Tambah Akun Manajemen / Petugas</h3>
+      <div class="filter-grid">
+        <input type="text" id="akunNama" placeholder="Nama Lengkap">
+        <input type="text" id="akunUser" placeholder="Username (tanpa spasi)">
+        <input type="text" id="akunPass" placeholder="Password (min. 6 karakter)">
+        <select id="akunRole">
+          <option value="petugas">Peran: Petugas Lapangan</option>
+          <option value="manajemen">Peran: Manajemen (Admin)</option>
+        </select>
+      </div>
+      <button class="btn-primary" id="btnTambahAkun" style="width:100%;" onclick="tambahAkun()">Buat Akun Terenkripsi</button>
+    </div>
+    <div class="card"><h3 style="margin:0 0 10px; font-size:15px;">👥 Daftar Akun Aktif</h3><div id="listAkunContainer"></div></div>
+  </div>
+
+  <!-- TAB 4: KAMAR & SHIFT -->
+  <div id="tabMaster" class="section">
+    <div class="card">
+      <h3 style="margin:0 0 10px; font-size:15px;">🚪 Kelola Daftar Kamar</h3>
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <input type="text" id="inputKamarBaru" placeholder="Nomor / Nama Kamar (misal: VIP 03)">
+        <button class="btn-primary" onclick="tambahKamar()">+ Tambah</button>
+      </div>
+      <div id="listKamarContainer"></div>
+    </div>
+    <div class="card">
+      <h3 style="margin:0 0 10px; font-size:15px;">🕒 Kelola Jadwal Shift</h3>
+      <div style="display:grid; grid-template-columns: 1fr 1fr auto; gap:8px; margin-bottom:12px;">
+        <input type="text" id="inputShiftNama" placeholder="Nama Shift">
+        <input type="text" id="inputShiftJam" placeholder="Jam (07:00 - 14:00)">
+        <button class="btn-primary" onclick="tambahShift()">+ Tambah</button>
+      </div>
+      <div id="listShiftContainer"></div>
+    </div>
+  </div>
 </div>
 
-<!-- Modal Edit Laporan -->
-<div class="modal" id="editModal">
+<!-- MODAL EDIT LAPORAN -->
+<div class="modal" id="modalEditLaporan">
   <div class="modal-box">
-    <h3>✏️ Edit Laporan Kamar</h3>
-    <input type="hidden" id="editId">
-    <div class="form-group">
-      <label>Kamar</label>
-      <select id="editKamar"></select>
-    </div>
-    <div class="form-group">
-      <label>Nama Petugas</label>
-      <input type="text" id="editPetugas">
-    </div>
+    <h3 style="margin:0 0 12px; color:var(--primary-dark);">✏️ Edit Data Laporan</h3>
+    <input type="hidden" id="editLapId">
+    <div class="form-group"><label>Kamar</label><select id="editLapKamar"></select></div>
+    <div class="form-group"><label>Shift</label><select id="editLapShift"></select></div>
+    <div class="form-group"><label>Nama Petugas</label><input type="text" id="editLapPetugas"></div>
     <div class="form-group">
       <label>Kondisi Aroma</label>
-      <select id="editAroma">
+      <select id="editLapAroma">
         <option value="Wangi / Segar">Wangi / Segar</option>
         <option value="Netral / Tidak Berbau">Netral / Tidak Berbau</option>
         <option value="Bau Amis">Bau Amis</option>
@@ -126,286 +188,363 @@
     </div>
     <div class="form-group">
       <label>Kondisi Toilet</label>
-      <select id="editToilet">
+      <select id="editLapToilet">
         <option value="Bersih, Kering & Wangi">Bersih, Kering & Wangi</option>
         <option value="Perlu Dibersihkan Ulang">Perlu Dibersihkan Ulang</option>
       </select>
     </div>
-    <div class="form-group">
-      <label>Catatan Tambahan</label>
-      <textarea id="editCatatan" rows="2"></textarea>
+    <div class="form-group"><label>Catatan</label><textarea id="editLapCatatan" rows="2"></textarea></div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn-outline" style="flex:1" onclick="tutupModal('modalEditLaporan')">Batal</button>
+      <button class="btn-primary" style="flex:1" onclick="simpanEditLaporan()">Simpan</button>
     </div>
-    <div style="display:flex; gap:8px; margin-top:14px;">
-      <button class="btn-outline" style="flex:1" onclick="tutupModal()">Batal</button>
-      <button class="btn-primary" style="flex:1" onclick="simpanEdit()">Simpan Perubahan</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal Kelola Daftar Kamar -->
-<div class="modal" id="kamarModal">
-  <div class="modal-box">
-    <h3>🚪 Kelola Daftar Kamar</h3>
-    <div style="display:flex; gap:8px; margin-bottom:14px;">
-      <input type="text" id="inputKamarBaru" placeholder="Contoh: VIP 03 / Kelas 1 - 103">
-      <button class="btn-primary" onclick="tambahKamar()">+ Tambah</button>
-    </div>
-    <div id="daftarKamarContainer"></div>
-    <button class="btn-outline" style="width:100%; margin-top:10px;" onclick="tutupModalKamar()">Tutup</button>
   </div>
 </div>
 
 <script>
   const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
   const SUPABASE_KEY = 'PASTE_KUNCI_SB_PUBLISHABLE_DISINI';
-
   const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-  let semuaData = [];
-  let daftarKamar = [];
 
-  window.addEventListener('DOMContentLoaded', loadSemua);
+  let dataLaporan = [], dataFiltered = [], dataKamar = [], dataShift = [], dataAkun = [];
+  let chartKamarObj = null, chartShiftObj = null;
 
-  async function loadSemua() {
-    await loadDaftarKamar();
-    await loadData();
-  }
+  window.addEventListener('DOMContentLoaded', cekSesiAktif);
 
-  async function loadDaftarKamar() {
-    const { data, error } = await db
-      .from('daftar_kamar')
-      .select('*')
-      .order('nama_kamar', { ascending: true });
+  async function cekSesiAktif() {
+    const { data: { session } } = await db.auth.getSession();
+    if (!session) return;
 
-    if (!error && data) {
-      daftarKamar = data;
-      const filterSelect = document.getElementById('filterKamar');
-      const editSelect = document.getElementById('editKamar');
-      const pilihanSekarang = filterSelect.value;
+    const { data: profil } = await db.from('profil_pengguna')
+      .select('*').eq('user_id', session.user.id).single();
 
-      filterSelect.innerHTML = '<option value="">Semua Kamar</option>' +
-        daftarKamar.map(k => `<option value="${k.nama_kamar}">${k.nama_kamar}</option>`).join('');
-      filterSelect.value = pilihanSekarang;
-
-      editSelect.innerHTML = daftarKamar.map(k => `<option value="${k.nama_kamar}">${k.nama_kamar}</option>`).join('');
-      renderDaftarKamarModal();
+    if (profil && profil.role === 'manajemen' && profil.aktif) {
+      document.getElementById('loginSection').style.display = 'none';
+      document.getElementById('appSection').style.display = 'block';
+      document.getElementById('infoUserLogin').textContent = `Manajemen: ${profil.nama_lengkap} (${profil.username})`;
+      muatSemuaData();
+    } else {
+      await db.auth.signOut();
+      alert('Akses ditolak: Akun ini tidak memiliki hak akses Manajemen.');
     }
   }
 
-  function renderDaftarKamarModal() {
-    const container = document.getElementById('daftarKamarContainer');
-    if (daftarKamar.length === 0) {
-      container.innerHTML = '<p style="font-size:13px; color:#64748b; text-align:center;">Belum ada kamar terdaftar.</p>';
-      return;
-    }
-    container.innerHTML = daftarKamar.map(k => `
-      <div class="room-list-item">
-        <span style="font-weight:600; font-size:14px;">${k.nama_kamar}</span>
-        <div class="room-list-actions">
-          <button class="btn-outline" onclick="editNamaKamar(${k.id}, '${k.nama_kamar.replace(/'/g, "\\'")}')">✏️ Edit</button>
-          <button class="btn-danger" onclick="hapusKamar(${k.id}, '${k.nama_kamar.replace(/'/g, "\\'")}')">🗑️</button>
-        </div>
-      </div>
-    `).join('');
+  async function prosesLogin() {
+    const user = document.getElementById('loginUser').value.trim().toLowerCase();
+    const password = document.getElementById('loginPass').value;
+    if (!user || !password) return alert('Isi username dan password.');
+
+    const btn = document.getElementById('btnLogin');
+    btn.disabled = true; btn.textContent = '⏳ Memverifikasi...';
+
+    const emailFormat = user.includes('@') ? user : `${user}@ssmedika.local`;
+    const { error } = await db.auth.signInWithPassword({ email: emailFormat, password });
+
+    btn.disabled = false; btn.textContent = 'Masuk ke Dashboard';
+    if (error) return alert('❌ Login gagal: Username atau password salah.');
+    cekSesiAktif();
   }
 
-  function bukaModalKamar() {
-    renderDaftarKamarModal();
-    document.getElementById('kamarModal').style.display = 'flex';
+  async function logout() {
+    await db.auth.signOut();
+    location.reload();
   }
 
-  function tutupModalKamar() {
-    document.getElementById('kamarModal').style.display = 'none';
+  function bukaTab(idTab, btn) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(idTab).classList.add('active');
+    btn.classList.add('active');
+    if (idTab === 'tabAnalitik') renderAnalitik();
   }
 
-  async function tambahKamar() {
-    const input = document.getElementById('inputKamarBaru');
-    const nama = input.value.trim();
-    if (!nama) return alert('Masukkan nama atau nomor kamar terlebih dahulu.');
+  async function muatSemuaData() {
+    const [resLap, resKam, resShf, resAkn] = await Promise.all([
+      db.from('laporan_kamar').select('*').order('created_at', { ascending: false }),
+      db.from('daftar_kamar').select('*').order('nama_kamar', { ascending: true }),
+      db.from('daftar_shift').select('*').order('id', { ascending: true }),
+      db.from('profil_pengguna').select('*').order('role', { ascending: true })
+    ]);
 
-    const { error } = await db.from('daftar_kamar').insert([{ nama_kamar: nama }]);
-    if (error) return alert('❌ Gagal menambah kamar: ' + error.message);
+    dataLaporan = resLap.data || [];
+    dataKamar = resKam.data || [];
+    dataShift = resShf.data || [];
+    dataAkun = resAkn.data || [];
 
-    input.value = '';
-    await loadDaftarKamar();
+    isiDropdownMaster();
+    renderLaporan();
+    renderMasterList();
+    renderAkunList();
+    renderAnalitik();
   }
 
-  async function editNamaKamar(id, namaLama) {
-    const namaBaru = prompt('Ubah nomor / nama kamar:', namaLama);
-    if (!namaBaru || namaBaru.trim() === '' || namaBaru.trim() === namaLama) return;
+  function isiDropdownMaster() {
+    const optKamar = dataKamar.map(k => `<option value="${k.nama_kamar}">${k.nama_kamar}</option>`).join('');
+    document.getElementById('fKamar').innerHTML = '<option value="">Semua Kamar</option>' + optKamar;
+    document.getElementById('editLapKamar').innerHTML = optKamar;
 
-    const { error } = await db.from('daftar_kamar').update({ nama_kamar: namaBaru.trim() }).eq('id', id);
-    if (error) return alert('❌ Gagal mengubah nama kamar: ' + error.message);
-
-    await loadDaftarKamar();
+    const optShift = dataShift.map(s => `<option value="${s.nama_shift}">${s.nama_shift}</option>`).join('');
+    document.getElementById('fShift').innerHTML = '<option value="">Semua Shift</option>' + optShift;
+    document.getElementById('editLapShift').innerHTML = '<option value="-">-</option>' + optShift;
   }
 
-  async function hapusKamar(id, nama) {
-    if (!confirm(`Hapus "${nama}" dari daftar pilihan kamar?`)) return;
-    const { error } = await db.from('daftar_kamar').delete().eq('id', id);
-    if (error) return alert('❌ Gagal menghapus kamar: ' + error.message);
+  function renderLaporan() {
+    const tMulai = document.getElementById('fTglMulai').value;
+    const tAkhir = document.getElementById('fTglAkhir').value;
+    const fKam = document.getElementById('fKamar').value;
+    const fShf = document.getElementById('fShift').value;
+    const fKon = document.getElementById('fKondisi').value;
+    const fCar = document.getElementById('fCari').value.toLowerCase();
 
-    await loadDaftarKamar();
-  }
+    dataFiltered = dataLaporan.filter(d => {
+      const tglItem = new Date(d.created_at).toISOString().slice(0, 10);
+      if (tMulai && tglItem < tMulai) return false;
+      if (tAkhir && tglItem > tAkhir) return false;
+      if (fKam && d.kamar !== fKam) return false;
+      if (fShf && d.shift !== fShf) return false;
+      const bermasalah = (d.aroma && d.aroma.includes('Bau')) || (d.toilet && d.toilet.includes('Ulang'));
+      if (fKon === 'layak' && bermasalah) return false;
+      if (fKon === 'masalah' && !bermasalah) return false;
+      if (fCar && !`${d.petugas} ${d.catatan} ${d.kamar} ${d.alat}`.toLowerCase().includes(fCar)) return false;
+      return true;
+    });
 
-  async function loadData() {
-    const statusInfo = document.getElementById('statusInfo');
-    statusInfo.style.display = 'block';
-    statusInfo.textContent = '⏳ Memuat data laporan...';
-
-    const { data, error } = await db
-      .from('laporan_kamar')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      statusInfo.textContent = '❌ Gagal memuat data: ' + error.message;
-      return;
-    }
-
-    semuaData = data || [];
-    renderData();
-  }
-
-  function renderData() {
-    const filter = document.getElementById('filterKamar').value;
-    const container = document.getElementById('listContainer');
-    const statusInfo = document.getElementById('statusInfo');
-
-    const filtered = filter ? semuaData.filter(d => d.kamar === filter) : semuaData;
-    document.getElementById('totalLaporan').textContent = `Total laporan: ${filtered.length}`;
-
-    if (filtered.length === 0) {
-      container.innerHTML = '';
-      statusInfo.style.display = 'block';
-      statusInfo.textContent = 'Belum ada data laporan untuk kriteria ini.';
+    document.getElementById('jumlahHasil').textContent = `Menampilkan ${dataFiltered.length} dari ${dataLaporan.length} laporan`;
+    const container = document.getElementById('listLaporanContainer');
+    if (dataFiltered.length === 0) {
+      container.innerHTML = '<div class="card" style="text-align:center; color:#64748b;">Tidak ada laporan yang cocok dengan filter.</div>';
       return;
     }
 
-    statusInfo.style.display = 'none';
-    container.innerHTML = filtered.map(item => {
-      const waktu = new Date(item.created_at).toLocaleString('id-ID', {
-        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-      });
+    container.innerHTML = dataFiltered.map(item => {
+      const waktu = new Date(item.created_at).toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
       const aromaOk = item.aroma && !item.aroma.includes('Bau');
       const toiletOk = item.toilet && item.toilet.includes('Bersih');
-
       return `
-        <div class="report-card">
-          <div class="report-top">
-            <div>
-              <div class="room-title">${item.kamar || '-'}</div>
-              <div class="time-text">🕒 ${waktu} • Petugas: <b>${item.petugas || '-'}</b></div>
-            </div>
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+            <strong style="font-size:16px; color:var(--primary-dark);">${item.kamar}</strong>
+            <span style="font-size:12px; color:#64748b;">🕒 ${waktu}</span>
           </div>
-
-          <div class="meta-row">
-            <span class="badge ${aromaOk ? 'badge-ok' : 'badge-warn'}">Aroma: ${item.aroma || '-'}</span>
-            <span class="badge ${toiletOk ? 'badge-ok' : 'badge-warn'}">Toilet: ${item.toilet || '-'}</span>
+          <div style="font-size:13px; margin-bottom:8px;">Petugas: <b>${item.petugas}</b> • Shift: <b>${item.shift || '-'}</b></div>
+          <div>
+            <span class="badge ${aromaOk ? 'badge-ok' : 'badge-warn'}">Aroma: ${item.aroma}</span>
+            <span class="badge ${toiletOk ? 'badge-ok' : 'badge-warn'}">Toilet: ${item.toilet}</span>
           </div>
-
-          <div class="meta-row"><b>Kelengkapan:</b> ${item.alat || '-'}</div>
-          ${item.catatan ? `<div class="meta-row"><b>Catatan:</b> ${item.catatan}</div>` : ''}
-
+          <div style="font-size:13px; margin-top:6px;"><b>Kelengkapan:</b> ${item.alat || '-'}</div>
+          ${item.catatan ? `<div style="font-size:13px; margin-top:4px;"><b>Catatan:</b> ${item.catatan}</div>` : ''}
           <div class="photo-grid">
-            <div class="photo-item">
-              <a href="${item.foto_toilet}" target="_blank">
-                <img src="${item.foto_toilet}" alt="Foto Toilet" loading="lazy">
-              </a>
-              <div class="photo-label">📷 Foto Toilet (Ketuk perbesar)</div>
-            </div>
-            <div class="photo-item">
-              <a href="${item.foto_kamar}" target="_blank">
-                <img src="${item.foto_kamar}" alt="Foto Kamar" loading="lazy">
-              </a>
-              <div class="photo-label">📷 Foto Kamar (Ketuk perbesar)</div>
-            </div>
+            <div class="photo-item"><a href="${item.foto_toilet}" target="_blank"><img src="${item.foto_toilet}"></a><div style="font-size:11px;">Foto Toilet</div></div>
+            <div class="photo-item"><a href="${item.foto_kamar}" target="_blank"><img src="${item.foto_kamar}"></a><div style="font-size:11px;">Foto Kamar</div></div>
           </div>
-
-          <div class="card-actions">
-            <button class="btn-outline" onclick='bukaModal(${JSON.stringify(item).replace(/'/g, "&#39;")})'>✏️ Edit Data</button>
-            <button class="btn-danger" onclick="hapusLaporan(${item.id}, '${item.foto_toilet}', '${item.foto_kamar}')">🗑️ Hapus</button>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <button class="btn-outline" style="flex:1" onclick='bukaEditLaporan(${JSON.stringify(item).replace(/'/g, "&#39;")})'>✏️ Edit</button>
+            <button class="btn-danger" style="flex:1" onclick="hapusLaporan(${item.id}, '${item.foto_toilet}', '${item.foto_kamar}')">🗑️ Hapus</button>
           </div>
         </div>
       `;
     }).join('');
   }
 
-  function bukaModal(item) {
-    document.getElementById('editId').value = item.id;
-    const editKamar = document.getElementById('editKamar');
-    if (![...editKamar.options].some(o => o.value === item.kamar) && item.kamar) {
-      editKamar.add(new Option(item.kamar, item.kamar));
-    }
-    editKamar.value = item.kamar || '';
-    document.getElementById('editPetugas').value = item.petugas || '';
-    document.getElementById('editAroma').value = item.aroma || 'Wangi / Segar';
-    document.getElementById('editToilet').value = item.toilet || 'Bersih, Kering & Wangi';
-    document.getElementById('editCatatan').value = item.catatan || '';
-    document.getElementById('editModal').style.display = 'flex';
+  function resetFilter() {
+    ['fTglMulai','fTglAkhir','fKamar','fShift','fKondisi','fCari'].forEach(id => document.getElementById(id).value = '');
+    renderLaporan();
   }
 
-  function tutupModal() {
-    document.getElementById('editModal').style.display = 'none';
+  function bukaEditLaporan(item) {
+    document.getElementById('editLapId').value = item.id;
+    document.getElementById('editLapKamar').value = item.kamar;
+    document.getElementById('editLapShift').value = item.shift || '-';
+    document.getElementById('editLapPetugas').value = item.petugas;
+    document.getElementById('editLapAroma').value = item.aroma;
+    document.getElementById('editLapToilet').value = item.toilet;
+    document.getElementById('editLapCatatan').value = item.catatan || '';
+    document.getElementById('modalEditLaporan').style.display = 'flex';
   }
 
-  async function simpanEdit() {
-    const id = document.getElementById('editId').value;
-    const payload = {
-      kamar: document.getElementById('editKamar').value,
-      petugas: document.getElementById('editPetugas').value,
-      aroma: document.getElementById('editAroma').value,
-      toilet: document.getElementById('editToilet').value,
-      catatan: document.getElementById('editCatatan').value
-    };
+  function tutupModal(id) { document.getElementById(id).style.display = 'none'; }
 
-    const { error } = await db.from('laporan_kamar').update(payload).eq('id', id);
-    if (error) {
-      alert('❌ Gagal memperbarui: ' + error.message);
-      return;
-    }
-
-    tutupModal();
-    loadData();
+  async function simpanEditLaporan() {
+    const id = document.getElementById('editLapId').value;
+    const { error } = await db.from('laporan_kamar').update({
+      kamar: document.getElementById('editLapKamar').value,
+      shift: document.getElementById('editLapShift').value,
+      petugas: document.getElementById('editLapPetugas').value,
+      aroma: document.getElementById('editLapAroma').value,
+      toilet: document.getElementById('editLapToilet').value,
+      catatan: document.getElementById('editLapCatatan').value
+    }).eq('id', id);
+    if (error) return alert('Gagal update: ' + error.message);
+    tutupModal('modalEditLaporan');
+    muatSemuaData();
   }
 
-  async function hapusLaporan(id, urlToilet, urlKamar) {
-    if (!confirm('Hapus laporan ini beserta fotonya secara permanen?')) return;
+  async function hapusLaporan(id, f1, f2) {
+    if (!confirm('Hapus laporan ini permanen?')) return;
+    await db.from('laporan_kamar').delete().eq('id', id);
+    const files = [f1, f2].filter(Boolean).map(u => u.split('/foto-kamar/')[1]).filter(Boolean);
+    if (files.length) await db.storage.from('foto-kamar').remove(files);
+    muatSemuaData();
+  }
 
-    const { error } = await db.from('laporan_kamar').delete().eq('id', id);
-    if (error) {
-      alert('❌ Gagal menghapus: ' + error.message);
-      return;
-    }
+  function renderAnalitik() {
+    const total = dataLaporan.length;
+    const masalah = dataLaporan.filter(d => (d.aroma && d.aroma.includes('Bau')) || (d.toilet && d.toilet.includes('Ulang'))).length;
+    const layakPersen = total ? Math.round(((total - masalah) / total) * 100) : 0;
 
-    const filesToRemove = [urlToilet, urlKamar]
-      .filter(Boolean)
-      .map(url => url.split('/foto-kamar/')[1])
-      .filter(Boolean);
+    document.getElementById('kpiTotal').textContent = total;
+    document.getElementById('kpiLayak').textContent = layakPersen + '%';
+    document.getElementById('kpiMasalah').textContent = masalah;
 
-    if (filesToRemove.length > 0) {
-      await db.storage.from('foto-kamar').remove(filesToRemove);
-    }
+    const countKamar = {};
+    dataLaporan.forEach(d => { countKamar[d.kamar] = (countKamar[d.kamar] || 0) + 1; });
+    if (chartKamarObj) chartKamarObj.destroy();
+    chartKamarObj = new Chart(document.getElementById('chartKamar'), {
+      type: 'bar',
+      data: { labels: Object.keys(countKamar), datasets: [{ label: 'Jumlah Laporan', data: Object.values(countKamar), backgroundColor: '#0d9488', borderRadius: 6 }] },
+      options: { plugins: { legend: { display: false } } }
+    });
 
-    loadData();
+    const countShift = {};
+    dataLaporan.forEach(d => { const s = d.shift || 'Tanpa Shift'; countShift[s] = (countShift[s] || 0) + 1; });
+    if (chartShiftObj) chartShiftObj.destroy();
+    chartShiftObj = new Chart(document.getElementById('chartShift'), {
+      type: 'doughnut',
+      data: { labels: Object.keys(countShift), datasets: [{ data: Object.values(countShift), backgroundColor: ['#0d9488', '#0284c7', '#f59e0b', '#94a3b8'] }] }
+    });
+  }
+
+  function renderAkunList() {
+    document.getElementById('listAkunContainer').innerHTML = dataAkun.map(a => `
+      <div class="list-item">
+        <div>
+          <strong>${a.nama_lengkap}</strong> <span class="badge ${a.role === 'manajemen' ? 'badge-info' : 'badge-ok'}">${a.role.toUpperCase()}</span>
+          <div style="font-size:12px; color:#64748b;">Username: <b>${a.username}</b> • Status: <b>${a.aktif ? 'Aktif' : 'Nonaktif'}</b></div>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn-outline" onclick="editAkun('${a.user_id}', '${a.nama_lengkap}', '${a.role}', ${a.aktif})">✏️</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async function tambahAkun() {
+    const nama_lengkap = document.getElementById('akunNama').value.trim();
+    const username = document.getElementById('akunUser').value.trim().toLowerCase().replace(/\s+/g, '');
+    const password = document.getElementById('akunPass').value;
+    const role = document.getElementById('akunRole').value;
+    if (!nama_lengkap || !username || password.length < 6) return alert('Lengkapi nama, username, dan password minimal 6 karakter.');
+
+    const btn = document.getElementById('btnTambahAkun');
+    btn.disabled = true; btn.textContent = '⏳ Mendaftarkan...';
+
+    // Gunakan client sekunder tanpa persistSession agar sesi admin tidak ter-logout
+    const tempClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
+    const { error } = await tempClient.auth.signUp({
+      email: `${username}@ssmedika.local`,
+      password,
+      options: { data: { nama_lengkap, username, role } }
+    });
+
+    btn.disabled = false; btn.textContent = 'Buat Akun Terenkripsi';
+    if (error) return alert('❌ Gagal membuat akun: ' + error.message);
+
+    alert(`✅ Akun berhasil dibuat!\nUsername: ${username}\nPassword: ${password}`);
+    ['akunNama','akunUser','akunPass'].forEach(id => document.getElementById(id).value = '');
+    setTimeout(muatSemuaData, 800);
+  }
+
+  async function editAkun(uid, namaLama, roleLama, aktifLama) {
+    const namaBaru = prompt('Edit Nama Lengkap:', namaLama);
+    if (!namaBaru) return;
+    const roleBaru = prompt('Edit Peran (ketik: manajemen atau petugas):', roleLama);
+    if (!roleBaru || !['manajemen','petugas'].includes(roleBaru.toLowerCase())) return alert('Peran harus manajemen atau petugas.');
+    const aktifBaru = confirm('Aktifkan akun ini? (OK = Aktif, Cancel = Nonaktifkan)');
+
+    await db.from('profil_pengguna').update({ nama_lengkap: namaBaru.trim(), role: roleBaru.toLowerCase(), aktif: aktifBaru }).eq('user_id', uid);
+    muatSemuaData();
+  }
+
+  function renderMasterList() {
+    document.getElementById('listKamarContainer').innerHTML = dataKamar.map(k => `
+      <div class="list-item">
+        <strong>${k.nama_kamar}</strong>
+        <div style="display:flex; gap:6px;">
+          <button class="btn-outline" onclick="editKamar(${k.id}, '${k.nama_kamar}')">✏️</button>
+          <button class="btn-danger" onclick="hapusKamar(${k.id})">🗑️</button>
+        </div>
+      </div>
+    `).join('');
+
+    document.getElementById('listShiftContainer').innerHTML = dataShift.map(s => `
+      <div class="list-item">
+        <div><strong>${s.nama_shift}</strong> <span style="font-size:12px; color:#64748b;">(${s.jam_kerja || '-'})</span></div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn-outline" onclick="editShift(${s.id}, '${s.nama_shift}', '${s.jam_kerja || ''}')">✏️</button>
+          <button class="btn-danger" onclick="hapusShift(${s.id})">🗑️</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async function tambahKamar() {
+    const nama = document.getElementById('inputKamarBaru').value.trim();
+    if (!nama) return;
+    const { error } = await db.from('daftar_kamar').insert([{ nama_kamar: nama }]);
+    if (error) return alert(error.message);
+    document.getElementById('inputKamarBaru').value = '';
+    muatSemuaData();
+  }
+
+  async function editKamar(id, lama) {
+    const baru = prompt('Ubah nama/nomor kamar:', lama);
+    if (!baru || baru.trim() === lama) return;
+    await db.from('daftar_kamar').update({ nama_kamar: baru.trim() }).eq('id', id);
+    muatSemuaData();
+  }
+
+  async function hapusKamar(id) {
+    if (!confirm('Hapus kamar ini?')) return;
+    await db.from('daftar_kamar').delete().eq('id', id);
+    muatSemuaData();
+  }
+
+  async function tambahShift() {
+    const nama = document.getElementById('inputShiftNama').value.trim();
+    const jam = document.getElementById('inputShiftJam').value.trim();
+    if (!nama) return;
+    const { error } = await db.from('daftar_shift').insert([{ nama_shift: nama, jam_kerja: jam }]);
+    if (error) return alert(error.message);
+    document.getElementById('inputShiftNama').value = '';
+    document.getElementById('inputShiftJam').value = '';
+    muatSemuaData();
+  }
+
+  async function editShift(id, namaLama, jamLama) {
+    const namaBaru = prompt('Edit Nama Shift:', namaLama);
+    if (!namaBaru) return;
+    const jamBaru = prompt('Edit Jam Kerja:', jamLama);
+    await db.from('daftar_shift').update({ nama_shift: namaBaru.trim(), jam_kerja: (jamBaru || '').trim() }).eq('id', id);
+    muatSemuaData();
+  }
+
+  async function hapusShift(id) {
+    if (!confirm('Hapus shift ini?')) return;
+    await db.from('daftar_shift').delete().eq('id', id);
+    muatSemuaData();
   }
 
   function exportCSV() {
-    if (semuaData.length === 0) return alert('Tidak ada data untuk diunduh.');
-    const headers = ['Waktu', 'Kamar', 'Petugas', 'Aroma', 'Toilet', 'Kelengkapan', 'Catatan', 'Link Foto Toilet', 'Link Foto Kamar'];
-    const rows = semuaData.map(r => [
-      new Date(r.created_at).toLocaleString('id-ID'),
-      r.kamar, r.petugas, r.aroma, r.toilet, r.alat, r.catatan || '', r.foto_toilet, r.foto_kamar
+    if (dataFiltered.length === 0) return alert('Tidak ada data hasil filter untuk diekspor.');
+    const headers = ['Waktu', 'Shift', 'Kamar', 'Petugas', 'Aroma', 'Toilet', 'Kelengkapan', 'Catatan', 'Foto Toilet', 'Foto Kamar'];
+    const rows = dataFiltered.map(r => [
+      new Date(r.created_at).toLocaleString('id-ID'), r.shift || '-', r.kamar, r.petugas, r.aroma, r.toilet, r.alat, r.catatan || '', r.foto_toilet, r.foto_kamar
     ].map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(','));
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
     const link = document.createElement('a');
-    link.setAttribute('href', encodeURI(csvContent));
-    link.setAttribute('download', `rekap_kamar_${new Date().toISOString().slice(0,10)}.csv`);
-    document.body.appendChild(link);
+    link.href = encodeURI('data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n'));
+    link.download = `ekspor_kesiapan_kamar_${new Date().toISOString().slice(0,10)}.csv`;
     link.click();
-    document.body.removeChild(link);
   }
 </script>
-
 </body>
 </html>
