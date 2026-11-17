@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Rekap Kesiapan Kamar</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --primary: #0d9488;
+      --primary-dark: #0f766e;
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --text: #1e293b;
+      --border: #cbd5e1;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); margin: 0; padding: 14px; }
+    .container { max-width: 720px; margin: 0 auto; }
+    .header-card {
+      background: var(--card); border-radius: 16px; padding: 16px; margin-bottom: 14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+    h2 { margin: 0 0 4px; color: var(--primary-dark); font-size: 20px; }
+    p.subtitle { margin: 0 0 14px; font-size: 13px; color: #64748b; }
+    .toolbar { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; }
+    select, input[type="text"], textarea {
+      width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 14px; background: #fff;
+    }
+    button {
+      padding: 10px 14px; border: none; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-outline { background: #e2e8f0; color: var(--text); }
+    .btn-danger { background: #fee2e2; color: #b91c1c; }
+    .stats { display: flex; gap: 10px; margin-top: 12px; font-size: 13px; color: #475569; }
+    .badge { padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; display: inline-block; }
+    .badge-ok { background: #ccfbf1; color: #0f766e; }
+    .badge-warn { background: #fee2e2; color: #b91c1c; }
+
+    .report-card {
+      background: var(--card); border-radius: 14px; padding: 15px; margin-bottom: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid #e2e8f0;
+    }
+    .report-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+    .room-title { font-size: 17px; font-weight: 700; color: var(--primary-dark); }
+    .time-text { font-size: 12px; color: #64748b; }
+    .meta-row { font-size: 13.5px; margin-bottom: 6px; line-height: 1.45; }
+    .photo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+    .photo-item { text-align: center; background: #f8fafc; padding: 6px; border-radius: 10px; border: 1px solid #e2e8f0; }
+    .photo-item img { width: 100%; height: 140px; object-fit: cover; border-radius: 8px; cursor: pointer; }
+    .photo-label { font-size: 11.5px; color: #475569; margin-top: 4px; font-weight: 600; }
+    .card-actions { display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f1f5f9; }
+    .card-actions button { flex: 1; }
+
+    /* Modal Edit */
+    .modal {
+      display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.6);
+      align-items: center; justify-content: center; padding: 16px; z-index: 999;
+    }
+    .modal-box {
+      background: #fff; border-radius: 16px; padding: 18px; width: 100%; max-width: 440px;
+    }
+    .modal-box h3 { margin: 0 0 12px; font-size: 17px; color: var(--primary-dark); }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    #statusInfo { text-align: center; padding: 24px; color: #64748b; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header-card">
+    <h2>📋 Manajemen Rekap Kamar</h2>
+    <p class="subtitle">Pantau, Edit, dan Unduh Laporan Kesiapan Ruangan</p>
+
+    <div class="toolbar">
+      <select id="filterKamar" onchange="renderData()">
+        <option value="">Semua Kamar</option>
+        <option value="VIP 01">VIP 01</option>
+        <option value="VIP 02">VIP 02</option>
+        <option value="Kelas 1 - 101">Kelas 1 - 101</option>
+        <option value="Kelas 1 - 102">Kelas 1 - 102</option>
+        <option value="Kelas 2 - 201">Kelas 2 - 201</option>
+        <option value="Kelas 3 - 301">Kelas 3 - 301</option>
+      </select>
+      <button class="btn-outline" onclick="loadData()">🔄 Muat Ulang</button>
+      <button class="btn-primary" onclick="exportCSV()">📥 CSV</button>
+    </div>
+
+    <div class="stats">
+      <span id="totalLaporan">Total laporan: 0</span>
+      <span>•</span>
+      <a href="index.html" style="color: var(--primary-dark); font-weight: 600; text-decoration: none;">+ Isi Form Baru</a>
+    </div>
+  </div>
+
+  <div id="statusInfo">⏳ Memuat data laporan...</div>
+  <div id="listContainer"></div>
+</div>
+
+<!-- Modal Edit -->
+<div class="modal" id="editModal">
+  <div class="modal-box">
+    <h3>✏️ Edit Laporan Kamar</h3>
+    <input type="hidden" id="editId">
+    <div class="form-group">
+      <label>Kamar</label>
+      <select id="editKamar">
+        <option value="VIP 01">VIP 01</option>
+        <option value="VIP 02">VIP 02</option>
+        <option value="Kelas 1 - 101">Kelas 1 - 101</option>
+        <option value="Kelas 1 - 102">Kelas 1 - 102</option>
+        <option value="Kelas 2 - 201">Kelas 2 - 201</option>
+        <option value="Kelas 3 - 301">Kelas 3 - 301</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Nama Petugas</label>
+      <input type="text" id="editPetugas">
+    </div>
+    <div class="form-group">
+      <label>Kondisi Aroma</label>
+      <select id="editAroma">
+        <option value="Wangi / Segar">Wangi / Segar</option>
+        <option value="Netral / Tidak Berbau">Netral / Tidak Berbau</option>
+        <option value="Bau Amis">Bau Amis</option>
+        <option value="Bau Apek / Lembap">Bau Apek / Lembap</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Kondisi Toilet</label>
+      <select id="editToilet">
+        <option value="Bersih, Kering & Wangi">Bersih, Kering & Wangi</option>
+        <option value="Perlu Dibersihkan Ulang">Perlu Dibersihkan Ulang</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Catatan Tambahan</label>
+      <textarea id="editCatatan" rows="2"></textarea>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <button class="btn-outline" style="flex:1" onclick="tutupModal()">Batal</button>
+      <button class="btn-primary" style="flex:1" onclick="simpanEdit()">Simpan Perubahan</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_AXcmTZqRh9W-Qs0yoEcUdQ_bxLpar50';
+
+  const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  let semuaData = [];
+
+  window.addEventListener('DOMContentLoaded', loadData);
+
+  async function loadData() {
+    const statusInfo = document.getElementById('statusInfo');
+    statusInfo.style.display = 'block';
+    statusInfo.textContent = '⏳ Memuat data laporan...';
+
+    const { data, error } = await db
+      .from('laporan_kamar')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      statusInfo.textContent = '❌ Gagal memuat data: ' + error.message;
+      return;
+    }
+
+    semuaData = data || [];
+    renderData();
+  }
+
+  function renderData() {
+    const filter = document.getElementById('filterKamar').value;
+    const container = document.getElementById('listContainer');
+    const statusInfo = document.getElementById('statusInfo');
+
+    const filtered = filter ? semuaData.filter(d => d.kamar === filter) : semuaData;
+    document.getElementById('totalLaporan').textContent = `Total laporan: ${filtered.length}`;
+
+    if (filtered.length === 0) {
+      container.innerHTML = '';
+      statusInfo.style.display = 'block';
+      statusInfo.textContent = 'Belum ada data laporan untuk kriteria ini.';
+      return;
+    }
+
+    statusInfo.style.display = 'none';
+    container.innerHTML = filtered.map(item => {
+      const waktu = new Date(item.created_at).toLocaleString('id-ID', {
+        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
+      const aromaOk = item.aroma && !item.aroma.includes('Bau');
+      const toiletOk = item.toilet && item.toilet.includes('Bersih');
+
+      return `
+        <div class="report-card">
+          <div class="report-top">
+            <div>
+              <div class="room-title">${item.kamar || '-'}</div>
+              <div class="time-text">🕒 ${waktu} • Petugas: <b>${item.petugas || '-'}</b></div>
+            </div>
+          </div>
+
+          <div class="meta-row">
+            <span class="badge ${aromaOk ? 'badge-ok' : 'badge-warn'}">Aroma: ${item.aroma || '-'}</span>
+            <span class="badge ${toiletOk ? 'badge-ok' : 'badge-warn'}">Toilet: ${item.toilet || '-'}</span>
+          </div>
+
+          <div class="meta-row"><b>Kelengkapan:</b> ${item.alat || '-'}</div>
+          ${item.catatan ? `<div class="meta-row"><b>Catatan:</b> ${item.catatan}</div>` : ''}
+
+          <div class="photo-grid">
+            <div class="photo-item">
+              <a href="${item.foto_toilet}" target="_blank">
+                <img src="${item.foto_toilet}" alt="Foto Toilet" loading="lazy">
+              </a>
+              <div class="photo-label">📷 Foto Toilet (Ketuk perbesar)</div>
+            </div>
+            <div class="photo-item">
+              <a href="${item.foto_kamar}" target="_blank">
+                <img src="${item.foto_kamar}" alt="Foto Kamar" loading="lazy">
+              </a>
+              <div class="photo-label">📷 Foto Kamar (Ketuk perbesar)</div>
+            </div>
+          </div>
+
+          <div class="card-actions">
+            <button class="btn-outline" onclick='bukaModal(${JSON.stringify(item).replace(/'/g, "&#39;")})'>✏️ Edit Data</button>
+            <button class="btn-danger" onclick="hapusLaporan(${item.id}, '${item.foto_toilet}', '${item.foto_kamar}')">🗑️ Hapus</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function bukaModal(item) {
+    document.getElementById('editId').value = item.id;
+    document.getElementById('editKamar').value = item.kamar || 'VIP 01';
+    document.getElementById('editPetugas').value = item.petugas || '';
+    document.getElementById('editAroma').value = item.aroma || 'Wangi / Segar';
+    document.getElementById('editToilet').value = item.toilet || 'Bersih, Kering & Wangi';
+    document.getElementById('editCatatan').value = item.catatan || '';
+    document.getElementById('editModal').style.display = 'flex';
+  }
+
+  function tutupModal() {
+    document.getElementById('editModal').style.display = 'none';
+  }
+
+  async function simpanEdit() {
+    const id = document.getElementById('editId').value;
+    const payload = {
+      kamar: document.getElementById('editKamar').value,
+      petugas: document.getElementById('editPetugas').value,
+      aroma: document.getElementById('editAroma').value,
+      toilet: document.getElementById('editToilet').value,
+      catatan: document.getElementById('editCatatan').value
+    };
+
+    const { error } = await db.from('laporan_kamar').update(payload).eq('id', id);
+    if (error) {
+      alert('❌ Gagal memperbarui: ' + error.message + '\n\n(Pastikan Policy UPDATE di tabel laporan_kamar sudah aktif di Supabase)');
+      return;
+    }
+
+    tutupModal();
+    loadData();
+  }
+
+  async function hapusLaporan(id, urlToilet, urlKamar) {
+    if (!confirm('Hapus laporan ini beserta fotonya secara permanen?')) return;
+
+    const { error } = await db.from('laporan_kamar').delete().eq('id', id);
+    if (error) {
+      alert('❌ Gagal menghapus: ' + error.message + '\n\n(Pastikan Policy DELETE di tabel laporan_kamar sudah aktif di Supabase)');
+      return;
+    }
+
+    // Hapus file foto dari Storage agar hemat ruang
+    const filesToRemove = [urlToilet, urlKamar]
+      .filter(Boolean)
+      .map(url => url.split('/foto-kamar/')[1])
+      .filter(Boolean);
+
+    if (filesToRemove.length > 0) {
+      await db.storage.from('foto-kamar').remove(filesToRemove);
+    }
+
+    loadData();
+  }
+
+  function exportCSV() {
+    if (semuaData.length === 0) return alert('Tidak ada data untuk diunduh.');
+    const headers = ['Waktu', 'Kamar', 'Petugas', 'Aroma', 'Toilet', 'Kelengkapan', 'Catatan', 'Link Foto Toilet', 'Link Foto Kamar'];
+    const rows = semuaData.map(r => [
+      new Date(r.created_at).toLocaleString('id-ID'),
+      r.kamar, r.petugas, r.aroma, r.toilet, r.alat, r.catatan || '', r.foto_toilet, r.foto_kamar
+    ].map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(','));
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
+    const link = document.createElement('a');
+    link.setAttribute('href', encodeURI(csvContent));
+    link.setAttribute('download', `rekap_kamar_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+</script>
+
+</body>
+</html>
