@@ -34,7 +34,7 @@
     .btn-primary { background: var(--primary); color: #fff; }
     .btn-outline { background: #e2e8f0; color: var(--text); }
     .btn-danger { background: #fee2e2; color: #b91c1c; }
-    .stats { display: flex; gap: 10px; margin-top: 12px; font-size: 13px; color: #475569; }
+    .stats { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; font-size: 13px; color: #475569; }
     .badge { padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; display: inline-block; }
     .badge-ok { background: #ccfbf1; color: #0f766e; }
     .badge-warn { background: #fee2e2; color: #b91c1c; }
@@ -54,17 +54,24 @@
     .card-actions { display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f1f5f9; }
     .card-actions button { flex: 1; }
 
-    /* Modal Edit */
+    /* Modal */
     .modal {
       display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.6);
       align-items: center; justify-content: center; padding: 16px; z-index: 999;
     }
     .modal-box {
       background: #fff; border-radius: 16px; padding: 18px; width: 100%; max-width: 440px;
+      max-height: 85vh; overflow-y: auto;
     }
     .modal-box h3 { margin: 0 0 12px; font-size: 17px; color: var(--primary-dark); }
     .form-group { margin-bottom: 12px; }
     .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .room-list-item {
+      display: flex; justify-content: space-between; align-items: center; padding: 8px 10px;
+      border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 8px; background: #f8fafc;
+    }
+    .room-list-actions { display: flex; gap: 6px; }
+    .room-list-actions button { padding: 6px 10px; font-size: 12px; }
     #statusInfo { text-align: center; padding: 24px; color: #64748b; font-size: 14px; }
   </style>
 </head>
@@ -78,20 +85,15 @@
     <div class="toolbar">
       <select id="filterKamar" onchange="renderData()">
         <option value="">Semua Kamar</option>
-        <option value="VIP 01">VIP 01</option>
-        <option value="VIP 02">VIP 02</option>
-        <option value="Kelas 1 - 101">Kelas 1 - 101</option>
-        <option value="Kelas 1 - 102">Kelas 1 - 102</option>
-        <option value="Kelas 2 - 201">Kelas 2 - 201</option>
-        <option value="Kelas 3 - 301">Kelas 3 - 301</option>
       </select>
-      <button class="btn-outline" onclick="loadData()">🔄 Muat Ulang</button>
+      <button class="btn-outline" onclick="loadSemua()">🔄 Muat</button>
       <button class="btn-primary" onclick="exportCSV()">📥 CSV</button>
     </div>
 
     <div class="stats">
       <span id="totalLaporan">Total laporan: 0</span>
       <span>•</span>
+      <button class="btn-outline" style="padding:6px 10px; font-size:12px;" onclick="bukaModalKamar()">🚪 Kelola Kamar</button>
       <a href="index.html" style="color: var(--primary-dark); font-weight: 600; text-decoration: none;">+ Isi Form Baru</a>
     </div>
   </div>
@@ -100,21 +102,14 @@
   <div id="listContainer"></div>
 </div>
 
-<!-- Modal Edit -->
+<!-- Modal Edit Laporan -->
 <div class="modal" id="editModal">
   <div class="modal-box">
     <h3>✏️ Edit Laporan Kamar</h3>
     <input type="hidden" id="editId">
     <div class="form-group">
       <label>Kamar</label>
-      <select id="editKamar">
-        <option value="VIP 01">VIP 01</option>
-        <option value="VIP 02">VIP 02</option>
-        <option value="Kelas 1 - 101">Kelas 1 - 101</option>
-        <option value="Kelas 1 - 102">Kelas 1 - 102</option>
-        <option value="Kelas 2 - 201">Kelas 2 - 201</option>
-        <option value="Kelas 3 - 301">Kelas 3 - 301</option>
-      </select>
+      <select id="editKamar"></select>
     </div>
     <div class="form-group">
       <label>Nama Petugas</label>
@@ -147,14 +142,110 @@
   </div>
 </div>
 
+<!-- Modal Kelola Daftar Kamar -->
+<div class="modal" id="kamarModal">
+  <div class="modal-box">
+    <h3>🚪 Kelola Daftar Kamar</h3>
+    <div style="display:flex; gap:8px; margin-bottom:14px;">
+      <input type="text" id="inputKamarBaru" placeholder="Contoh: VIP 03 / Kelas 1 - 103">
+      <button class="btn-primary" onclick="tambahKamar()">+ Tambah</button>
+    </div>
+    <div id="daftarKamarContainer"></div>
+    <button class="btn-outline" style="width:100%; margin-top:10px;" onclick="tutupModalKamar()">Tutup</button>
+  </div>
+</div>
+
 <script>
   const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_AXcmTZqRh9W-Qs0yoEcUdQ_bxLpar50';
+  const SUPABASE_KEY = 'PASTE_KUNCI_SB_PUBLISHABLE_DISINI';
 
   const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   let semuaData = [];
+  let daftarKamar = [];
 
-  window.addEventListener('DOMContentLoaded', loadData);
+  window.addEventListener('DOMContentLoaded', loadSemua);
+
+  async function loadSemua() {
+    await loadDaftarKamar();
+    await loadData();
+  }
+
+  async function loadDaftarKamar() {
+    const { data, error } = await db
+      .from('daftar_kamar')
+      .select('*')
+      .order('nama_kamar', { ascending: true });
+
+    if (!error && data) {
+      daftarKamar = data;
+      const filterSelect = document.getElementById('filterKamar');
+      const editSelect = document.getElementById('editKamar');
+      const pilihanSekarang = filterSelect.value;
+
+      filterSelect.innerHTML = '<option value="">Semua Kamar</option>' +
+        daftarKamar.map(k => `<option value="${k.nama_kamar}">${k.nama_kamar}</option>`).join('');
+      filterSelect.value = pilihanSekarang;
+
+      editSelect.innerHTML = daftarKamar.map(k => `<option value="${k.nama_kamar}">${k.nama_kamar}</option>`).join('');
+      renderDaftarKamarModal();
+    }
+  }
+
+  function renderDaftarKamarModal() {
+    const container = document.getElementById('daftarKamarContainer');
+    if (daftarKamar.length === 0) {
+      container.innerHTML = '<p style="font-size:13px; color:#64748b; text-align:center;">Belum ada kamar terdaftar.</p>';
+      return;
+    }
+    container.innerHTML = daftarKamar.map(k => `
+      <div class="room-list-item">
+        <span style="font-weight:600; font-size:14px;">${k.nama_kamar}</span>
+        <div class="room-list-actions">
+          <button class="btn-outline" onclick="editNamaKamar(${k.id}, '${k.nama_kamar.replace(/'/g, "\\'")}')">✏️ Edit</button>
+          <button class="btn-danger" onclick="hapusKamar(${k.id}, '${k.nama_kamar.replace(/'/g, "\\'")}')">🗑️</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function bukaModalKamar() {
+    renderDaftarKamarModal();
+    document.getElementById('kamarModal').style.display = 'flex';
+  }
+
+  function tutupModalKamar() {
+    document.getElementById('kamarModal').style.display = 'none';
+  }
+
+  async function tambahKamar() {
+    const input = document.getElementById('inputKamarBaru');
+    const nama = input.value.trim();
+    if (!nama) return alert('Masukkan nama atau nomor kamar terlebih dahulu.');
+
+    const { error } = await db.from('daftar_kamar').insert([{ nama_kamar: nama }]);
+    if (error) return alert('❌ Gagal menambah kamar: ' + error.message);
+
+    input.value = '';
+    await loadDaftarKamar();
+  }
+
+  async function editNamaKamar(id, namaLama) {
+    const namaBaru = prompt('Ubah nomor / nama kamar:', namaLama);
+    if (!namaBaru || namaBaru.trim() === '' || namaBaru.trim() === namaLama) return;
+
+    const { error } = await db.from('daftar_kamar').update({ nama_kamar: namaBaru.trim() }).eq('id', id);
+    if (error) return alert('❌ Gagal mengubah nama kamar: ' + error.message);
+
+    await loadDaftarKamar();
+  }
+
+  async function hapusKamar(id, nama) {
+    if (!confirm(`Hapus "${nama}" dari daftar pilihan kamar?`)) return;
+    const { error } = await db.from('daftar_kamar').delete().eq('id', id);
+    if (error) return alert('❌ Gagal menghapus kamar: ' + error.message);
+
+    await loadDaftarKamar();
+  }
 
   async function loadData() {
     const statusInfo = document.getElementById('statusInfo');
@@ -241,7 +332,11 @@
 
   function bukaModal(item) {
     document.getElementById('editId').value = item.id;
-    document.getElementById('editKamar').value = item.kamar || 'VIP 01';
+    const editKamar = document.getElementById('editKamar');
+    if (![...editKamar.options].some(o => o.value === item.kamar) && item.kamar) {
+      editKamar.add(new Option(item.kamar, item.kamar));
+    }
+    editKamar.value = item.kamar || '';
     document.getElementById('editPetugas').value = item.petugas || '';
     document.getElementById('editAroma').value = item.aroma || 'Wangi / Segar';
     document.getElementById('editToilet').value = item.toilet || 'Bersih, Kering & Wangi';
@@ -265,7 +360,7 @@
 
     const { error } = await db.from('laporan_kamar').update(payload).eq('id', id);
     if (error) {
-      alert('❌ Gagal memperbarui: ' + error.message + '\n\n(Pastikan Policy UPDATE di tabel laporan_kamar sudah aktif di Supabase)');
+      alert('❌ Gagal memperbarui: ' + error.message);
       return;
     }
 
@@ -278,11 +373,10 @@
 
     const { error } = await db.from('laporan_kamar').delete().eq('id', id);
     if (error) {
-      alert('❌ Gagal menghapus: ' + error.message + '\n\n(Pastikan Policy DELETE di tabel laporan_kamar sudah aktif di Supabase)');
+      alert('❌ Gagal menghapus: ' + error.message);
       return;
     }
 
-    // Hapus file foto dari Storage agar hemat ruang
     const filesToRemove = [urlToilet, urlKamar]
       .filter(Boolean)
       .map(url => url.split('/foto-kamar/')[1])
