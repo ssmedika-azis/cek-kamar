@@ -6,7 +6,6 @@
   <title>Manajemen & Analitik Kesiapan Kamar</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Library Ekspor PDF & Excel (.xlsx) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -56,8 +55,6 @@
     .list-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 8px; background: #f8fafc; gap: 8px; }
     .modal { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.6); align-items: center; justify-content: center; padding: 16px; z-index: 999; }
     .modal-box { background: #fff; border-radius: 16px; padding: 18px; width: 100%; max-width: 440px; max-height: 88vh; overflow-y: auto; }
-
-    /* Mode Cetak Visual */
     @media print {
       body { background: #fff; padding: 0; }
       .topbar, .nav-tabs, .no-print, .card-actions { display: none !important; }
@@ -101,7 +98,6 @@
     <button class="tab-btn" onclick="bukaTab('tabMaster', this)">🚪 Kamar & Shift</button>
   </div>
 
-  <!-- TAB 1: EKSPLORASI & EKSPOR DATA -->
   <div id="tabLaporan" class="section active">
     <div class="card no-print">
       <h3 style="margin:0 0 10px; font-size:15px;">🔍 Eksplorasi & Filter Data Laporan</h3>
@@ -129,7 +125,6 @@
         </div>
       </div>
 
-      <!-- Tombol Multi-Ekspor -->
       <div class="export-bar">
         <button class="btn-pdf" onclick="exportPDF()">📄 Unduh PDF Resmi</button>
         <button class="btn-excel" onclick="exportExcel()">📊 Unduh Excel (.xlsx)</button>
@@ -140,7 +135,6 @@
     <div id="listLaporanContainer"></div>
   </div>
 
-  <!-- TAB 2: ANALITIK -->
   <div id="tabAnalitik" class="section">
     <div class="kpi-grid">
       <div class="kpi-box"><div class="kpi-val" id="kpiTotal">0</div><div class="kpi-lbl">Total Pengecekan</div></div>
@@ -151,7 +145,6 @@
     <div class="card"><h3 style="margin:0 0 10px; font-size:15px;">⏱️ Distribusi Laporan per Shift</h3><canvas id="chartShift" height="150"></canvas></div>
   </div>
 
-  <!-- TAB 3: KELOLA AKUN -->
   <div id="tabAkun" class="section">
     <div class="card">
       <h3 style="margin:0 0 12px; font-size:15px;">➕ Tambah Akun Manajemen / Petugas</h3>
@@ -169,7 +162,6 @@
     <div class="card"><h3 style="margin:0 0 10px; font-size:15px;">👥 Daftar Akun Terdaftar</h3><div id="listAkunContainer"></div></div>
   </div>
 
-  <!-- TAB 4: KAMAR & SHIFT -->
   <div id="tabMaster" class="section">
     <div class="card">
       <h3 style="margin:0 0 10px; font-size:15px;">🚪 Kelola Daftar Kamar</h3>
@@ -191,7 +183,6 @@
   </div>
 </div>
 
-<!-- MODAL EDIT LAPORAN -->
 <div class="modal" id="modalEditLaporan">
   <div class="modal-box">
     <h3 style="margin:0 0 12px; color:var(--primary-dark);">✏️ Edit Data Laporan</h3>
@@ -287,6 +278,8 @@
       db.from('daftar_shift').select('*').order('id', { ascending: true }),
       db.from('profil_pengguna').select('*').order('role', { ascending: true })
     ]);
+
+    if (resLap.error) alert('❌ Error baca laporan: ' + resLap.error.message);
 
     dataLaporan = resLap.data || [];
     dataKamar = resKam.data || [];
@@ -557,7 +550,6 @@
     muatSemuaData();
   }
 
-  // --- FUNGSI EKSPOR MULTI-FORMAT ---
   function getDataSiapEkspor() {
     return dataFiltered.map((r, i) => ({
       'No': i + 1,
