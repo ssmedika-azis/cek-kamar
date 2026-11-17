@@ -6,263 +6,267 @@
   <title>Checklist Kesiapan Kamar</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    :root {
-      --primary: #0d9488;
-      --primary-dark: #0f766e;
-      --bg: #f1f5f9;
-      --card: #ffffff;
-      --text: #1e293b;
-      --border: #cbd5e1;
-    }
+    :root { --primary: #0d9488; --primary-dark: #0f766e; --bg: #f1f5f9; --card: #ffffff; --text: #1e293b; --border: #cbd5e1; }
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { background: var(--bg); color: var(--text); margin: 0; padding: 14px; }
-    .container { max-width: 500px; margin: 0 auto; background: var(--card); border-radius: 16px; padding: 18px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); }
+    body { background: var(--bg); color: var(--text); margin: 0; padding: 16px; }
+    .container { max-width: 480px; margin: 0 auto; background: var(--card); border-radius: 16px; padding: 22px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
     h2 { margin: 0 0 4px; color: var(--primary-dark); font-size: 20px; text-align: center; }
     p.subtitle { margin: 0 0 18px; text-align: center; font-size: 13px; color: #64748b; }
     .form-group { margin-bottom: 15px; }
-    label.title { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; }
-    select, input[type="text"], textarea {
-      width: 100%; padding: 12px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 15px; background: #fff;
+    label.title { display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+    input[type="text"], input[type="password"], select, textarea {
+      width: 100%; padding: 11px 12px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 15px; background: #fff;
     }
-    .radio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .radio-card {
-      border: 1.5px solid var(--border); border-radius: 10px; padding: 10px; text-align: center; cursor: pointer; font-size: 14px; font-weight: 500;
-    }
-    .radio-card input { display: none; }
-    .radio-card.active { background: #ccfbf1; border-color: var(--primary); color: var(--primary-dark); font-weight: 700; }
-    .radio-card.danger.active { background: #fee2e2; border-color: #ef4444; color: #b91c1c; }
-    .checkbox-list { display: flex; flex-direction: column; gap: 8px; }
-    .checkbox-item {
-      display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 14px;
-    }
-    .checkbox-item input { width: 18px; height: 18px; accent-color: var(--primary); }
-    .camera-box {
-      border: 2px dashed var(--border); border-radius: 12px; padding: 14px; text-align: center; background: #f8fafc; cursor: pointer;
-    }
-    .camera-box img { max-width: 100%; max-height: 200px; border-radius: 8px; margin-top: 10px; display: none; }
-    button.btn-submit {
-      width: 100%; padding: 14px; background: var(--primary); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 8px;
-    }
-    button.btn-submit:disabled { background: #94a3b8; }
-    #loading { display: none; text-align: center; margin-top: 12px; font-size: 14px; color: var(--primary-dark); font-weight: 600; }
+    .radio-group, .checkbox-group { display: flex; flex-direction: column; gap: 8px; }
+    .option-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 10px; cursor: pointer; font-size: 14px; }
+    .photo-box { border: 2px dashed #94a3b8; border-radius: 12px; padding: 14px; text-align: center; background: #f8fafc; cursor: pointer; }
+    .photo-box img { max-width: 100%; max-height: 180px; border-radius: 8px; margin-top: 10px; display: none; }
+    button.btn-submit { width: 100%; padding: 14px; background: var(--primary); color: #fff; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+    .user-bar { display: flex; justify-content: space-between; align-items: center; background: #f0fdfa; border: 1px solid #99f6e4; padding: 10px 12px; border-radius: 10px; margin-bottom: 16px; font-size: 13px; }
+    #statusMsg { margin-top: 14px; padding: 12px; border-radius: 10px; font-size: 14px; text-align: center; display: none; }
+    .success { background: #dcfce7; color: #166534; }
+    .error { background: #fee2e2; color: #991b1b; }
   </style>
 </head>
 <body>
 
-<div class="container">
-  <h2>🏥 Cek Kesiapan Kamar</h2>
-  <p class="subtitle">Laporan Kondisi Ruangan Sebelum Pasien Masuk</p>
+<div id="loginBox" class="container" style="margin-top:30px;">
+  <h2>🏥 Login Petugas</h2>
+  <p class="subtitle">Masuk menggunakan akun yang diberikan Manajemen</p>
+  <div class="form-group">
+    <label class="title">Username</label>
+    <input type="text" id="pUser" placeholder="Masukkan username">
+  </div>
+  <div class="form-group">
+    <label class="title">Password</label>
+    <input type="password" id="pPass" placeholder="Masukkan password">
+  </div>
+  <button class="btn-submit" id="btnLoginPetugas" onclick="loginPetugas()">Masuk</button>
+  <p style="text-align:center; margin-top:16px; font-size:13px;">
+    <a href="rekap.html" style="color:var(--primary-dark); font-weight:600; text-decoration:none;">Masuk sebagai Manajemen →</a>
+  </p>
+</div>
 
-  <form id="roomForm">
+<div id="formBox" class="container" style="display:none;">
+  <h2>🏥 Form Kesiapan Kamar</h2>
+  <p class="subtitle">Wajib isi & unggah foto bukti sebelum pasien masuk</p>
+
+  <div class="user-bar">
+    <span>👤 Petugas: <strong id="namaPetugasLabel">-</strong></span>
+    <button onclick="logoutPetugas()" style="background:#fee2e2; color:#b91c1c; border:none; padding:5px 10px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">Keluar</button>
+  </div>
+
+  <form id="cekKamarForm">
     <div class="form-group">
-      <label class="title">1. Nomor / Nama Kamar *</label>
-      <select id="kamar" required>
-  <option value="">-- Memuat Daftar Kamar... --</option>
-</select>
-
+      <label class="title">1. Pilih Shift Kerja *</label>
+      <select id="shift" required><option value="">-- Memuat Shift... --</option></select>
     </div>
 
     <div class="form-group">
-      <label class="title">2. Nama Petugas *</label>
-      <input type="text" id="petugas" placeholder="Ketik nama petugas..." required>
+      <label class="title">2. Pilih Nomor / Nama Kamar *</label>
+      <select id="kamar" required><option value="">-- Memuat Daftar Kamar... --</option></select>
     </div>
 
     <div class="form-group">
       <label class="title">3. Kondisi Aroma Ruangan *</label>
-      <div class="radio-grid">
-        <label class="radio-card active" onclick="selectRadio(this)">
-          <input type="radio" name="aroma" value="Wangi / Segar" checked> ✨ Wangi / Segar
-        </label>
-        <label class="radio-card" onclick="selectRadio(this)">
-          <input type="radio" name="aroma" value="Netral / Tidak Berbau"> 🍃 Netral
-        </label>
-        <label class="radio-card danger" onclick="selectRadio(this)">
-          <input type="radio" name="aroma" value="Bau Amis"> ⚠️ Bau Amis
-        </label>
-        <label class="radio-card danger" onclick="selectRadio(this)">
-          <input type="radio" name="aroma" value="Bau Apek / Lembap"> ⚠️ Bau Apek
-        </label>
+      <div class="radio-group">
+        <label class="option-item"><input type="radio" name="aroma" value="Wangi / Segar" required> Wangi / Segar</label>
+        <label class="option-item"><input type="radio" name="aroma" value="Netral / Tidak Berbau"> Netral / Tidak Berbau</label>
+        <label class="option-item"><input type="radio" name="aroma" value="Bau Amis"> Bau Amis</label>
+        <label class="option-item"><input type="radio" name="aroma" value="Bau Apek / Lembap"> Bau Apek / Lembap</label>
       </div>
     </div>
 
     <div class="form-group">
-      <label class="title">4. Kondisi Toilet *</label>
-      <div class="radio-grid">
-        <label class="radio-card active" onclick="selectRadio(this)">
-          <input type="radio" name="toilet" value="Bersih, Kering & Wangi" checked> ✅ Bersih & Kering
-        </label>
-        <label class="radio-card danger" onclick="selectRadio(this)">
-          <input type="radio" name="toilet" value="Perlu Dibersihkan Ulang"> ❌ Perlu Dibersihkan
-        </label>
+      <label class="title">4. Kondisi Kebersihan Toilet *</label>
+      <div class="radio-group">
+        <label class="option-item"><input type="radio" name="toilet" value="Bersih, Kering & Wangi" required> Bersih, Kering & Wangi</label>
+        <label class="option-item"><input type="radio" name="toilet" value="Perlu Dibersihkan Ulang"> Perlu Dibersihkan Ulang</label>
       </div>
     </div>
 
     <div class="form-group">
-      <label class="title">5. Kelengkapan Alat & Fasilitas</label>
-      <div class="checkbox-list">
-        <label class="checkbox-item"><input type="checkbox" name="alat" value="Bed & Linen Rapi" checked> Bed & Linen Bersih/Rapi</label>
-        <label class="checkbox-item"><input type="checkbox" name="alat" value="AC Berfungsi" checked> AC Berfungsi Dingin</label>
-        <label class="checkbox-item"><input type="checkbox" name="alat" value="Bel Pasien Aktif" checked> Bel Pasien Berfungsi</label>
-        <label class="checkbox-item"><input type="checkbox" name="alat" value="Oksigen & Suction Siap" checked> Outlet Oksigen & Suction Siap</label>
-        <label class="checkbox-item"><input type="checkbox" name="alat" value="Tempat Sampah Kosong" checked> Tempat Sampah Kosong</label>
+      <label class="title">5. Kelengkapan & Alat Kamar</label>
+      <div class="checkbox-group">
+        <label class="option-item"><input type="checkbox" name="alat" value="Bed & Sprei Rapi"> Bed & Sprei Rapi</label>
+        <label class="option-item"><input type="checkbox" name="alat" value="AC & TV Berfungsi"> AC & TV Berfungsi</label>
+        <label class="option-item"><input type="checkbox" name="alat" value="Bell Pasien Berfungsi"> Bell Pasien Berfungsi</label>
+        <label class="option-item"><input type="checkbox" name="alat" value="Tisu & Sabun Terisi"> Tisu & Sabun Terisi</label>
       </div>
     </div>
 
     <div class="form-group">
-      <label class="title">6. Foto Kondisi Toilet *</label>
-      <div class="camera-box" onclick="document.getElementById('inputFotoToilet').click()">
-        <span>📷 Tap untuk Ambil Foto Toilet</span>
-        <input type="file" id="inputFotoToilet" accept="image/*" capture="environment" style="display:none" onchange="prosesGambar(this, 'previewToilet', 'toilet')">
-        <img id="previewToilet">
+      <label class="title">6. Foto Kondisi Toilet (Wajib) *</label>
+      <div class="photo-box" onclick="document.getElementById('fotoToilet').click()">
+        📷 Ketuk untuk Ambil / Pilih Foto Toilet
+        <input type="file" id="fotoToilet" accept="image/*" capture="environment" style="display:none" required>
+        <img id="previewToilet" alt="Preview Toilet">
       </div>
     </div>
 
     <div class="form-group">
-      <label class="title">7. Foto Kondisi Keseluruhan Kamar *</label>
-      <div class="camera-box" onclick="document.getElementById('inputFotoKamar').click()">
-        <span>📷 Tap untuk Ambil Foto Kamar</span>
-        <input type="file" id="inputFotoKamar" accept="image/*" capture="environment" style="display:none" onchange="prosesGambar(this, 'previewKamar', 'kamar')">
-        <img id="previewKamar">
+      <label class="title">7. Foto Keseluruhan Kamar (Wajib) *</label>
+      <div class="photo-box" onclick="document.getElementById('fotoKamar').click()">
+        📷 Ketuk untuk Ambil / Pilih Foto Kamar
+        <input type="file" id="fotoKamar" accept="image/*" capture="environment" style="display:none" required>
+        <img id="previewKamar" alt="Preview Kamar">
       </div>
     </div>
 
     <div class="form-group">
-      <label class="title">8. Catatan Tambahan (Opsional)</label>
-      <textarea id="catatan" rows="2" placeholder="Catatan kondisi ruangan..."></textarea>
+      <label class="title">8. Catatan Tambahan</label>
+      <textarea id="catatan" rows="2" placeholder="Opsional..."></textarea>
     </div>
 
-    <button type="submit" class="btn-submit" id="btnSubmit">Kirim Laporan Kesiapan</button>
-    <div id="loading">⏳ Mengunggah foto & menyimpan data...</div>
+    <button type="submit" class="btn-submit" id="submitBtn">Kirim Laporan Kesiapan</button>
   </form>
+  <div id="statusMsg"></div>
 </div>
 
 <script>
   const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_AXcmTZqRh9W-Qs0yoEcUdQ_bxLpar50';
-
+  const SUPABASE_KEY = 'PASTE_KUNCI_SB_PUBLISHABLE_DISINI';
   const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-async function muatDaftarKamar() {
-  const { data } = await db
-    .from('daftar_kamar')
-    .select('nama_kamar')
-    .order('nama_kamar', { ascending: true });
 
-  const select = document.getElementById('kamar');
-  const urlParams = new URLSearchParams(window.location.search);
-  const kamarUrl = urlParams.get('kamar');
+  let profilAktif = null;
 
-  if (data && data.length > 0) {
-    select.innerHTML = '<option value="">-- Pilih Kamar --</option>' +
-      data.map(k => `<option value="${k.nama_kamar}">${k.nama_kamar}</option>`).join('');
-    if (kamarUrl) select.value = kamarUrl;
+  window.addEventListener('DOMContentLoaded', cekSesiPetugas);
+
+  async function cekSesiPetugas() {
+    const { data: { session } } = await db.auth.getSession();
+    if (!session) return;
+
+    const { data: profil } = await db.from('profil_pengguna')
+      .select('*').eq('user_id', session.user.id).single();
+
+    if (profil && profil.aktif) {
+      profilAktif = profil;
+      document.getElementById('loginBox').style.display = 'none';
+      document.getElementById('formBox').style.display = 'block';
+      document.getElementById('namaPetugasLabel').textContent = profil.nama_lengkap;
+      muatMasterData();
+    } else {
+      await db.auth.signOut();
+      alert('Akun Anda dinonaktifkan oleh Manajemen.');
+    }
   }
-}
-window.addEventListener('DOMContentLoaded', muatDaftarKamar);
 
-  let blobToilet = null;
-  let blobKamar = null;
+  async function loginPetugas() {
+    const user = document.getElementById('pUser').value.trim().toLowerCase();
+    const password = document.getElementById('pPass').value;
+    if (!user || !password) return alert('Masukkan username dan password.');
 
-  window.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('btnLoginPetugas');
+    btn.disabled = true; btn.textContent = '⏳ Memverifikasi...';
+
+    const emailFormat = user.includes('@') ? user : `${user}@ssmedika.local`;
+    const { error } = await db.auth.signInWithPassword({ email: emailFormat, password });
+
+    btn.disabled = false; btn.textContent = 'Masuk';
+    if (error) return alert('❌ Username atau password salah.');
+    cekSesiPetugas();
+  }
+
+  async function logoutPetugas() {
+    await db.auth.signOut();
+    location.reload();
+  }
+
+  async function muatMasterData() {
+    const [resKamar, resShift] = await Promise.all([
+      db.from('daftar_kamar').select('nama_kamar').order('nama_kamar', { ascending: true }),
+      db.from('daftar_shift').select('*').order('id', { ascending: true })
+    ]);
+
+    const selKamar = document.getElementById('kamar');
     const urlParams = new URLSearchParams(window.location.search);
-    const kamarParam = urlParams.get('kamar');
-    if (kamarParam) document.getElementById('kamar').value = kamarParam;
-  });
+    const kamarUrl = urlParams.get('kamar');
 
-  function selectRadio(el) {
-    const parent = el.parentElement;
-    parent.querySelectorAll('.radio-card').forEach(c => c.classList.remove('active'));
-    el.classList.add('active');
-    el.querySelector('input').checked = true;
-  }
-
-  function prosesGambar(input, previewId, jenis) {
-    const file = input.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      const img = new Image();
-      img.onload = function() {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 800;
-        const scaleSize = MAX_WIDTH / img.width;
-        canvas.width = MAX_WIDTH;
-        canvas.height = img.height * scaleSize;
-
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        const previewEl = document.getElementById(previewId);
-        previewEl.src = canvas.toDataURL('image/jpeg', 0.7);
-        previewEl.style.display = 'inline-block';
-
-        canvas.toBlob((blob) => {
-          if (jenis === 'toilet') blobToilet = blob;
-          if (jenis === 'kamar') blobKamar = blob;
-        }, 'image/jpeg', 0.7);
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  }
-
-  document.getElementById('roomForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    if (!blobToilet || !blobKamar) {
-      alert('Harap ambil foto toilet dan foto kondisi kamar terlebih dahulu!');
-      return;
+    if (resKamar.data) {
+      selKamar.innerHTML = '<option value="">-- Pilih Kamar --</option>' +
+        resKamar.data.map(k => `<option value="${k.nama_kamar}">${k.nama_kamar}</option>`).join('');
+      if (kamarUrl) selKamar.value = kamarUrl;
     }
 
-    const btn = document.getElementById('btnSubmit');
-    const loading = document.getElementById('loading');
-    btn.disabled = true;
-    loading.style.display = 'block';
+    const selShift = document.getElementById('shift');
+    if (resShift.data) {
+      selShift.innerHTML = '<option value="">-- Pilih Shift --</option>' +
+        resShift.data.map(s => `<option value="${s.nama_shift}">${s.nama_shift} (${s.jam_kerja || ''})</option>`).join('');
+    }
+  }
+
+  function setupPreview(inputId, imgId) {
+    document.getElementById(inputId).addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const img = document.getElementById(imgId);
+      img.src = URL.createObjectURL(file);
+      img.style.display = 'block';
+    });
+  }
+  setupPreview('fotoToilet', 'previewToilet');
+  setupPreview('fotoKamar', 'previewKamar');
+
+  function compressImage(file) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxWidth = 1024;
+          const scale = maxWidth / img.width;
+          canvas.width = img.width > maxWidth ? maxWidth : img.width;
+          canvas.height = img.width > maxWidth ? img.height * scale : img.height;
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.72);
+        };
+      };
+    });
+  }
+
+  document.getElementById('cekKamarForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    const msg = document.getElementById('statusMsg');
+    btn.disabled = true; btn.textContent = '⏳ Mengunggah laporan...'; msg.style.display = 'none';
 
     try {
       const kamar = document.getElementById('kamar').value;
-      const waktuId = Date.now();
-      const namaFileToilet = `toilet_${kamar.replace(/\s+/g, '')}_${waktuId}.jpg`;
-      const namaFileKamar = `kamar_${kamar.replace(/\s+/g, '')}_${waktuId}.jpg`;
+      const shift = document.getElementById('shift').value;
+      const aroma = document.querySelector('input[name="aroma"]:checked').value;
+      const toilet = document.querySelector('input[name="toilet"]:checked').value;
+      const catatan = document.getElementById('catatan').value;
+      const alatList = Array.from(document.querySelectorAll('input[name="alat"]:checked')).map(el => el.value);
 
-      const { error: err1 } = await db.storage.from('foto-kamar').upload(namaFileToilet, blobToilet);
-      if (err1) throw err1;
-      const urlToilet = db.storage.from('foto-kamar').getPublicUrl(namaFileToilet).data.publicUrl;
+      const toiletBlob = await compressImage(document.getElementById('fotoToilet').files[0]);
+      const kamarBlob = await compressImage(document.getElementById('fotoKamar').files[0]);
+      const ts = Date.now();
 
-      const { error: err2 } = await db.storage.from('foto-kamar').upload(namaFileKamar, blobKamar);
-      if (err2) throw err2;
-      const urlKamar = db.storage.from('foto-kamar').getPublicUrl(namaFileKamar).data.publicUrl;
+      await db.storage.from('foto-kamar').upload(`${ts}_toilet.jpg`, toiletBlob, { contentType: 'image/jpeg' });
+      await db.storage.from('foto-kamar').upload(`${ts}_kamar.jpg`, kamarBlob, { contentType: 'image/jpeg' });
 
-      const alatChecked = Array.from(document.querySelectorAll('input[name="alat"]:checked')).map(cb => cb.value).join(', ');
+      const urlToilet = db.storage.from('foto-kamar').getPublicUrl(`${ts}_toilet.jpg`).data.publicUrl;
+      const urlKamar = db.storage.from('foto-kamar').getPublicUrl(`${ts}_kamar.jpg`).data.publicUrl;
 
-      const { error: errDb } = await db.from('laporan_kamar').insert([{
-        kamar: kamar,
-        petugas: document.getElementById('petugas').value,
-        aroma: document.querySelector('input[name="aroma"]:checked').value,
-        toilet: document.querySelector('input[name="toilet"]:checked').value,
-        alat: alatChecked,
-        foto_toilet: urlToilet,
-        foto_kamar: urlKamar,
-        catatan: document.getElementById('catatan').value
+      const { error } = await db.from('laporan_kamar').insert([{
+        kamar, shift, petugas: profilAktif.nama_lengkap, aroma, toilet,
+        alat: alatList.join(', '), catatan, foto_toilet: urlToilet, foto_kamar: urlKamar
       }]);
 
-      if (errDb) throw errDb;
-
-      alert('✅ Laporan kesiapan kamar berhasil disimpan!');
-      document.getElementById('roomForm').reset();
+      if (error) throw error;
+      msg.className = 'success'; msg.textContent = '✅ Laporan berhasil disimpan!'; msg.style.display = 'block';
+      this.reset();
       document.getElementById('previewToilet').style.display = 'none';
       document.getElementById('previewKamar').style.display = 'none';
-      blobToilet = null;
-      blobKamar = null;
-
-    } catch (error) {
-      alert('❌ Gagal menyimpan: ' + error.message);
+    } catch (err) {
+      msg.className = 'error'; msg.textContent = '❌ Gagal mengirim: ' + err.message; msg.style.display = 'block';
     } finally {
-      btn.disabled = false;
-      loading.style.display = 'none';
+      btn.disabled = false; btn.textContent = 'Kirim Laporan Kesiapan';
     }
   });
 </script>
-
 </body>
 </html>
-
