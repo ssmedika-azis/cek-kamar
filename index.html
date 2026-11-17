@@ -248,15 +248,29 @@
     return data.publicUrl;
   }
 
-  async function kirimLaporan() {
-    const petugas = document.getElementById('inputPetugas').value.trim();
-    const kamar = document.getElementById('selectKamar').value;
-    const shift = document.getElementById('selectShift').value;
-    const aroma = document.getElementById('selectAroma').value;
-    const toilet = document.getElementById('selectToilet').value;
-    const catatan = document.getElementById('inputCatatan').value.trim();
-    const fToilet = document.getElementById('fotoToilet').files[0];
-    const fKamar = document.getElementById('fotoKamar').files[0];
+    async function muatSemuaData() {
+    const [resLap, resKam, resShf, resAkn] = await Promise.all([
+      db.from('laporan_kamar').select('*').order('created_at', { ascending: false }),
+      db.from('daftar_kamar').select('*').order('nama_kamar', { ascending: true }),
+      db.from('daftar_shift').select('*').order('id', { ascending: true }),
+      db.from('profil_pengguna').select('*').order('role', { ascending: true })
+    ]);
+
+    if (resLap.error) alert('❌ Error baca laporan_kamar: ' + resLap.error.message);
+    if (resKam.error) alert('❌ Error baca daftar_kamar: ' + resKam.error.message);
+
+    dataLaporan = resLap.data || [];
+    dataKamar = resKam.data || [];
+    dataShift = resShf.data || [];
+    dataAkun = resAkn.data || [];
+
+    isiDropdownMaster();
+    renderLaporan();
+    renderMasterList();
+    renderAkunList();
+    renderAnalitik();
+  }
+
 
     if (!petugas || !kamar) return alert('Nama pemeriksa dan kamar wajib diisi.');
     if (!fToilet || !fKamar) return alert('Foto bukti toilet dan kamar wajib dilampirkan.');
