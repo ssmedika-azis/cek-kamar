@@ -1,18 +1,25 @@
 {
-  "name": "Cek Kesiapan Kamar",
+  "name": "Cek Kesiapan Kamar - RS Khusus Bedah SS Medika",
   "short_name": "Cek Kamar",
-  "description": "Aplikasi Pengecekan Kesiapan & Kebersihan Kamar",
-  "start_url": "/cek-kamar/index.html",
-  "scope": "/cek-kamar/",
+  "description": "Sistem Monitoring Kesiapan & Kelengkapan Kamar Rawat Inap RS Khusus Bedah SS Medika",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#f1f5f9",
+  "orientation": "portrait",
+  "background_color": "#0d9488",
   "theme_color": "#0d9488",
   "icons": [
     {
-      "src": "1000219682.png",
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='110' fill='%230d9488'/%3E%3Cpath d='M160 112h192a32 32 0 0 1 32 32v240a32 32 0 0 1-32 32H160a32 32 0 0 1-32-32V144a32 32 0 0 1 32-32zm32 104h128m-128 64h128m-128 64h80' stroke='%23ffffff' stroke-width='32' stroke-linecap='round' fill='none'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='110' fill='%230d9488'/%3E%3Cpath d='M160 112h192a32 32 0 0 1 32 32v240a32 32 0 0 1-32 32H160a32 32 0 0 1-32-32V144a32 32 0 0 1 32-32zm32 104h128m-128 64h128m-128 64h80' stroke='%23ffffff' stroke-width='32' stroke-linecap='round' fill='none'/%3E%3C/svg%3E",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ]
 }
