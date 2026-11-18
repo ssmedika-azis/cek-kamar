@@ -18,6 +18,28 @@
     .glass-card { background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(10px); border: 1px solid rgba(226, 232, 240, 0.8); }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    /* Animasi Upload Foto */
+    @keyframes floatCam {
+      0%, 100% { transform: translateY(0px) scale(1); }
+      50% { transform: translateY(-4px) scale(1.06); }
+    }
+    @keyframes popIn {
+      0% { transform: scale(0.92); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .upload-box {
+      transition: all 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .upload-box:active {
+      transform: scale(0.96);
+    }
+    .upload-icon-anim {
+      animation: floatCam 2.4s ease-in-out infinite;
+    }
+    .photo-pop {
+      animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
   </style>
 </head>
 <body class="text-slate-800 pb-24">
@@ -67,10 +89,13 @@
           <p id="user-greeting" class="text-xs text-slate-500 font-medium">Halo, Petugas</p>
         </div>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1.5">
         <span id="network-status" class="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
           <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Online
         </span>
+        <button onclick="document.getElementById('modal-about').classList.remove('hidden')" title="Tentang Aplikasi" class="p-2 text-slate-500 hover:text-teal-600 hover:bg-teal-50 rounded-xl transition">
+          <i data-lucide="info" class="w-5 h-5"></i>
+        </button>
         <button onclick="logout()" title="Keluar" class="p-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition">
           <i data-lucide="log-out" class="w-5 h-5"></i>
         </button>
@@ -119,6 +144,20 @@
           </div>
 
           <form id="inspection-form" class="space-y-4">
+            <!-- NAMA PETUGAS OTOMATIS -->
+            <div class="bg-teal-50/80 border border-teal-200/80 rounded-2xl p-3 flex items-center justify-between">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-xl bg-teal-600 text-white flex items-center justify-center">
+                  <i data-lucide="user-check" class="w-4 h-4"></i>
+                </div>
+                <div>
+                  <p class="text-[10px] font-bold uppercase tracking-wider text-teal-700">Petugas Pemeriksa (Otomatis)</p>
+                  <input type="text" id="inspect-officer-name" readonly class="bg-transparent text-xs font-extrabold text-slate-900 outline-none w-full" />
+                </div>
+              </div>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-teal-700 border border-teal-200">Terverifikasi</span>
+            </div>
+
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="block text-xs font-bold text-slate-600 mb-1">Pilih Kamar</label>
@@ -142,16 +181,38 @@
               <div id="checklist-container" class="space-y-2"></div>
             </div>
 
+            <!-- UPLOAD FOTO DENGAN ANIMASI INTERAKTIF -->
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-bold text-slate-600 mb-1">Foto Area Kamar</label>
-                <input type="file" accept="image/*" capture="environment" onchange="handlePhoto(event, 'room')" class="w-full text-[11px] text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-teal-50 file:text-teal-700" />
-                <img id="preview-room" class="hidden mt-2 w-full h-24 object-cover rounded-xl border" />
+                <label class="block text-xs font-bold text-slate-600 mb-1.5">Foto Area Kamar</label>
+                <label id="box-upload-room" class="upload-box relative flex flex-col items-center justify-center p-4 bg-gradient-to-b from-teal-50/70 to-slate-50 border-2 border-dashed border-teal-300 hover:border-teal-500 rounded-2xl cursor-pointer text-center overflow-hidden">
+                  <input type="file" id="input-photo-room" accept="image/*" capture="environment" onchange="handlePhoto(event, 'room')" class="hidden" />
+                  <div id="placeholder-room" class="flex flex-col items-center space-y-1.5">
+                    <div class="w-10 h-10 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center upload-icon-anim shadow-sm">
+                      <i data-lucide="camera" class="w-5 h-5"></i>
+                    </div>
+                    <span class="text-[11px] font-extrabold text-teal-800">Ambil Foto Kamar</span>
+                    <span class="text-[9px] text-slate-400 font-medium">Ketuk untuk kamera</span>
+                  </div>
+                  <img id="preview-room" class="hidden w-full h-28 object-cover rounded-xl shadow-sm photo-pop" />
+                  <span id="badge-room" class="hidden mt-1.5 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">✓ Foto Tersimpan</span>
+                </label>
               </div>
+
               <div>
-                <label class="block text-xs font-bold text-slate-600 mb-1">Foto Kamar Mandi</label>
-                <input type="file" accept="image/*" capture="environment" onchange="handlePhoto(event, 'toilet')" class="w-full text-[11px] text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-teal-50 file:text-teal-700" />
-                <img id="preview-toilet" class="hidden mt-2 w-full h-24 object-cover rounded-xl border" />
+                <label class="block text-xs font-bold text-slate-600 mb-1.5">Foto Kamar Mandi</label>
+                <label id="box-upload-toilet" class="upload-box relative flex flex-col items-center justify-center p-4 bg-gradient-to-b from-indigo-50/70 to-slate-50 border-2 border-dashed border-indigo-300 hover:border-indigo-500 rounded-2xl cursor-pointer text-center overflow-hidden">
+                  <input type="file" id="input-photo-toilet" accept="image/*" capture="environment" onchange="handlePhoto(event, 'toilet')" class="hidden" />
+                  <div id="placeholder-toilet" class="flex flex-col items-center space-y-1.5">
+                    <div class="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center upload-icon-anim shadow-sm">
+                      <i data-lucide="camera" class="w-5 h-5"></i>
+                    </div>
+                    <span class="text-[11px] font-extrabold text-indigo-800">Ambil Foto Toilet</span>
+                    <span class="text-[9px] text-slate-400 font-medium">Ketuk untuk kamera</span>
+                  </div>
+                  <img id="preview-toilet" class="hidden w-full h-28 object-cover rounded-xl shadow-sm photo-pop" />
+                  <span id="badge-toilet" class="hidden mt-1.5 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">✓ Foto Tersimpan</span>
+                </label>
               </div>
             </div>
 
@@ -237,7 +298,7 @@
         <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
           <div>
             <h2 class="text-base font-extrabold text-slate-900">Kelola Unit Kamar & QR Pintu</h2>
-            <p class="text-xs text-slate-500">Tambah kamar baru, ubah status, atau cetak stiker QR Code</p>
+            <p class="text-xs text-slate-500">Tambah kamar baru, ubah status, atau unduh stiker QR Code</p>
           </div>
 
           <form id="form-add-unit" class="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
@@ -318,14 +379,60 @@
     </div>
   </div>
 
-  <!-- MODAL GENERATOR STIKER QR -->
+  <!-- MODAL GENERATOR & DOWNLOAD STIKER QR -->
   <div id="modal-qr-print" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-xs rounded-3xl p-6 text-center space-y-4">
       <h3 id="qr-print-title" class="text-base font-extrabold text-slate-900">QR Code Kamar</h3>
       <div id="qr-code-box" class="flex justify-center p-4 bg-white border-2 border-teal-600 rounded-2xl"></div>
       <p id="qr-print-code" class="text-xs font-mono font-bold text-slate-600"></p>
-      <p class="text-[11px] text-slate-500">Screenshot atau cetak kode QR ini untuk pintu unit kamar</p>
-      <button onclick="document.getElementById('modal-qr-print').classList.add('hidden')" class="w-full py-2.5 bg-slate-800 text-white font-bold rounded-xl text-xs">Tutup</button>
+      <p class="text-[11px] text-slate-500">Unduh gambar stiker QR siap cetak untuk ditempel di pintu kamar</p>
+      <div class="flex gap-2">
+        <button type="button" onclick="downloadQrImage()" class="flex-1 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm">
+          <i data-lucide="download" class="w-4 h-4"></i> Download PNG
+        </button>
+        <button type="button" onclick="document.getElementById('modal-qr-print').classList.add('hidden')" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">
+          Tutup
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL TENTANG APLIKASI -->
+  <div id="modal-about" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 bg-teal-600 rounded-2xl flex items-center justify-center text-white">
+            <i data-lucide="hospital" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-extrabold text-slate-900">Tentang Aplikasi</h3>
+            <p class="text-[11px] text-teal-600 font-bold">Versi 2.1 • Live Cloud Sync</p>
+          </div>
+        </div>
+        <button onclick="document.getElementById('modal-about').classList.add('hidden')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="space-y-2.5 text-xs text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100">
+        <p class="font-bold text-slate-900">Sistem Monitoring Kesiapan Kamar Rawat Inap</p>
+        <p>Aplikasi digital untuk memantau kesiapan, kebersihan, dan kelengkapan fasilitas kamar secara real-time di lingkungan <strong>RS Khusus Bedah SS Medika</strong>.</p>
+        <ul class="space-y-1 text-[11px] text-slate-600 pt-1">
+          <li>• <strong>Scan & Cetak QR Pintu:</strong> Identifikasi unit kamar cepat.</li>
+          <li>• <strong>Bukti Foto Ber-Watermark:</strong> Dokumentasi otomatis waktu & nama petugas.</li>
+          <li>• <strong>Mode Offline & Online:</strong> Tetap bisa input saat sinyal lemah.</li>
+          <li>• <strong>Analitik & Ekspor CSV:</strong> Rekapitulasi laporan untuk manajemen.</li>
+        </ul>
+      </div>
+
+      <div class="text-center text-[11px] text-slate-400">
+        &copy; 2026 RS Khusus Bedah SS Medika
+      </div>
+
+      <button type="button" onclick="document.getElementById('modal-about').classList.add('hidden')" class="w-full py-2.5 bg-teal-600 text-white font-bold rounded-xl text-xs">
+        Mengerti
+      </button>
     </div>
   </div>
 
@@ -345,6 +452,7 @@
     let secondsElapsed = 0;
     let qrScannerInstance = null;
     let statusChart = null;
+    let activeQrMeta = { code: '', name: '' };
 
     lucide.createIcons();
 
@@ -404,6 +512,9 @@
       document.getElementById('login-screen').classList.add('hidden');
       document.getElementById('main-app').classList.remove('hidden');
       document.getElementById('user-greeting').textContent = 'Halo, ' + currentUser.full_name;
+      const officerInput = document.getElementById('inspect-officer-name');
+      if (officerInput) officerInput.value = currentUser.full_name;
+
       const badge = document.getElementById('user-role-badge');
       badge.textContent = currentUser.role.toUpperCase();
       badge.className = currentUser.role === 'manajemen'
@@ -446,7 +557,11 @@
         }
       });
 
-      if (tabName === 'inspect') startTimer();
+      if (tabName === 'inspect') {
+        const officerInput = document.getElementById('inspect-officer-name');
+        if (officerInput && currentUser) officerInput.value = currentUser.full_name;
+        startTimer();
+      }
       if (tabName === 'analytics') renderAnalytics();
     }
 
@@ -576,16 +691,28 @@
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-          ctx.fillStyle = 'rgba(0,0,0,0.6)';
+          ctx.fillStyle = 'rgba(0,0,0,0.65)';
           ctx.fillRect(0, canvas.height - 32, canvas.width, 32);
           ctx.fillStyle = '#fff';
           ctx.font = 'bold 12px sans-serif';
-          const stamp = `${new Date().toLocaleString('id-ID')} • ${currentUser.full_name}`;
+          const officerName = document.getElementById('inspect-officer-name')?.value || currentUser.full_name;
+          const stamp = `${new Date().toLocaleString('id-ID')} • ${officerName}`;
           ctx.fillText(stamp, 10, canvas.height - 12);
 
           const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
           watermarkedPhotos[type] = dataUrl;
+
           const prev = document.getElementById('preview-' + type);
+          const placeholder = document.getElementById('placeholder-' + type);
+          const badge = document.getElementById('badge-' + type);
+          const box = document.getElementById('box-upload-' + type);
+
+          if (placeholder) placeholder.classList.add('hidden');
+          if (badge) badge.classList.remove('hidden');
+          if (box) {
+            box.classList.remove('border-dashed');
+            box.classList.add('border-solid', 'border-emerald-400', 'bg-emerald-50/30');
+          }
           prev.src = dataUrl;
           prev.classList.remove('hidden');
         };
@@ -594,12 +721,29 @@
       reader.readAsDataURL(file);
     }
 
+    function resetPhotoBoxes() {
+      ['room', 'toilet'].forEach(type => {
+        const prev = document.getElementById('preview-' + type);
+        const placeholder = document.getElementById('placeholder-' + type);
+        const badge = document.getElementById('badge-' + type);
+        const box = document.getElementById('box-upload-' + type);
+        if (prev) prev.classList.add('hidden');
+        if (badge) badge.classList.add('hidden');
+        if (placeholder) placeholder.classList.remove('hidden');
+        if (box) {
+          box.classList.add('border-dashed');
+          box.classList.remove('border-solid', 'border-emerald-400', 'bg-emerald-50/30');
+        }
+      });
+    }
+
     document.getElementById('inspection-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const unitId = document.getElementById('inspect-unit').value;
       const unit = unitsData.find(u => u.id === unitId);
       if (!unit) return alert('Pilih unit kamar terlebih dahulu');
 
+      const officerName = document.getElementById('inspect-officer-name')?.value || currentUser.full_name;
       const chks = Array.from(document.querySelectorAll('.inspect-chk'));
       const checkedCount = chks.filter(c => c.checked).length;
       const score = chks.length ? Math.round((checkedCount / chks.length) * 100) : 100;
@@ -614,7 +758,7 @@
       const payload = {
         unit_id: unit.id,
         unit_name: unit.unit_name,
-        inspector_name: currentUser.full_name,
+        inspector_name: officerName,
         inspector_role: currentUser.role,
         shift: document.getElementById('inspect-shift').value,
         readiness_score: score,
@@ -643,7 +787,7 @@
           await db.from('master_units').update({
             status: finalStatus,
             last_checked_at: new Date().toISOString(),
-            last_checked_by: currentUser.full_name
+            last_checked_by: officerName
           }).eq('id', unit.id);
           alert('Laporan kesiapan kamar berhasil disimpan!');
         }
@@ -652,9 +796,11 @@
       btn.disabled = false;
       btn.textContent = 'Simpan Laporan Kesiapan';
       e.target.reset();
+      if (document.getElementById('inspect-officer-name')) {
+        document.getElementById('inspect-officer-name').value = currentUser.full_name;
+      }
       watermarkedPhotos = { room: null, toilet: null };
-      document.getElementById('preview-room').classList.add('hidden');
-      document.getElementById('preview-toilet').classList.add('hidden');
+      resetPhotoBoxes();
       await loadAllData();
       switchTab('dashboard');
     });
@@ -669,7 +815,7 @@
       loadAllData();
     }
 
-    // --- QR SCANNER & GENERATOR ---
+    // --- QR SCANNER, GENERATOR & DOWNLOAD ---
     function openQrScanner() {
       document.getElementById('modal-qr-scanner').classList.remove('hidden');
       qrScannerInstance = new Html5Qrcode("qr-reader");
@@ -696,12 +842,63 @@
     }
 
     function showQrPrint(code, name) {
+      activeQrMeta = { code, name };
       document.getElementById('qr-print-title').textContent = name;
       document.getElementById('qr-print-code').textContent = code;
       const box = document.getElementById('qr-code-box');
       box.innerHTML = '';
-      new QRCode(box, { text: code, width: 180, height: 180 });
+      new QRCode(box, { text: code, width: 200, height: 200 });
       document.getElementById('modal-qr-print').classList.remove('hidden');
+    }
+
+    function downloadQrImage() {
+      const box = document.getElementById('qr-code-box');
+      const qrCanvas = box.querySelector('canvas');
+      const qrImg = box.querySelector('img');
+      const source = qrCanvas || qrImg;
+      if (!source) return alert('Gambar QR belum siap.');
+
+      const out = document.createElement('canvas');
+      out.width = 320;
+      out.height = 390;
+      const ctx = out.getContext('2d');
+
+      // Latar putih stiker
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, out.width, out.height);
+
+      // Bingkai hijau teal
+      ctx.strokeStyle = '#0d9488';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(10, 10, out.width - 20, out.height - 20);
+
+      // Header RS
+      ctx.fillStyle = '#0d9488';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('RS KHUSUS BEDAH SS MEDIKA', out.width / 2, 42);
+
+      // Nama Kamar
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 17px sans-serif';
+      ctx.fillText(activeQrMeta.name, out.width / 2, 68);
+
+      // Gambar QR
+      ctx.drawImage(source, 60, 88, 200, 200);
+
+      // Kode Unit
+      ctx.fillStyle = '#334155';
+      ctx.font = 'bold 16px monospace';
+      ctx.fillText(activeQrMeta.code, out.width / 2, 322);
+
+      ctx.fillStyle = '#64748b';
+      ctx.font = '11px sans-serif';
+      ctx.fillText('Scan untuk Cek Kesiapan Kamar', out.width / 2, 348);
+
+      const link = document.createElement('a');
+      link.download = `QR_${activeQrMeta.code.replace(/[^a-zA-Z0-9_-]/g, '_')}.png`;
+      link.href = out.toDataURL('image/png');
+      link.click();
     }
 
     // --- MANAJEMEN AKUN (TAMBAH, EDIT & HAPUS) ---
@@ -767,6 +964,8 @@
         currentUser = { ...currentUser, ...payload };
         localStorage.setItem('ck_user', JSON.stringify(currentUser));
         document.getElementById('user-greeting').textContent = 'Halo, ' + currentUser.full_name;
+        const officerInput = document.getElementById('inspect-officer-name');
+        if (officerInput) officerInput.value = currentUser.full_name;
       }
 
       e.target.reset();
