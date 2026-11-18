@@ -8,18 +8,12 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" href="1000219682.png" />
 
-  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
-  <!-- Supabase JS -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- Chart.js untuk Analitik -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- HTML5 QR Code Scanner & Generator -->
   <script src="https://unpkg.com/html5-qrcode"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <!-- Canvas Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
   <style>
@@ -31,7 +25,7 @@
       padding-bottom: 84px;
     }
     .glass-card {
-      background: rgba(255, 255, 255, 0.92);
+      background: rgba(255, 255, 255, 0.94);
       backdrop-filter: blur(12px);
       border: 1px solid rgba(226, 232, 240, 0.8);
     }
@@ -53,9 +47,6 @@
     .nav-btn {
       transition: all 0.25s ease;
     }
-    /* Custom Scrollbar */
-    ::-webkit-scrollbar { width: 4px; height: 4px; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
   </style>
 </head>
 <body class="text-slate-800 antialiased">
@@ -74,8 +65,8 @@
           <label class="block text-xs font-bold text-slate-600 uppercase mb-1.5">Username</label>
           <div class="relative">
             <i data-lucide="user" class="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5"></i>
-            <input type="text" id="login-username" required placeholder="Masukkan username (admin / petugas1)"
-              class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition" />
+            <input type="text" id="login-username" required placeholder="Masukkan username"
+              class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 outline-none transition" />
           </div>
         </div>
         <div>
@@ -83,7 +74,7 @@
           <div class="relative">
             <i data-lucide="lock" class="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5"></i>
             <input type="password" id="login-password" required placeholder="Masukkan password"
-              class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition" />
+              class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 outline-none transition" />
           </div>
         </div>
         <div id="login-error" class="hidden text-xs font-semibold text-rose-600 bg-rose-50 p-3 rounded-xl border border-rose-100"></div>
@@ -95,7 +86,7 @@
       </form>
 
       <div class="bg-slate-50 rounded-xl p-3 text-[11px] text-slate-500 border border-slate-100 space-y-1">
-        <p class="font-bold text-slate-700">Akun Demo Tersedia:</p>
+        <p class="font-bold text-slate-700">Akun Awal:</p>
         <p>• Manajemen: <span class="font-mono text-teal-700">admin</span> / <span class="font-mono">admin123</span></p>
         <p>• Petugas: <span class="font-mono text-teal-700">petugas1</span> / <span class="font-mono">petugas123</span></p>
       </div>
@@ -117,7 +108,6 @@
       </div>
 
       <div class="flex items-center gap-2">
-        <!-- Indikator Online / Offline Sync -->
         <button onclick="syncOfflineQueue()" id="network-status" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
           <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
           <span id="network-text">Online</span>
@@ -132,21 +122,19 @@
   <!-- ================= KONTEN UTAMA ================= -->
   <main id="app-main" class="hidden max-w-3xl mx-auto px-4 pt-4 space-y-5">
 
-    <!-- BANNER ANTREAN OFFLINE -->
     <div id="offline-banner" class="hidden bg-amber-50 border border-amber-200 rounded-2xl p-3.5 flex items-center justify-between">
       <div class="flex items-center gap-2.5">
         <i data-lucide="wifi-off" class="w-5 h-5 text-amber-600"></i>
         <div>
-          <p class="text-xs font-bold text-amber-900">Mode Offline Aktif (<span id="offline-count">0</span> Laporan Tertunda)</p>
-          <p class="text-[11px] text-amber-700">Data aman di memori HP dan otomatis terkirim saat sinyal kembali.</p>
+          <p class="text-xs font-bold text-amber-900">Mode Offline (<span id="offline-count">0</span> Laporan Tertunda)</p>
+          <p class="text-[11px] text-amber-700">Otomatis terkirim saat sinyal kembali.</p>
         </div>
       </div>
-      <button onclick="syncOfflineQueue()" class="px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-xl">Kirim Sekarang</button>
+      <button onclick="syncOfflineQueue()" class="px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-xl">Kirim</button>
     </div>
 
     <!-- ================= TAB 1: DASBOR LIVE ================= -->
     <section id="tab-dashboard" class="page-section active space-y-5">
-      <!-- Ringkasan Kartu Status -->
       <div class="grid grid-cols-3 gap-3">
         <div class="glass-card rounded-2xl p-3.5 shadow-sm border-l-4 border-l-emerald-500">
           <p class="text-[11px] font-bold text-slate-500 uppercase">Kamar Siap</p>
@@ -162,7 +150,6 @@
         </div>
       </div>
 
-      <!-- Tombol Aksi Cepat -->
       <div class="grid grid-cols-2 gap-3">
         <button onclick="switchTab('tab-inspect')" class="bg-teal-600 hover:bg-teal-700 active:scale-[0.98] text-white p-3.5 rounded-2xl shadow-md shadow-teal-600/20 flex items-center justify-center gap-2 font-bold text-xs transition">
           <i data-lucide="clipboard-check" class="w-4 h-4"></i>
@@ -174,7 +161,6 @@
         </button>
       </div>
 
-      <!-- Daftar Status Unit Real-Time -->
       <div class="space-y-3">
         <div class="flex items-center justify-between">
           <h2 class="text-sm font-extrabold text-slate-800">Status Unit Kamar Real-Time</h2>
@@ -182,9 +168,7 @@
             <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Segarkan
           </button>
         </div>
-        <div id="unit-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <!-- Diisi via JS -->
-        </div>
+        <div id="unit-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
       </div>
     </section>
 
@@ -194,16 +178,14 @@
         <div class="flex items-center justify-between border-b border-slate-100 pb-3">
           <div>
             <h2 class="text-base font-extrabold text-slate-900">Formulir Inspeksi Kamar</h2>
-            <p class="text-xs text-slate-500">Dilengkapi Auto-Watermark & Smart Score</p>
+            <p class="text-xs text-slate-500">Auto-Watermark & Smart Readiness Score</p>
           </div>
-          <!-- Timer Durasi Pengecekan -->
           <div class="bg-teal-50 text-teal-700 px-3 py-1.5 rounded-xl border border-teal-100 text-right">
             <p class="text-[10px] font-bold uppercase">Durasi Cek</p>
             <p id="inspect-timer" class="text-sm font-mono font-extrabold">00:00</p>
           </div>
         </div>
 
-        <!-- Pilih Unit & Shift -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-bold text-slate-600 mb-1">Pilih Unit Kamar *</label>
@@ -211,7 +193,7 @@
               <select id="inspect-unit" onchange="startTimer()" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-teal-500">
                 <option value="">-- Pilih Kamar --</option>
               </select>
-              <button type="button" onclick="openQrScanner()" class="px-3.5 bg-slate-800 text-white rounded-xl flex items-center justify-center" title="Scan QR Kamar">
+              <button type="button" onclick="openQrScanner()" class="px-3.5 bg-slate-800 text-white rounded-xl flex items-center justify-center">
                 <i data-lucide="scan-line" class="w-5 h-5"></i>
               </button>
             </div>
@@ -226,7 +208,6 @@
           </div>
         </div>
 
-        <!-- Smart Readiness Score Live Bar -->
         <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-2">
           <div class="flex items-center justify-between">
             <span class="text-xs font-bold text-slate-700">Smart Readiness Score</span>
@@ -237,23 +218,18 @@
           </div>
         </div>
 
-        <!-- Daftar Checklist Kelengkapan Dinamis -->
         <div class="space-y-3">
           <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-500">Checklist Kelengkapan & Kondisi</h3>
-          <div id="checklist-container" class="space-y-2.5">
-            <!-- Diisi otomatis dari master_items -->
-          </div>
+          <div id="checklist-container" class="space-y-2.5"></div>
         </div>
 
-        <!-- Upload Foto Kamar & Toilet (Kamera + Album/Galeri + Auto Watermark) -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-          <!-- Foto Kamar -->
           <div class="bg-slate-50 p-3.5 rounded-2xl border border-dashed border-slate-300 space-y-2.5">
             <div class="flex items-center justify-between">
               <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                 <i data-lucide="bed-double" class="w-4 h-4 text-teal-600"></i> Foto Kondisi Kamar
               </span>
-              <span class="text-[10px] font-semibold text-teal-600 bg-teal-50 px-2 py-0.5 rounded">Auto-Watermark</span>
+              <span class="text-[10px] font-semibold text-teal-600 bg-teal-50 px-2 py-0.5 rounded">Watermark</span>
             </div>
             <img id="preview-room" class="hidden w-full h-40 object-cover rounded-xl border border-slate-200" />
             <div class="grid grid-cols-2 gap-2">
@@ -268,13 +244,12 @@
             </div>
           </div>
 
-          <!-- Foto Toilet -->
           <div class="bg-slate-50 p-3.5 rounded-2xl border border-dashed border-slate-300 space-y-2.5">
             <div class="flex items-center justify-between">
               <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                 <i data-lucide="bath" class="w-4 h-4 text-teal-600"></i> Foto Kondisi Toilet
               </span>
-              <span class="text-[10px] font-semibold text-teal-600 bg-teal-50 px-2 py-0.5 rounded">Auto-Watermark</span>
+              <span class="text-[10px] font-semibold text-teal-600 bg-teal-50 px-2 py-0.5 rounded">Watermark</span>
             </div>
             <img id="preview-toilet" class="hidden w-full h-40 object-cover rounded-xl border border-slate-200" />
             <div class="grid grid-cols-2 gap-2">
@@ -290,14 +265,12 @@
           </div>
         </div>
 
-        <!-- Catatan Tambahan -->
         <div>
           <label class="block text-xs font-bold text-slate-600 mb-1">Catatan / Temuan Kerusakan</label>
           <textarea id="inspect-notes" rows="2" placeholder="Tuliskan detail jika ada barang kurang atau butuh teknisi..."
             class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-teal-500"></textarea>
         </div>
 
-        <!-- Tombol Simpan & Kirim WhatsApp -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
           <button type="button" onclick="submitInspection(false)" id="btn-submit-inspect"
             class="w-full py-3.5 bg-teal-600 hover:bg-teal-700 active:scale-[0.98] text-white font-bold rounded-xl shadow-lg shadow-teal-600/25 transition flex items-center justify-center gap-2 text-sm">
@@ -313,38 +286,37 @@
       </div>
     </section>
 
-    <!-- ================= TAB 3: ANALITIK & RIWAYAT (BISA DIAKSES PETUGAS & MANAJEMEN) ================= -->
+    <!-- ================= TAB 3: ANALITIK & RIWAYAT ================= -->
     <section id="tab-analytics" class="page-section space-y-5">
       <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
         <div class="flex items-center justify-between">
           <div>
             <h2 class="text-base font-extrabold text-slate-900">Analitik & Kinerja Inspeksi</h2>
-            <p class="text-xs text-slate-500">Statistik kesiapan unit, durasi pembersihan & log aktivitas</p>
+            <p class="text-xs text-slate-500">Statistik kesiapan unit & durasi pembersihan</p>
           </div>
           <button onclick="exportCsv()" class="px-3 py-2 bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5">
             <i data-lucide="download" class="w-3.5 h-3.5"></i> Unduh CSV
           </button>
         </div>
 
-        <!-- Grafik -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-            <h3 class="text-xs font-bold text-slate-600 mb-2">Proporsi Status Unit Saat Ini</h3>
+            <h3 class="text-xs font-bold text-slate-600 mb-2">Proporsi Status Unit</h3>
             <canvas id="chart-status" height="180"></canvas>
           </div>
           <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col justify-between">
-            <h3 class="text-xs font-bold text-slate-600 mb-2">Ringkasan Performa Shift</h3>
+            <h3 class="text-xs font-bold text-slate-600 mb-2">Ringkasan Performa</h3>
             <div class="space-y-3 my-auto">
               <div class="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100">
-                <span class="text-xs text-slate-500 font-medium">Total Inspeksi Tercatat</span>
+                <span class="text-xs text-slate-500 font-medium">Total Inspeksi</span>
                 <span id="analytic-total" class="text-sm font-extrabold text-slate-900">0 Laporan</span>
               </div>
               <div class="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100">
-                <span class="text-xs text-slate-500 font-medium">Rata-Rata Skor Kesiapan</span>
+                <span class="text-xs text-slate-500 font-medium">Rata-Rata Skor</span>
                 <span id="analytic-avg-score" class="text-sm font-extrabold text-teal-600">0%</span>
               </div>
               <div class="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100">
-                <span class="text-xs text-slate-500 font-medium">Rata-Rata Durasi Cek</span>
+                <span class="text-xs text-slate-500 font-medium">Rata-Rata Durasi</span>
                 <span id="analytic-avg-time" class="text-sm font-extrabold text-indigo-600">0 Detik</span>
               </div>
             </div>
@@ -352,24 +324,45 @@
         </div>
       </div>
 
-      <!-- Riwayat Laporan Terbaru -->
       <div class="space-y-3">
         <h3 class="text-sm font-extrabold text-slate-800">Riwayat Inspeksi & Bukti Foto</h3>
-        <div id="history-list" class="space-y-3">
-          <!-- Diisi via JS -->
-        </div>
+        <div id="history-list" class="space-y-3"></div>
       </div>
     </section>
 
-    <!-- ================= TAB 4: KELOLA UNIT & KELENGKAPAN (CRUD + CETAK QR) ================= -->
+    <!-- ================= TAB 4: KELOLA AKUN, UNIT & KELENGKAPAN ================= -->
     <section id="tab-master" class="page-section space-y-5">
-      <!-- Tambah / Edit Unit Kamar -->
-      <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <h2 class="text-base font-extrabold text-slate-900">Kelola Unit Kamar & QR Pintu</h2>
-            <p class="text-xs text-slate-500">Tambah kamar baru, ubah status, atau cetak stiker QR Code</p>
+
+      <!-- 1. Kelola Akun Manajemen & Petugas -->
+      <div id="user-management-card" class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
+        <div>
+          <h2 class="text-base font-extrabold text-slate-900">Kelola Akun Manajemen & Petugas</h2>
+          <p class="text-xs text-slate-500">Tambah atau hapus akun login untuk staf manajemen dan petugas</p>
+        </div>
+
+        <form id="form-add-user" class="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/70">
+          <input type="text" id="new-user-fullname" required placeholder="Nama Lengkap (mis: Budi)" class="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none" />
+          <input type="text" id="new-user-username" required placeholder="Username login" class="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none" />
+          <input type="text" id="new-user-password" required placeholder="Password" class="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none" />
+          <div class="flex gap-2">
+            <select id="new-user-role" class="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none">
+              <option value="petugas">Petugas</option>
+              <option value="manajemen">Manajemen</option>
+            </select>
+            <button type="submit" class="flex-1 py-2.5 px-3 bg-teal-600 text-white font-bold rounded-xl text-xs hover:bg-teal-700 transition">
+              + Akun
+            </button>
           </div>
+        </form>
+
+        <div id="master-user-list" class="divide-y divide-slate-100"></div>
+      </div>
+
+      <!-- 2. Tambah / Edit Unit Kamar -->
+      <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
+        <div>
+          <h2 class="text-base font-extrabold text-slate-900">Kelola Unit Kamar & QR Pintu</h2>
+          <p class="text-xs text-slate-500">Tambah kamar baru, ubah status, atau cetak stiker QR Code</p>
         </div>
 
         <form id="form-add-unit" class="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/70">
@@ -382,12 +375,10 @@
           </button>
         </form>
 
-        <div id="master-unit-list" class="divide-y divide-slate-100">
-          <!-- Daftar unit -->
-        </div>
+        <div id="master-unit-list" class="divide-y divide-slate-100"></div>
       </div>
 
-      <!-- Tambah / Edit Daftar Kelengkapan -->
+      <!-- 3. Tambah / Edit Daftar Kelengkapan -->
       <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
         <div>
           <h2 class="text-base font-extrabold text-slate-900">Kelola Daftar Kelengkapan</h2>
@@ -411,9 +402,7 @@
           </div>
         </form>
 
-        <div id="master-item-list" class="divide-y divide-slate-100">
-          <!-- Daftar kelengkapan -->
-        </div>
+        <div id="master-item-list" class="divide-y divide-slate-100"></div>
       </div>
     </section>
 
@@ -436,7 +425,7 @@
       </button>
       <button onclick="switchTab('tab-master')" data-target="tab-master" id="nav-master-btn" class="nav-btn flex flex-col items-center justify-center py-1 text-slate-400">
         <i data-lucide="sliders" class="w-5 h-5"></i>
-        <span class="text-[10px] font-bold mt-1">Unit & Item</span>
+        <span class="text-[10px] font-bold mt-1">Pengaturan</span>
       </button>
     </div>
   </nav>
@@ -449,7 +438,7 @@
         <button onclick="closeQrScanner()" class="p-1.5 bg-slate-100 rounded-full text-slate-600"><i data-lucide="x" class="w-4 h-4"></i></button>
       </div>
       <div id="qr-reader" class="w-full rounded-2xl overflow-hidden border border-slate-200"></div>
-      <p class="text-[11px] text-center text-slate-500">Arahkan kamera ke stiker QR Code yang tertempel di pintu kamar.</p>
+      <p class="text-[11px] text-center text-slate-500">Arahkan kamera ke stiker QR Code pintu kamar.</p>
     </div>
   </div>
 
@@ -459,41 +448,35 @@
       <h3 id="qr-print-title" class="text-base font-extrabold text-slate-900">QR Code Kamar</h3>
       <div id="qr-code-box" class="flex justify-center p-4 bg-white border-2 border-teal-600 rounded-2xl mx-auto w-fit"></div>
       <p id="qr-print-code" class="text-xs font-mono font-bold text-slate-600"></p>
-      <p class="text-[11px] text-slate-500">Screenshot atau cetak kode QR ini untuk ditempel pada pintu unit.</p>
+      <p class="text-[11px] text-slate-500">Screenshot atau cetak kode QR ini untuk pintu unit.</p>
       <button onclick="document.getElementById('modal-qr-print').classList.add('hidden')" class="w-full py-2.5 bg-slate-800 text-white font-bold rounded-xl text-xs">Tutup</button>
     </div>
   </div>
 
   <!-- ================= JAVASCRIPT LOGIC ================= -->
   <script>
-    // 1. KONFIGURASI SUPABASE (GANTI DENGAN URL & ANON KEY ANDA)
     const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_AXcmTZqRh9W-Qs0yoEcUdQ_bxLpar50';
+    const SUPABASE_ANON_KEY = 'sb_publishable_AXcmTZqRh9W-QsOyoEcUdQ_bxLpar5O';
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // State Aplikasi
     let currentUser = JSON.parse(localStorage.getItem('ck_user') || 'null');
     let unitsData = [];
     let itemsData = [];
     let inspectionsData = [];
+    let usersData = [];
     let watermarkedPhotos = { room: null, toilet: null };
     let timerInterval = null;
     let secondsElapsed = 0;
     let qrScannerInstance = null;
     let statusChart = null;
 
-    // Inisialisasi Ikon
     lucide.createIcons();
 
-    // Cek Sesi Login saat halaman dimuat
     window.addEventListener('DOMContentLoaded', () => {
       updateNetworkStatus();
       window.addEventListener('online', () => { updateNetworkStatus(); syncOfflineQueue(); });
       window.addEventListener('offline', updateNetworkStatus);
-
-      if (currentUser) {
-        enterApp();
-      }
+      if (currentUser) enterApp();
     });
 
     // ================= AUTH / LOGIN =================
@@ -517,7 +500,6 @@
           .single();
 
         if (error || !data) {
-          // Fallback akun demo lokal jika Supabase belum diisi URL-nya
           if ((username === 'admin' && password === 'admin123') || (username === 'petugas1' && password === 'petugas123')) {
             currentUser = {
               username,
@@ -552,15 +534,10 @@
       document.getElementById('user-greeting').textContent = `Halo, ${currentUser.full_name}`;
       document.getElementById('role-badge').textContent = currentUser.role;
 
-      // Manajemen & Petugas sama-sama bisa akses Dasbor & Analitik.
-      // Menu Master Unit & Item tetap tampil untuk Manajemen (dan mode baca/kelola sesuai kebutuhan)
-      if (currentUser.role !== 'manajemen') {
-        document.getElementById('form-add-unit').classList.add('hidden');
-        document.getElementById('form-add-item').classList.add('hidden');
-      } else {
-        document.getElementById('form-add-unit').classList.remove('hidden');
-        document.getElementById('form-add-item').classList.remove('hidden');
-      }
+      const isAdmin = currentUser.role === 'manajemen';
+      document.getElementById('user-management-card').classList.toggle('hidden', !isAdmin);
+      document.getElementById('form-add-unit').classList.toggle('hidden', !isAdmin);
+      document.getElementById('form-add-item').classList.toggle('hidden', !isAdmin);
 
       loadAllData();
       checkOfflineBanner();
@@ -591,26 +568,18 @@
     // ================= MUAT DATA DARI SUPABASE =================
     async function loadAllData() {
       try {
-        const [uRes, iRes, rRes] = await Promise.all([
+        const [uRes, iRes, rRes, usrRes] = await Promise.all([
           db.from('master_units').select('*').order('unit_code', { ascending: true }),
           db.from('master_items').select('*').order('category', { ascending: true }),
-          db.from('room_inspections').select('*').order('created_at', { ascending: false }).limit(30)
+          db.from('room_inspections').select('*').order('created_at', { ascending: false }).limit(30),
+          db.from('app_users').select('*').order('created_at', { ascending: true })
         ]);
 
-        if (uRes.data) {
-          unitsData = uRes.data;
-          localStorage.setItem('cache_units', JSON.stringify(unitsData));
-        }
-        if (iRes.data) {
-          itemsData = iRes.data;
-          localStorage.setItem('cache_items', JSON.stringify(itemsData));
-        }
-        if (rRes.data) {
-          inspectionsData = rRes.data;
-          localStorage.setItem('cache_inspections', JSON.stringify(inspectionsData));
-        }
+        if (uRes.data) { unitsData = uRes.data; localStorage.setItem('cache_units', JSON.stringify(unitsData)); }
+        if (iRes.data) { itemsData = iRes.data; localStorage.setItem('cache_items', JSON.stringify(itemsData)); }
+        if (rRes.data) { inspectionsData = rRes.data; localStorage.setItem('cache_inspections', JSON.stringify(inspectionsData)); }
+        if (usrRes.data) { usersData = usrRes.data; }
       } catch (e) {
-        // Jika offline, muat dari cache lokal
         unitsData = JSON.parse(localStorage.getItem('cache_units') || '[]');
         itemsData = JSON.parse(localStorage.getItem('cache_items') || '[]');
         inspectionsData = JSON.parse(localStorage.getItem('cache_inspections') || '[]');
@@ -624,24 +593,13 @@
 
     // ================= RENDER DASBOR =================
     function renderDashboard() {
-      const siap = unitsData.filter(u => u.status === 'siap').length;
-      const kotor = unitsData.filter(u => u.status === 'kotor').length;
-      const maint = unitsData.filter(u => u.status === 'maintenance').length;
+      document.getElementById('stat-siap').textContent = unitsData.filter(u => u.status === 'siap').length;
+      document.getElementById('stat-kotor').textContent = unitsData.filter(u => u.status === 'kotor').length;
+      document.getElementById('stat-maint').textContent = unitsData.filter(u => u.status === 'maintenance').length;
 
-      document.getElementById('stat-siap').textContent = siap;
-      document.getElementById('stat-kotor').textContent = kotor;
-      document.getElementById('stat-maint').textContent = maint;
-
-      const grid = document.getElementById('unit-grid');
-      grid.innerHTML = unitsData.map(u => {
-        const badgeStyle = u.status === 'siap'
-          ? 'bg-emerald-100 text-emerald-700'
-          : u.status === 'maintenance'
-          ? 'bg-rose-100 text-rose-700'
-          : 'bg-amber-100 text-amber-700';
-
+      document.getElementById('unit-grid').innerHTML = unitsData.map(u => {
+        const badgeStyle = u.status === 'siap' ? 'bg-emerald-100 text-emerald-700' : u.status === 'maintenance' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700';
         const statusLabel = u.status === 'siap' ? 'SIAP PAKAI' : u.status === 'maintenance' ? 'MAINTENANCE' : 'PERLU CEK';
-
         return `
           <div class="glass-card rounded-2xl p-4 shadow-sm hover:shadow-md transition flex flex-col justify-between gap-3">
             <div class="flex items-start justify-between">
@@ -674,8 +632,7 @@
         unitsData.map(u => `<option value="${u.id}">${u.unit_code} - ${u.unit_name}</option>`).join('');
       select.value = currentVal;
 
-      const container = document.getElementById('checklist-container');
-      container.innerHTML = itemsData.map(item => `
+      document.getElementById('checklist-container').innerHTML = itemsData.map(item => `
         <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200/70">
           <div>
             <p class="text-xs font-bold text-slate-800">${item.item_name} ${item.is_critical ? '<span class="text-[10px] text-rose-600 font-extrabold">(Krusial)</span>' : ''}</p>
@@ -697,10 +654,7 @@
       const selects = document.querySelectorAll('.item-status-select');
       if (selects.length === 0) return { score: 100, status: 'siap' };
 
-      let total = selects.length;
-      let points = 0;
-      let criticalBroken = false;
-
+      let total = selects.length, points = 0, criticalBroken = false;
       selects.forEach(sel => {
         if (sel.value === 'baik') points += 1;
         else if (sel.value === 'kurang') points += 0.5;
@@ -708,21 +662,12 @@
       });
 
       const score = Math.round((points / total) * 100);
-      let status = 'siap';
-      let label = `${score}% - SIAP PAKAI`;
-      let badgeClass = 'bg-emerald-100 text-emerald-700';
-      let barClass = 'bg-emerald-500';
+      let status = 'siap', label = `${score}% - SIAP PAKAI`, badgeClass = 'bg-emerald-100 text-emerald-700', barClass = 'bg-emerald-500';
 
       if (criticalBroken || score < 70) {
-        status = 'maintenance';
-        label = `${score}% - BUTUH PERBAIKAN`;
-        badgeClass = 'bg-rose-100 text-rose-700';
-        barClass = 'bg-rose-500';
+        status = 'maintenance'; label = `${score}% - BUTUH PERBAIKAN`; badgeClass = 'bg-rose-100 text-rose-700'; barClass = 'bg-rose-500';
       } else if (score < 95) {
-        status = 'kotor';
-        label = `${score}% - PERLU KELENGKAPAN`;
-        badgeClass = 'bg-amber-100 text-amber-700';
-        barClass = 'bg-amber-500';
+        status = 'kotor'; label = `${score}% - PERLU KELENGKAPAN`; badgeClass = 'bg-amber-100 text-amber-700'; barClass = 'bg-amber-500';
       }
 
       const badge = document.getElementById('live-score-badge');
@@ -731,11 +676,9 @@
       badge.className = `text-xs font-extrabold px-2.5 py-0.5 rounded-full ${badgeClass}`;
       bar.style.width = `${score}%`;
       bar.className = `${barClass} h-full transition-all duration-300`;
-
       return { score, status };
     }
 
-    // Timer Durasi Pengecekan
     function startTimer() {
       if (timerInterval) clearInterval(timerInterval);
       secondsElapsed = 0;
@@ -747,7 +690,7 @@
       }, 1000);
     }
 
-    // ================= AUTO-WATERMARK BUKTI FOTO (KAMERA & GALERI) =================
+    // ================= AUTO-WATERMARK BUKTI FOTO =================
     function handlePhotoInput(event, type) {
       const file = event.target.files[0];
       if (!file) return;
@@ -761,15 +704,13 @@
         const img = new Image();
         img.onload = function() {
           const canvas = document.createElement('canvas');
-          const maxW = 1024;
-          const scale = Math.min(1, maxW / img.width);
+          const scale = Math.min(1, 1024 / img.width);
           canvas.width = img.width * scale;
           canvas.height = img.height * scale;
 
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-          // Banner Watermark Bawah
           const barHeight = Math.max(54, canvas.height * 0.09);
           ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
           ctx.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
@@ -800,8 +741,8 @@
         const res = await fetch(base64Data);
         const blob = await res.blob();
         const fileName = `${prefix}_${Date.now()}.jpg`;
-        const { data, error } = await db.storage.from('room-photos').upload(fileName, blob, { contentType: 'image/jpeg' });
-        if (error) return base64Data; // Fallback simpan base64 jika bucket belum dibuat
+        const { error } = await db.storage.from('room-photos').upload(fileName, blob, { contentType: 'image/jpeg' });
+        if (error) return base64Data;
         const { data: pub } = db.storage.from('room-photos').getPublicUrl(fileName);
         return pub.publicUrl;
       } catch {
@@ -809,13 +750,9 @@
       }
     }
 
-    // ================= SIMPAN INSPEKSI & OFFLINE SYNC =================
     async function submitInspection(sendWhatsApp) {
       const unitId = document.getElementById('inspect-unit').value;
-      if (!unitId) {
-        alert('Silakan pilih Unit Kamar terlebih dahulu!');
-        return;
-      }
+      if (!unitId) { alert('Silakan pilih Unit Kamar terlebih dahulu!'); return; }
 
       const unitObj = unitsData.find(u => u.id === unitId);
       const shift = document.getElementById('inspect-shift').value;
@@ -824,10 +761,7 @@
 
       const checklist = [];
       document.querySelectorAll('.item-status-select').forEach(sel => {
-        checklist.push({
-          name: sel.dataset.itemName,
-          status: sel.value
-        });
+        checklist.push({ name: sel.dataset.itemName, status: sel.value });
       });
 
       const btn = document.getElementById('btn-submit-inspect');
@@ -851,7 +785,6 @@
       };
 
       if (!navigator.onLine) {
-        // Simpan ke Antrean Offline
         const queue = JSON.parse(localStorage.getItem('offline_queue') || '[]');
         queue.push(payload);
         localStorage.setItem('offline_queue', JSON.stringify(queue));
@@ -862,15 +795,10 @@
       }
 
       if (sendWhatsApp) {
-        const waText = `*LAPORAN KESIAPAN KAMAR*\n` +
-          `• Unit: *${unitObj.unit_name}*\n` +
-          `• Status: *${status.toUpperCase()}* (Skor: ${score}%)\n` +
-          `• Petugas: ${currentUser.full_name} (${shift})\n` +
-          `• Catatan: ${notes || 'Semua kondisi terpantau baik'}`;
+        const waText = `*LAPORAN KESIAPAN KAMAR*\n• Unit: *${unitObj.unit_name}*\n• Status: *${status.toUpperCase()}* (Skor: ${score}%)\n• Petugas: ${currentUser.full_name} (${shift})\n• Catatan: ${notes || 'Semua kondisi baik'}`;
         window.open(`https://wa.me/?text=${encodeURIComponent(waText)}`, '_blank');
       }
 
-      // Reset Form & Animasi Confetti
       clearInterval(timerInterval);
       secondsElapsed = 0;
       document.getElementById('inspect-timer').textContent = '00:00';
@@ -896,7 +824,6 @@
       if (payload.photo_toilet_url && payload.photo_toilet_url.startsWith('data:')) {
         payload.photo_toilet_url = await uploadBase64ToSupabase(payload.photo_toilet_url, 'toilet');
       }
-
       await db.from('room_inspections').insert([payload]);
       await db.from('master_units').update({
         status: payload.final_status,
@@ -908,10 +835,7 @@
     async function syncOfflineQueue() {
       const queue = JSON.parse(localStorage.getItem('offline_queue') || '[]');
       if (queue.length === 0 || !navigator.onLine) return;
-
-      for (const item of queue) {
-        await processAndSendPayload(item);
-      }
+      for (const item of queue) await processAndSendPayload(item);
       localStorage.removeItem('offline_queue');
       checkOfflineBanner();
       loadAllData();
@@ -950,11 +874,8 @@
         (decodedText) => {
           closeQrScanner();
           const found = unitsData.find(u => u.unit_code.toLowerCase() === decodedText.trim().toLowerCase());
-          if (found) {
-            quickInspect(found.id);
-          } else {
-            alert(`Kode QR "${decodedText}" tidak ditemukan di daftar unit.`);
-          }
+          if (found) quickInspect(found.id);
+          else alert(`Kode QR "${decodedText}" tidak ditemukan.`);
         }
       ).catch(() => {
         alert('Izin kamera diperlukan untuk memindai QR Code.');
@@ -964,9 +885,7 @@
 
     function closeQrScanner() {
       document.getElementById('modal-qr-scanner').classList.add('hidden');
-      if (qrScannerInstance) {
-        qrScannerInstance.stop().catch(() => {});
-      }
+      if (qrScannerInstance) qrScannerInstance.stop().catch(() => {});
     }
 
     function showQrSticker(code, name) {
@@ -978,10 +897,22 @@
       document.getElementById('modal-qr-print').classList.remove('hidden');
     }
 
-    // ================= KELOLA MASTER UNIT & KELENGKAPAN (CRUD) =================
+    // ================= KELOLA AKUN, UNIT & KELENGKAPAN (CRUD) =================
     function renderMasterData() {
       const isAdmin = currentUser.role === 'manajemen';
 
+      // Render Daftar Akun Pengguna
+      document.getElementById('master-user-list').innerHTML = usersData.map(u => `
+        <div class="py-3 flex items-center justify-between gap-2">
+          <div>
+            <p class="text-xs font-extrabold text-slate-800">${u.full_name} <span class="text-[10px] px-2 py-0.5 rounded-full ${u.role === 'manajemen' ? 'bg-indigo-100 text-indigo-700' : 'bg-teal-100 text-teal-700'} uppercase">${u.role}</span></p>
+            <p class="text-[11px] text-slate-500 font-mono">User: ${u.username} • Pass: ${u.password}</p>
+          </div>
+          ${isAdmin && u.username !== 'admin' ? `<button onclick="deleteAppUser('${u.id}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>` : ''}
+        </div>
+      `).join('');
+
+      // Render Daftar Unit
       document.getElementById('master-unit-list').innerHTML = unitsData.map(u => `
         <div class="py-3 flex items-center justify-between gap-2">
           <div>
@@ -998,6 +929,7 @@
         </div>
       `).join('');
 
+      // Render Daftar Kelengkapan
       document.getElementById('master-item-list').innerHTML = itemsData.map(i => `
         <div class="py-3 flex items-center justify-between gap-2">
           <div>
@@ -1014,6 +946,30 @@
       `).join('');
     }
 
+    // Form Tambah Akun Manajemen / Petugas
+    document.getElementById('form-add-user').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const { error } = await db.from('app_users').insert([{
+        full_name: document.getElementById('new-user-fullname').value.trim(),
+        username: document.getElementById('new-user-username').value.trim(),
+        password: document.getElementById('new-user-password').value.trim(),
+        role: document.getElementById('new-user-role').value
+      }]);
+      if (error) {
+        alert('Gagal menambah akun: ' + error.message);
+        return;
+      }
+      e.target.reset();
+      loadAllData();
+    });
+
+    async function deleteAppUser(id) {
+      if (!confirm('Hapus akun pengguna ini?')) return;
+      await db.from('app_users').delete().eq('id', id);
+      loadAllData();
+    }
+
+    // Form Tambah / Edit Unit
     document.getElementById('form-add-unit').addEventListener('submit', async (e) => {
       e.preventDefault();
       const id = document.getElementById('edit-unit-id').value;
@@ -1046,6 +1002,7 @@
       loadAllData();
     }
 
+    // Form Tambah / Edit Item Kelengkapan
     document.getElementById('form-add-item').addEventListener('submit', async (e) => {
       e.preventDefault();
       const id = document.getElementById('edit-item-id').value;
@@ -1090,11 +1047,7 @@
         type: 'doughnut',
         data: {
           labels: ['Siap Pakai', 'Perlu Cek', 'Maintenance'],
-          datasets: [{
-            data: [siap, kotor, maint],
-            backgroundColor: ['#10b981', '#f59e0b', '#f43f5e'],
-            borderWidth: 0
-          }]
+          datasets: [{ data: [siap, kotor, maint], backgroundColor: ['#10b981', '#f59e0b', '#f43f5e'], borderWidth: 0 }]
         },
         options: { plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } }
       });
