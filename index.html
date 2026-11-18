@@ -407,40 +407,65 @@
             </div>
           </div>
 
-          <!-- FILTER PERIODE EKSPOR (HARI, BULAN, TAHUN) -->
-          <div class="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 space-y-2">
+          <!-- FILTER PERIODE & UNIT UNTUK TAMPILAN + EKSPOR -->
+          <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
             <div class="flex items-center justify-between">
               <span class="text-[11px] font-extrabold text-slate-700 flex items-center gap-1.5">
-                <i data-lucide="calendar" class="w-3.5 h-3.5 text-teal-600"></i> Filter Periode Ekspor
+                <i data-lucide="filter" class="w-3.5 h-3.5 text-teal-600"></i> Filter Data & Ekspor
               </span>
               <span id="export-filter-count" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800">0 Data Terpilih</span>
             </div>
+
             <div class="grid grid-cols-2 gap-2">
               <select id="export-period-type" onchange="handleExportPeriodTypeChange()" class="p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500">
                 <option value="all">Semua Tanggal</option>
                 <option value="day">Per Hari (Tanggal)</option>
+                <option value="range">Rentang Tanggal</option>
                 <option value="month">Per Bulan</option>
                 <option value="year">Per Tahun</option>
               </select>
 
-              <!-- Input Tanggal (Harian) -->
-              <input type="date" id="export-filter-day" onchange="updateExportFilterCount()" class="hidden p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500" />
+              <select id="export-filter-unit" onchange="renderAnalytics()" class="p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500">
+                <option value="all">Semua Kamar</option>
+              </select>
+            </div>
 
-              <!-- Input Bulan (Bulanan) -->
-              <input type="month" id="export-filter-month" onchange="updateExportFilterCount()" class="hidden p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500" />
+            <!-- Input Tanggal (Harian) -->
+            <div id="wrap-filter-day" class="hidden">
+              <input type="date" id="export-filter-day" onchange="renderAnalytics()" class="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500" />
+            </div>
 
-              <!-- Input Tahun (Tahunan) -->
-              <select id="export-filter-year" onchange="updateExportFilterCount()" class="hidden p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500"></select>
-
-              <div id="export-filter-all-badge" class="p-2 bg-white/70 border border-slate-200/70 rounded-xl text-[11px] font-medium text-slate-500 flex items-center justify-center">
-                Seluruh Riwayat
+            <!-- Input Rentang Tanggal (Dari - Sampai) -->
+            <div id="wrap-filter-range" class="hidden grid grid-cols-2 gap-2">
+              <div>
+                <span class="block text-[9.5px] font-bold text-slate-500 mb-0.5">Dari Tanggal</span>
+                <input type="date" id="export-filter-start" onchange="renderAnalytics()" class="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500" />
+              </div>
+              <div>
+                <span class="block text-[9.5px] font-bold text-slate-500 mb-0.5">Sampai Tanggal</span>
+                <input type="date" id="export-filter-end" onchange="renderAnalytics()" class="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500" />
               </div>
             </div>
+
+            <!-- Input Bulan (Bulanan) -->
+            <div id="wrap-filter-month" class="hidden">
+              <input type="month" id="export-filter-month" onchange="renderAnalytics()" class="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500" />
+            </div>
+
+            <!-- Input Tahun (Tahunan) -->
+            <div id="wrap-filter-year" class="hidden">
+              <select id="export-filter-year" onchange="renderAnalytics()" class="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500"></select>
+            </div>
+
+            <label class="flex items-center gap-2 pt-0.5 cursor-pointer">
+              <input type="checkbox" id="export-pdf-include-photos" class="rounded text-rose-600" />
+              <span class="text-[11px] font-bold text-slate-600">Sertakan foto dokumentasi saat Ekspor PDF</span>
+            </label>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-              <h3 class="text-xs font-bold text-slate-600 mb-2">Proporsi Status Unit</h3>
+              <h3 class="text-xs font-bold text-slate-600 mb-2">Proporsi Status Unit (Live)</h3>
               <canvas id="chart-status" height="180"></canvas>
             </div>
             <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col justify-center space-y-2.5">
@@ -730,7 +755,7 @@
           </div>
           <div>
             <h3 class="text-sm font-extrabold text-slate-900">Tentang Aplikasi</h3>
-            <p onclick="handleSecretHistoryTap()" class="text-[11px] text-teal-600 font-bold select-none cursor-default">Versi 3.6 PWA • Live Notifikasi</p>
+            <p onclick="handleSecretHistoryTap()" class="text-[11px] text-teal-600 font-bold select-none cursor-default">Versi 3.7 PWA • Live Notifikasi</p>
           </div>
         </div>
         <button onclick="document.getElementById('modal-about').classList.add('hidden')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
@@ -743,7 +768,7 @@
         <p>Aplikasi PWA (Progressive Web App) untuk memantau kesiapan, kebersihan, dan kelengkapan fasilitas kamar secara real-time di lingkungan <strong>RS Khusus Bedah SS Medika</strong>.</p>
         <ul class="space-y-1 text-[11px] text-slate-600 pt-1">
           <li>• <strong>Notifikasi HP Real-Time:</strong> Muncul bunyi & pemberitahuan setiap ada laporan masuk.</li>
-          <li>• <strong>Ekspor Periode Dinamis:</strong> Filter laporan harian, bulanan, maupun tahunan.</li>
+          <li>• <strong>Ekspor Periode & Kamar:</strong> Filter laporan harian, rentang tanggal, bulanan, tahunan, & lampiran foto PDF.</li>
           <li>• <strong>Laporan WhatsApp Mode Penuh:</strong> Penerima pesan dapat membuka laporan lengkap beserta foto & unduh PDF.</li>
         </ul>
       </div>
@@ -826,30 +851,64 @@
       }
     }
 
-    async function deleteHistoryRecord(id, unitName) {
+    async function deleteHistoryRecord(id, unitName, unitId) {
       if (!creatorDeleteUnlocked) return;
       if (!confirm(`Hapus permanen riwayat laporan "${unitName}"?`)) return;
 
       const { error } = await db.from('room_inspections').delete().eq('id', id);
       if (error) {
-        alert('Gagal menghapus riwayat: ' + error.message);
+        alert('Gagal menghapus riwayat: ' + error.message + '\nPastikan Policy DELETE di Supabase sudah diaktifkan.');
         return;
       }
+
+      // Hapus seketika dari array lokal & antrean offline jika ada
+      inspectionsData = inspectionsData.filter(item => String(item.id) !== String(id));
+      if (lastKnownReportId === id) {
+        lastKnownReportId = inspectionsData[0]?.id || null;
+        if (lastKnownReportId) localStorage.setItem('ck_last_seen_id', lastKnownReportId);
+        else localStorage.removeItem('ck_last_seen_id');
+      }
+
+      // Sinkronkan status kamar di master_units ke laporan terbaru yang tersisa
+      if (unitId) {
+        const remainingForUnit = inspectionsData.filter(item => String(item.unit_id) === String(unitId));
+        if (remainingForUnit.length > 0) {
+          const latest = remainingForUnit[0];
+          await db.from('master_units').update({
+            status: latest.final_status,
+            last_checked_at: latest.created_at,
+            last_checked_by: latest.inspector_name
+          }).eq('id', unitId);
+        } else {
+          await db.from('master_units').update({
+            status: 'siap',
+            last_checked_at: null,
+            last_checked_by: null
+          }).eq('id', unitId);
+        }
+      }
+
       await loadAllData();
     }
 
-    // --- FILTER PERIODE EKSPOR (HARIAN, BULANAN, TAHUNAN) ---
+    // --- FILTER PERIODE & UNIT (HARIAN, RENTANG TANGGAL, BULANAN, TAHUNAN, KAMAR) ---
     function initExportPeriodInputs() {
       const now = new Date();
       const yyyy = now.getFullYear();
       const mm = String(now.getMonth() + 1).padStart(2, '0');
       const dd = String(now.getDate()).padStart(2, '0');
+      const todayStr = `${yyyy}-${mm}-${dd}`;
 
       const dayEl = document.getElementById('export-filter-day');
+      const startEl = document.getElementById('export-filter-start');
+      const endEl = document.getElementById('export-filter-end');
       const monthEl = document.getElementById('export-filter-month');
       const yearEl = document.getElementById('export-filter-year');
+      const unitEl = document.getElementById('export-filter-unit');
 
-      if (dayEl && !dayEl.value) dayEl.value = `${yyyy}-${mm}-${dd}`;
+      if (dayEl && !dayEl.value) dayEl.value = todayStr;
+      if (startEl && !startEl.value) startEl.value = todayStr;
+      if (endEl && !endEl.value) endEl.value = todayStr;
       if (monthEl && !monthEl.value) monthEl.value = `${yyyy}-${mm}`;
 
       if (yearEl) {
@@ -865,80 +924,87 @@
         yearEl.innerHTML = sortedYears.map(y => `<option value="${y}">Tahun ${y}</option>`).join('');
         yearEl.value = prevVal;
       }
-      updateExportFilterCount();
+
+      if (unitEl) {
+        const prevUnit = unitEl.value || 'all';
+        const unitOptions = ['<option value="all">Semua Kamar</option>'];
+        unitsData.forEach(u => {
+          unitOptions.push(`<option value="${u.unit_name}">${u.unit_name}</option>`);
+        });
+        unitEl.innerHTML = unitOptions.join('');
+        unitEl.value = prevUnit;
+      }
     }
 
     function handleExportPeriodTypeChange() {
       const type = document.getElementById('export-period-type')?.value || 'all';
-      document.getElementById('export-filter-day')?.classList.toggle('hidden', type !== 'day');
-      document.getElementById('export-filter-month')?.classList.toggle('hidden', type !== 'month');
-      document.getElementById('export-filter-year')?.classList.toggle('hidden', type !== 'year');
-      document.getElementById('export-filter-all-badge')?.classList.toggle('hidden', type !== 'all');
-      updateExportFilterCount();
+      document.getElementById('wrap-filter-day')?.classList.toggle('hidden', type !== 'day');
+      document.getElementById('wrap-filter-range')?.classList.toggle('hidden', type !== 'range');
+      document.getElementById('wrap-filter-month')?.classList.toggle('hidden', type !== 'month');
+      document.getElementById('wrap-filter-year')?.classList.toggle('hidden', type !== 'year');
+      renderAnalytics();
+    }
+
+    function getLocalYmd(dateStr) {
+      const d = new Date(dateStr);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
 
     function getFilteredExportData() {
       const type = document.getElementById('export-period-type')?.value || 'all';
-      if (type === 'all') {
-        return {
-          rows: inspectionsData,
-          label: 'Semua Periode',
-          fileSuffix: new Date().toISOString().slice(0, 10)
-        };
+      const selectedUnit = document.getElementById('export-filter-unit')?.value || 'all';
+
+      let rows = [...inspectionsData];
+      let periodLabel = 'Semua Periode';
+      let fileSuffix = new Date().toISOString().slice(0, 10);
+
+      if (selectedUnit !== 'all') {
+        rows = rows.filter(r => r.unit_name === selectedUnit);
       }
 
       if (type === 'day') {
         const targetDay = document.getElementById('export-filter-day')?.value || '';
-        const rows = inspectionsData.filter(r => {
+        rows = rows.filter(r => r.created_at && getLocalYmd(r.created_at) === targetDay);
+        periodLabel = `Tanggal ${targetDay}`;
+        fileSuffix = `Harian_${targetDay}`;
+      } else if (type === 'range') {
+        const startDay = document.getElementById('export-filter-start')?.value || '';
+        const endDay = document.getElementById('export-filter-end')?.value || '';
+        rows = rows.filter(r => {
           if (!r.created_at) return false;
-          const d = new Date(r.created_at);
-          const localYmd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-          return localYmd === targetDay;
+          const ymd = getLocalYmd(r.created_at);
+          if (startDay && ymd < startDay) return false;
+          if (endDay && ymd > endDay) return false;
+          return true;
         });
-        return {
-          rows,
-          label: `Tanggal ${targetDay}`,
-          fileSuffix: `Harian_${targetDay}`
-        };
-      }
-
-      if (type === 'month') {
+        periodLabel = `${startDay} s/d ${endDay}`;
+        fileSuffix = `Periode_${startDay}_sd_${endDay}`;
+      } else if (type === 'month') {
         const targetMonth = document.getElementById('export-filter-month')?.value || '';
-        const rows = inspectionsData.filter(r => {
+        rows = rows.filter(r => {
           if (!r.created_at) return false;
           const d = new Date(r.created_at);
           const localYm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
           return localYm === targetMonth;
         });
-        return {
-          rows,
-          label: `Bulan ${targetMonth}`,
-          fileSuffix: `Bulanan_${targetMonth}`
-        };
-      }
-
-      if (type === 'year') {
+        periodLabel = `Bulan ${targetMonth}`;
+        fileSuffix = `Bulanan_${targetMonth}`;
+      } else if (type === 'year') {
         const targetYear = document.getElementById('export-filter-year')?.value || '';
-        const rows = inspectionsData.filter(r => {
+        rows = rows.filter(r => {
           if (!r.created_at) return false;
-          const d = new Date(r.created_at);
-          return String(d.getFullYear()) === targetYear;
+          return String(new Date(r.created_at).getFullYear()) === targetYear;
         });
-        return {
-          rows,
-          label: `Tahun ${targetYear}`,
-          fileSuffix: `Tahunan_${targetYear}`
-        };
+        periodLabel = `Tahun ${targetYear}`;
+        fileSuffix = `Tahunan_${targetYear}`;
       }
 
-      return { rows: inspectionsData, label: 'Semua Periode', fileSuffix: new Date().toISOString().slice(0, 10) };
-    }
+      if (selectedUnit !== 'all') {
+        periodLabel += ` • ${selectedUnit}`;
+        fileSuffix += `_${selectedUnit.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+      }
 
-    function updateExportFilterCount() {
-      const badge = document.getElementById('export-filter-count');
-      if (!badge) return;
-      const { rows } = getFilteredExportData();
-      badge.textContent = `${rows.length} Data Terpilih`;
+      return { rows, label: periodLabel, fileSuffix };
     }
 
     // --- SUARA NOTIFIKASI LEMBUT TANPA FILE EKSTERNAL ---
@@ -1166,6 +1232,13 @@
             if (payload && payload.new) {
               handleIncomingNewReport(payload.new);
             }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'DELETE', schema: 'public', table: 'room_inspections' },
+          () => {
+            loadAllData();
           }
         )
         .subscribe();
@@ -1808,8 +1881,8 @@
       window.open(waUrl, '_blank');
     }
 
-    function shareHistoryWa(index) {
-      const item = inspectionsData[index];
+    function shareHistoryWaById(reportId) {
+      const item = inspectionsData.find(r => String(r.id) === String(reportId));
       if (!item) return;
       openWaShareModal(item);
     }
@@ -2179,7 +2252,7 @@
       loadAllData();
     }
 
-    // --- ANALITIK, EKSPOR CSV & DOWNLOAD PDF BERDASARKAN PERIODE ---
+    // --- ANALITIK, EKSPOR CSV & DOWNLOAD PDF BERDASARKAN FILTER ---
     function renderAnalytics() {
       const siap = unitsData.filter(u => u.status === 'siap').length;
       const kotor = unitsData.filter(u => u.status === 'kotor').length;
@@ -2196,54 +2269,73 @@
         options: { plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } }
       });
 
-      const total = inspectionsData.length;
-      const avgScore = total ? Math.round(inspectionsData.reduce((a, b) => a + b.readiness_score, 0) / total) : 0;
-      const avgTime = total ? Math.round(inspectionsData.reduce((a, b) => a + (b.duration_seconds || 0), 0) / total) : 0;
+      const { rows: filteredRows } = getFilteredExportData();
+      const countBadge = document.getElementById('export-filter-count');
+      if (countBadge) countBadge.textContent = `${filteredRows.length} Data Terpilih`;
+
+      const total = filteredRows.length;
+      const avgScore = total ? Math.round(filteredRows.reduce((a, b) => a + b.readiness_score, 0) / total) : 0;
+      const avgTime = total ? Math.round(filteredRows.reduce((a, b) => a + (b.duration_seconds || 0), 0) / total) : 0;
 
       document.getElementById('analytic-total').textContent = `${total} Laporan`;
       document.getElementById('analytic-avg-score').textContent = `${avgScore}%`;
       document.getElementById('analytic-avg-time').textContent = `${avgTime} Detik`;
 
-      document.getElementById('history-list').innerHTML = inspectionsData.map((r, idx) => `
-        <div class="glass-card rounded-2xl p-4 shadow-sm space-y-2.5">
-          <div class="flex items-start justify-between gap-2">
-            <div>
-              <h4 class="text-xs font-extrabold text-slate-900">${r.unit_name}</h4>
-              <p class="text-[11px] text-slate-500">Petugas: <strong>${r.inspector_name}</strong> • Shift ${r.shift}</p>
+      const historyBox = document.getElementById('history-list');
+      if (filteredRows.length === 0) {
+        historyBox.innerHTML = '<div class="text-center py-6 text-xs text-slate-400 bg-slate-50 rounded-2xl border border-slate-100">Tidak ada riwayat inspeksi pada filter periode/kamar ini.</div>';
+        return;
+      }
+
+      historyBox.innerHTML = filteredRows.map((r) => {
+        const waktuStr = r.created_at
+          ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : '-';
+        return `
+          <div class="glass-card rounded-2xl p-4 shadow-sm space-y-2.5">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <h4 class="text-xs font-extrabold text-slate-900">${r.unit_name}</h4>
+                <p class="text-[11px] text-slate-500">Petugas: <strong>${r.inspector_name}</strong> • Shift ${r.shift}</p>
+                <p class="text-[10px] text-slate-400 mt-0.5">${waktuStr}</p>
+              </div>
+              <span class="shrink-0 text-[10px] font-extrabold px-2.5 py-1 rounded-full ${r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
+                ${r.final_status.toUpperCase()} (${r.readiness_score}%)
+              </span>
             </div>
-            <span class="shrink-0 text-[10px] font-extrabold px-2.5 py-1 rounded-full ${r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
-              ${r.final_status.toUpperCase()} (${r.readiness_score}%)
-            </span>
+            ${r.notes ? `<p class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg">Catatan: ${r.notes}</p>` : ''}
+            <div class="grid grid-cols-2 gap-2">
+              ${r.photo_room_url ? `<img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />` : ''}
+              ${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />` : ''}
+            </div>
+            <div class="pt-1 flex items-center justify-end gap-2 flex-wrap">
+              ${(creatorDeleteUnlocked && r.id) ? `<button type="button" onclick="deleteHistoryRecord('${r.id}', '${(r.unit_name || '').replace(/'/g, "\\'")}', '${r.unit_id || ''}')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-[11px] font-bold rounded-xl flex items-center gap-1 transition"><i data-lucide="trash-2" class="w-3 h-3"></i> Hapus</button>` : ''}
+              ${r.id ? `<a href="${getPublicReportUrl(r.id, true)}" target="_blank" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl flex items-center gap-1 transition"><i data-lucide="maximize-2" class="w-3 h-3"></i> Mode Penuh</a>` : ''}
+              <button type="button" onclick="shareHistoryWaById('${r.id}')" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-[11px] font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition">
+                <i data-lucide="send" class="w-3.5 h-3.5"></i> Kirim ke WhatsApp
+              </button>
+            </div>
           </div>
-          ${r.notes ? `<p class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg">Catatan: ${r.notes}</p>` : ''}
-          <div class="grid grid-cols-2 gap-2">
-            ${r.photo_room_url ? `<img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />` : ''}
-            ${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />` : ''}
-          </div>
-          <div class="pt-1 flex items-center justify-end gap-2 flex-wrap">
-            ${(creatorDeleteUnlocked && r.id) ? `<button type="button" onclick="deleteHistoryRecord('${r.id}', '${(r.unit_name || '').replace(/'/g, "\\'")}')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-[11px] font-bold rounded-xl flex items-center gap-1 transition"><i data-lucide="trash-2" class="w-3 h-3"></i> Hapus</button>` : ''}
-            ${r.id ? `<a href="${getPublicReportUrl(r.id, true)}" target="_blank" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl flex items-center gap-1 transition"><i data-lucide="maximize-2" class="w-3 h-3"></i> Mode Penuh</a>` : ''}
-            <button type="button" onclick="shareHistoryWa(${idx})" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-[11px] font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition">
-              <i data-lucide="send" class="w-3.5 h-3.5"></i> Kirim ke WhatsApp
-            </button>
-          </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
       lucide.createIcons();
     }
 
     function exportCsv() {
       const { rows: filteredRows, label, fileSuffix } = getFilteredExportData();
       if (filteredRows.length === 0) {
-        alert(`Tidak ada data laporan pada periode (${label}).`);
+        alert(`Tidak ada data laporan pada filter (${label}).`);
         return;
       }
 
-      const headers = ['Waktu,Unit,Petugas,Shift,Skor,Status,Durasi(Detik),Catatan'];
-      const rows = filteredRows.map(r =>
-        `"${new Date(r.created_at).toLocaleString('id-ID')}","${r.unit_name}","${r.inspector_name}","${r.shift}",${r.readiness_score},"${r.final_status}",${r.duration_seconds || 0},"${(r.notes || '').replace(/"/g, '""')}"`
-      );
-      const blob = new Blob([headers.concat(rows).join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const headers = ['No,Waktu,Unit Kamar,Petugas,Shift,Skor (%),Status,Durasi (Detik),Rincian Checklist,Catatan'];
+      const rows = filteredRows.map((r, idx) => {
+        const checklistStr = Array.isArray(r.checklist_data)
+          ? r.checklist_data.map(c => `${c.item}: ${c.checked ? 'OK' : 'BELUM'}`).join(' | ')
+          : '';
+        return `${idx + 1},"${new Date(r.created_at).toLocaleString('id-ID')}","${r.unit_name}","${r.inspector_name}","${r.shift}",${r.readiness_score},"${r.final_status.toUpperCase()}",${r.duration_seconds || 0},"${checklistStr.replace(/"/g, '""')}","${(r.notes || '').replace(/"/g, '""')}"`;
+      });
+      const blob = new Blob(['\uFEFF' + headers.concat(rows).join('\n')], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -2254,9 +2346,13 @@
     function exportPdf() {
       const { rows: filteredRows, label, fileSuffix } = getFilteredExportData();
       if (filteredRows.length === 0) {
-        alert(`Tidak ada data laporan pada periode (${label}).`);
+        alert(`Tidak ada data laporan pada filter (${label}).`);
         return;
       }
+
+      const includePhotos = document.getElementById('export-pdf-include-photos')?.checked || false;
+      const total = filteredRows.length;
+      const avgScore = Math.round(filteredRows.reduce((a, b) => a + b.readiness_score, 0) / total);
 
       const printWin = window.open('', '_blank');
       if (!printWin) return alert('Izinkan pop-up browser untuk mengekspor PDF.');
@@ -2271,6 +2367,14 @@
           <td>${r.readiness_score}%</td>
           <td>${r.final_status.toUpperCase()}</td>
           <td>${r.notes || '-'}</td>
+          ${includePhotos ? `
+            <td>
+              <div style="display:flex;gap:4px;">
+                ${r.photo_room_url ? `<img src="${r.photo_room_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}
+                ${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}
+              </div>
+            </td>
+          ` : ''}
         </tr>
       `).join('');
 
@@ -2290,9 +2394,10 @@
             .btn-print { background: #334155; color: #ffffff; }
             .report-box { background: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #e2e8f0; }
             h2 { margin: 0 0 4px; color: #0d9488; font-size: 18px; }
-            p { margin: 0 0 16px; font-size: 12px; color: #64748b; }
+            p { margin: 0 0 14px; font-size: 12px; color: #64748b; }
+            .summary { display: flex; gap: 16px; margin-bottom: 14px; font-size: 12px; background: #f1f5f9; padding: 10px 14px; border-radius: 8px; }
             table { width: 100%; border-collapse: collapse; font-size: 11px; }
-            th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; }
+            th, td { border: 1px solid #cbd5e1; padding: 7px; text-align: left; vertical-align: middle; }
             th { background-color: #f1f5f9; font-weight: bold; }
             @media print {
               .no-print { display: none !important; }
@@ -2308,7 +2413,11 @@
           </div>
           <div id="pdf-content" class="report-box">
             <h2>REKAPITULASI LAPORAN KESIAPAN KAMAR</h2>
-            <p>RS Khusus Bedah SS Medika • Periode: <strong>${label}</strong> • Dicetak: ${new Date().toLocaleString('id-ID')}</p>
+            <p>RS Khusus Bedah SS Medika • Filter: <strong>${label}</strong> • Dicetak: ${new Date().toLocaleString('id-ID')}</p>
+            <div class="summary">
+              <span><strong>Total Laporan:</strong> ${total}</span>
+              <span><strong>Rata-Rata Skor Kesiapan:</strong> ${avgScore}%</span>
+            </div>
             <table>
               <thead>
                 <tr>
@@ -2320,6 +2429,7 @@
                   <th>Skor</th>
                   <th>Status</th>
                   <th>Catatan</th>
+                  ${includePhotos ? '<th>Foto</th>' : ''}
                 </tr>
               </thead>
               <tbody>${rowsHtml}</tbody>
@@ -2334,8 +2444,8 @@
               const opt = {
                 margin: 10,
                 filename: 'Rekap_Kesiapan_Kamar_${fileSuffix}.pdf',
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2 },
+                image: { type: 'jpeg', quality: 0.95 },
+                html2canvas: { scale: 2, useCORS: true },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
               };
               html2pdf().set(opt).from(element).save().then(function() {
