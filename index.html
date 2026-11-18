@@ -6,6 +6,11 @@
   <title>Cek Kesiapan Kamar - SS Medika</title>
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#0d9488" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Cek Kamar" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='110' fill='%230d9488'/%3E%3Cpath d='M160 112h192a32 32 0 0 1 32 32v240a32 32 0 0 1-32 32H160a32 32 0 0 1-32-32V144a32 32 0 0 1 32-32zm32 104h128m-128 64h128m-128 64h80' stroke='%23ffffff' stroke-width='32' stroke-linecap='round' fill='none'/%3E%3C/svg%3E" />
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -67,6 +72,11 @@
           Masuk Aplikasi
         </button>
       </form>
+
+      <!-- Tombol Install PWA di Layar Login (muncul jika browser mendukung) -->
+      <button type="button" id="btn-install-login" onclick="triggerPwaInstall()" class="hidden w-full py-2.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition">
+        <i data-lucide="download" class="w-4 h-4"></i> Install Aplikasi ke HP
+      </button>
     </div>
   </div>
 
@@ -86,7 +96,10 @@
           <p id="user-greeting" class="text-xs text-slate-500 font-medium">Halo, Petugas</p>
         </div>
       </div>
-      <div class="flex items-center gap-1.5">
+      <div class="flex items-center gap-1">
+        <button type="button" id="btn-install-header" onclick="triggerPwaInstall()" title="Install Aplikasi" class="hidden px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-full text-[11px] font-bold flex items-center gap-1 shadow-sm transition">
+          <i data-lucide="download" class="w-3 h-3"></i> Install
+        </button>
         <span id="network-status" class="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
           <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Online
         </span>
@@ -435,7 +448,7 @@
           </div>
           <div>
             <h3 class="text-sm font-extrabold text-slate-900">Tentang Aplikasi</h3>
-            <p class="text-[11px] text-teal-600 font-bold">Versi 2.5 • Live Cloud Sync</p>
+            <p class="text-[11px] text-teal-600 font-bold">Versi 3.0 PWA • Live Cloud Sync</p>
           </div>
         </div>
         <button onclick="document.getElementById('modal-about').classList.add('hidden')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
@@ -445,14 +458,18 @@
 
       <div class="space-y-2.5 text-xs text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100">
         <p class="font-bold text-slate-900">Sistem Monitoring Kesiapan Kamar Rawat Inap</p>
-        <p>Aplikasi digital untuk memantau kesiapan, kebersihan, dan kelengkapan fasilitas kamar secara real-time di lingkungan <strong>RS Khusus Bedah SS Medika</strong>.</p>
+        <p>Aplikasi PWA (Progressive Web App) untuk memantau kesiapan, kebersihan, dan kelengkapan fasilitas kamar secara real-time di lingkungan <strong>RS Khusus Bedah SS Medika</strong>.</p>
         <ul class="space-y-1 text-[11px] text-slate-600 pt-1">
           <li>• <strong>Scan & Cetak QR Pintu:</strong> Identifikasi unit kamar cepat.</li>
           <li>• <strong>Kamera & Galeri Ber-Watermark:</strong> Dokumentasi otomatis waktu & nama petugas.</li>
           <li>• <strong>Laporan WhatsApp & PDF/CSV:</strong> Kirim rekapitulasi & unduh PDF langsung.</li>
-          <li>• <strong>Mode Offline & Online:</strong> Tetap bisa input saat sinyal lemah.</li>
+          <li>• <strong>Mode Offline & Install PWA:</strong> Dapat dipasang langsung di layar utama HP.</li>
         </ul>
       </div>
+
+      <button type="button" id="btn-install-modal" onclick="triggerPwaInstall()" class="hidden w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm">
+        <i data-lucide="smartphone" class="w-4 h-4"></i> Install ke Layar Utama HP
+      </button>
 
       <div class="text-center text-[11px] text-slate-400">
         &copy; 2026 RS Khusus Bedah SS Medika
@@ -481,8 +498,37 @@
     let qrScannerInstance = null;
     let statusChart = null;
     let activeQrMeta = { code: '', name: '' };
+    let deferredInstallPrompt = null;
 
     lucide.createIcons();
+
+    // --- PWA INSTALL PROMPT ---
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      ['btn-install-login', 'btn-install-header', 'btn-install-modal'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('hidden');
+      });
+    });
+
+    window.addEventListener('appinstalled', () => {
+      deferredInstallPrompt = null;
+      ['btn-install-login', 'btn-install-header', 'btn-install-modal'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+      });
+    });
+
+    async function triggerPwaInstall() {
+      if (!deferredInstallPrompt) {
+        alert('Ketuk menu titik tiga (⋮) di pojok kanan atas browser Chrome lalu pilih "Tambahkan ke Layar utama" atau "Install aplikasi".');
+        return;
+      }
+      deferredInstallPrompt.prompt();
+      const { outcome } = await deferredInstallPrompt.userChoice;
+      if (outcome === 'accepted') deferredInstallPrompt = null;
+    }
 
     window.addEventListener('DOMContentLoaded', () => {
       updateNetworkStatus();
@@ -1332,6 +1378,15 @@
         </html>
       `);
       printWin.document.close();
+    }
+
+    // --- REGISTRASI SERVICE WORKER PWA ---
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(() => console.log('PWA Service Worker aktif'))
+          .catch((err) => console.log('SW gagal:', err));
+      });
     }
   </script>
 </body>
