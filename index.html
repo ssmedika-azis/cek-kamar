@@ -84,12 +84,6 @@
           <i data-lucide="arrow-right" class="w-4 h-4"></i>
         </button>
       </form>
-
-      <div class="bg-slate-50 rounded-xl p-3 text-[11px] text-slate-500 border border-slate-100 space-y-1">
-        <p class="font-bold text-slate-700">Akun Awal:</p>
-        <p>• Manajemen: <span class="font-mono text-teal-700">admin</span> / <span class="font-mono">admin123</span></p>
-        <p>• Petugas: <span class="font-mono text-teal-700">petugas1</span> / <span class="font-mono">petugas123</span></p>
-      </div>
     </div>
   </div>
 
@@ -456,7 +450,7 @@
   <!-- ================= JAVASCRIPT LOGIC ================= -->
   <script>
     const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_AXcmTZqRh9W-QsOyoEcUdQ_bxLpar5O';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteHB4cnJqeG51anlnYWJyaHNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MDk0MjAsImV4cCI6MjExMDQ4NTQyMH0.tFMCbg1_R-I08KEIs-h6wwxXhYLP2Z0oYgnDGC7T2YU';
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let currentUser = JSON.parse(localStorage.getItem('ck_user') || 'null');
