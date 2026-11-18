@@ -2,12 +2,12 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Cek Kesiapan Kamar - SS Medika</title>
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#0d9488" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Cek Kamar" />
 
   <!-- FAVICON & IKON TERBARU -->
@@ -15,12 +15,12 @@
   <link rel="icon" type="image/png" sizes="512x512" href="./512x512.png" />
   <link rel="apple-touch-icon" href="./192x192.png" />
 
-  <!-- DETEKSI MODE LAPORAN PENUH & ANTI-KEDIP SESI -->
+  <!-- DETEKSI MODE LAPORAN PENUH (?l= atau ?laporan=) & ANTI-KEDIP SESI -->
   <script>
     (function() {
       try {
         var params = new URLSearchParams(window.location.search);
-        if (params.get('laporan')) {
+        if (params.get('l') || params.get('laporan')) {
           document.documentElement.classList.add('is-public-report');
         } else if (localStorage.getItem('ck_user')) {
           document.documentElement.classList.add('has-session');
@@ -48,6 +48,13 @@
       background-color: #f1f5f9;
       -webkit-tap-highlight-color: transparent;
     }
+    .safe-top {
+      padding-top: max(0.75rem, env(safe-area-inset-top));
+    }
+    .safe-bottom {
+      padding-bottom: max(0.45rem, env(safe-area-inset-bottom));
+    }
+
     /* Cegah kedipan layar login saat sudah ada sesi atau saat membuka tautan laporan penuh */
     html.has-session #login-screen { display: none !important; }
     html.has-session #main-app { display: block !important; }
@@ -82,21 +89,26 @@
 
   <!-- HALAMAN LAPORAN MODE PENUH (UNTUK PENERIMA LINK WHATSAPP) -->
   <div id="public-report-screen" class="hidden min-h-screen w-full bg-slate-100 pb-12">
-    <header class="sticky top-0 z-30 bg-teal-700 text-white px-4 py-3.5 shadow-md">
-      <div class="max-w-2xl mx-auto flex items-center justify-between gap-3">
-        <div class="flex items-center gap-2.5 min-w-0">
+    <header class="sticky top-0 z-30 bg-teal-700 text-white px-4 pb-3.5 safe-top shadow-md">
+      <div class="max-w-2xl mx-auto flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5 min-w-0 flex-1">
           <div class="w-9 h-9 bg-white rounded-xl flex items-center justify-center shrink-0 overflow-hidden p-0.5">
             <img src="./192x192.png" alt="Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" class="w-full h-full object-contain" />
             <i data-lucide="hospital" class="w-5 h-5 text-teal-700 hidden"></i>
           </div>
-          <div class="min-w-0">
+          <div class="min-w-0 flex-1">
             <h1 class="text-sm font-extrabold leading-tight truncate">Laporan Kesiapan Kamar</h1>
             <p class="text-[11px] text-teal-100 truncate">RS Khusus Bedah SS Medika</p>
           </div>
         </div>
-        <button type="button" onclick="downloadPublicReportPdf()" id="btn-public-pdf" class="shrink-0 px-3 py-1.5 bg-white text-teal-800 hover:bg-teal-50 font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition">
-          <i data-lucide="download" class="w-3.5 h-3.5"></i> Download PDF
-        </button>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button type="button" onclick="sharePublicReportWa()" class="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold rounded-xl text-xs flex items-center gap-1 shadow-sm transition">
+            <i data-lucide="send" class="w-3.5 h-3.5"></i> WA
+          </button>
+          <button type="button" onclick="downloadPublicReportPdf()" id="btn-public-pdf" class="px-2.5 py-1.5 bg-white text-teal-800 hover:bg-teal-50 font-extrabold rounded-xl text-xs flex items-center gap-1 shadow-sm transition">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i> PDF
+          </button>
+        </div>
       </div>
     </header>
 
@@ -150,20 +162,20 @@
 
   <!-- MAIN APP -->
   <div id="main-app" class="hidden w-full max-w-2xl mx-auto overflow-x-hidden">
-    <!-- HEADER PRESISI -->
-    <header class="sticky top-0 z-30 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 px-3.5 py-2.5">
+    <!-- HEADER RAPIH, PROPORSIONAL & ANTI-TUMPANG TINDIH -->
+    <header class="sticky top-0 z-30 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 px-3.5 pb-2.5 safe-top shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
       <div class="flex items-center justify-between gap-2 w-full">
         <div class="flex items-center gap-2.5 min-w-0 flex-1">
-          <div class="w-9 h-9 shrink-0 bg-teal-600 rounded-xl flex items-center justify-center text-white shadow-sm overflow-hidden">
+          <div class="w-10 h-10 shrink-0 bg-teal-600 rounded-xl flex items-center justify-center text-white shadow-sm overflow-hidden">
             <img src="./192x192.png" alt="Icon" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" class="w-full h-full object-cover" />
             <i data-lucide="clipboard-check" class="w-5 h-5 hidden"></i>
           </div>
           <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-1.5">
-              <h1 class="text-[13px] font-extrabold text-slate-900 leading-tight truncate">Cek Kesiapan Kamar</h1>
-              <span id="user-role-badge" class="shrink-0 text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700">PETUGAS</span>
+            <h1 class="text-[13.5px] font-extrabold text-slate-900 leading-tight whitespace-nowrap">Cek Kesiapan Kamar</h1>
+            <div class="flex items-center gap-1.5 mt-0.5 min-w-0">
+              <span id="user-role-badge" class="shrink-0 text-[8.5px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide">PETUGAS</span>
+              <p id="user-greeting" class="text-[11px] text-slate-500 font-medium truncate">Halo, Petugas</p>
             </div>
-            <p id="user-greeting" class="text-[11px] text-slate-500 font-medium truncate">Halo, Petugas</p>
           </div>
         </div>
 
@@ -458,7 +470,7 @@
     </main>
 
     <!-- BOTTOM NAVBAR PRESISI ANTI GESER -->
-    <nav class="fixed bottom-0 left-0 right-0 z-30 w-full bg-white/95 backdrop-blur-md border-t border-slate-200 py-1.5">
+    <nav class="fixed bottom-0 left-0 right-0 z-30 w-full bg-white/95 backdrop-blur-md border-t border-slate-200 pt-1.5 safe-bottom">
       <div class="w-full max-w-2xl mx-auto grid grid-cols-4 items-center px-1">
         <button onclick="switchTab('dashboard')" data-tab="dashboard" class="nav-btn flex flex-col items-center justify-center py-1 text-teal-600 font-bold min-w-0">
           <i data-lucide="layout-grid" class="w-5 h-5 shrink-0"></i>
@@ -480,7 +492,7 @@
     </nav>
   </div>
 
-  <!-- MODAL SHARE WHATSAPP DINAMIS + TAUTAN LAPORAN MODE PENUH -->
+  <!-- MODAL SHARE WHATSAPP DINAMIS + TOMBOL LINK RINGKAS -->
   <div id="modal-wa-share" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-3.5 shadow-2xl max-h-[92vh] overflow-y-auto">
       <div class="flex items-center justify-between">
@@ -490,7 +502,7 @@
           </div>
           <div>
             <h3 class="text-sm font-extrabold text-slate-900">Kirim Laporan WhatsApp</h3>
-            <p class="text-[11px] text-slate-500">Dilengkapi link laporan mode penuh</p>
+            <p class="text-[11px] text-slate-500">Dilengkapi tombol laporan mode penuh</p>
           </div>
         </div>
         <button onclick="document.getElementById('modal-wa-share').classList.add('hidden')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
@@ -507,7 +519,7 @@
         <div class="space-y-1.5">
           <label class="flex items-center gap-2 p-2.5 bg-teal-50/70 rounded-xl border border-teal-200 cursor-pointer">
             <input type="checkbox" id="wa-include-link" checked onchange="refreshWaPreview()" class="rounded text-teal-600" />
-            <span class="text-xs font-bold text-teal-800">Sertakan tombol link Laporan Mode Penuh (Foto & Detail)</span>
+            <span class="text-xs font-bold text-teal-800">Sertakan tombol buka Laporan Mode Penuh</span>
           </label>
           <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
             <input type="checkbox" id="wa-include-checklist" checked onchange="refreshWaPreview()" class="rounded text-emerald-600" />
@@ -586,7 +598,7 @@
           </div>
           <div>
             <h3 class="text-sm font-extrabold text-slate-900">Tentang Aplikasi</h3>
-            <p class="text-[11px] text-teal-600 font-bold">Versi 3.2 PWA • Live Cloud Sync</p>
+            <p class="text-[11px] text-teal-600 font-bold">Versi 3.4 PWA • Live Cloud Sync</p>
           </div>
         </div>
         <button onclick="document.getElementById('modal-about').classList.add('hidden')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
@@ -642,27 +654,44 @@
 
     lucide.createIcons();
 
-    // --- MODE LAPORAN PENUH UNTUK PENERIMA WHATSAPP ---
-    function getPublicReportUrl(reportId) {
-      const baseUrl = window.location.origin + window.location.pathname;
-      return reportId ? `${baseUrl}?laporan=${encodeURIComponent(reportId)}` : baseUrl;
+    // --- URL SINGKAT MODE LAPORAN PENUH (?l=8_KARAKTER_ID) ---
+    function getPublicReportUrl(reportId, withProtocol = true) {
+      const cleanPath = window.location.pathname.replace(/\/index\.html$/, '').replace(/\/$/, '');
+      const hostAndPath = window.location.host + cleanPath;
+      const prefix = withProtocol ? window.location.protocol + '//' : '';
+      if (!reportId) return prefix + hostAndPath;
+      const shortCode = String(reportId).slice(0, 8);
+      return `${prefix}${hostAndPath}?l=${encodeURIComponent(shortCode)}`;
     }
 
-    async function loadPublicReport(reportId) {
+    async function loadPublicReport(codeParam) {
       const container = document.getElementById('public-report-container');
       try {
-        const { data, error } = await db
-          .from('room_inspections')
-          .select('*')
-          .eq('id', reportId)
-          .single();
+        let matched = null;
+        if (codeParam.length >= 32) {
+          const { data } = await db
+            .from('room_inspections')
+            .select('*')
+            .eq('id', codeParam)
+            .single();
+          matched = data;
+        } else {
+          const { data } = await db
+            .from('room_inspections')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(100);
+          if (Array.isArray(data)) {
+            matched = data.find(item => String(item.id).toLowerCase().startsWith(codeParam.toLowerCase()));
+          }
+        }
 
-        if (error || !data) {
+        if (!matched) {
           throw new Error('Data laporan tidak ditemukan atau sudah dihapus.');
         }
 
-        currentPublicReport = data;
-        renderPublicReportView(data);
+        currentPublicReport = matched;
+        renderPublicReportView(matched);
       } catch (err) {
         container.innerHTML = `
           <div class="bg-white rounded-3xl p-6 text-center shadow-sm space-y-2 border border-rose-200">
@@ -749,6 +778,12 @@
       lucide.createIcons();
     }
 
+    function sharePublicReportWa() {
+      if (!currentPublicReport) return;
+      const text = buildWaMessage(currentPublicReport, true, true);
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    }
+
     function zoomPhoto(src) {
       document.getElementById('zoom-photo-img').src = src;
       document.getElementById('modal-photo-zoom').classList.remove('hidden');
@@ -758,7 +793,7 @@
       if (!currentPublicReport) return;
       const btn = document.getElementById('btn-public-pdf');
       btn.disabled = true;
-      btn.textContent = 'Memproses...';
+      btn.textContent = '...';
       const el = document.getElementById('public-pdf-area');
       const safeName = (currentPublicReport.unit_name || 'Kamar').replace(/[^a-zA-Z0-9_-]/g, '_');
       html2pdf().set({
@@ -769,7 +804,7 @@
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
       }).from(el).save().then(() => {
         btn.disabled = false;
-        btn.innerHTML = '<i data-lucide="download" class="w-3.5 h-3.5"></i> Download PDF';
+        btn.innerHTML = '<i data-lucide="download" class="w-3.5 h-3.5"></i> PDF';
         lucide.createIcons();
       });
     }
@@ -809,9 +844,9 @@
 
     window.addEventListener('DOMContentLoaded', () => {
       const params = new URLSearchParams(window.location.search);
-      const reportId = params.get('laporan');
-      if (reportId) {
-        loadPublicReport(reportId);
+      const reportCode = params.get('l') || params.get('laporan');
+      if (reportCode) {
+        loadPublicReport(reportCode);
         return;
       }
 
@@ -914,8 +949,8 @@
       const badge = document.getElementById('user-role-badge');
       badge.textContent = currentUser.role.toUpperCase();
       badge.className = currentUser.role === 'manajemen'
-        ? 'shrink-0 text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700'
-        : 'shrink-0 text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700';
+        ? 'shrink-0 text-[8.5px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 tracking-wide'
+        : 'shrink-0 text-[8.5px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide';
 
       const userCard = document.getElementById('user-management-card');
       if (userCard) userCard.style.display = currentUser.role === 'manajemen' ? 'block' : 'none';
@@ -1131,7 +1166,7 @@
       });
     }
 
-    // --- SHARE WHATSAPP DINAMIS + TAUTAN MODE PENUH ---
+    // --- SHARE WHATSAPP DINAMIS + TOMBOL LINK COMPACT TANPA HTTPS ---
     function buildWaMessage(data, includeChecklist, includeFullLink) {
       const waktu = data.created_at
         ? new Date(data.created_at).toLocaleString('id-ID')
@@ -1164,9 +1199,11 @@
       }
 
       if (includeFullLink && data.id) {
-        lines.push('--------------------------------');
-        lines.push('📄 *Buka Laporan Mode Penuh (Foto & PDF):*');
-        lines.push(getPublicReportUrl(data.id));
+        lines.push('');
+        lines.push('╭──────────────────────────╮');
+        lines.push('│  📄 *BUKA LAPORAN PENUH*   │');
+        lines.push(`│  ${getPublicReportUrl(data.id, false)}`);
+        lines.push('╰──────────────────────────╯');
       }
 
       return lines.join('\n');
@@ -1195,7 +1232,7 @@
     function previewFullReportFromModal() {
       if (!activeWaPayload) return;
       if (activeWaPayload.id) {
-        window.open(getPublicReportUrl(activeWaPayload.id), '_blank');
+        window.open(getPublicReportUrl(activeWaPayload.id, true), '_blank');
       } else {
         alert('Laporan ini tersimpan saat offline dan belum memiliki tautan cloud.');
       }
@@ -1640,7 +1677,7 @@
             ${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />` : ''}
           </div>
           <div class="pt-1 flex items-center justify-end gap-2">
-            ${r.id ? `<a href="${getPublicReportUrl(r.id)}" target="_blank" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl flex items-center gap-1 transition"><i data-lucide="maximize-2" class="w-3 h-3"></i> Mode Penuh</a>` : ''}
+            ${r.id ? `<a href="${getPublicReportUrl(r.id, true)}" target="_blank" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl flex items-center gap-1 transition"><i data-lucide="maximize-2" class="w-3 h-3"></i> Mode Penuh</a>` : ''}
             <button type="button" onclick="shareHistoryWa(${idx})" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-[11px] font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition">
               <i data-lucide="send" class="w-3.5 h-3.5"></i> Kirim ke WhatsApp
             </button>
