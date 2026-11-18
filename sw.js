@@ -3,6 +3,9 @@ const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json'
+  './rekap.html',
+  './1000219682.png',
+  './1794943454665.jpg',
 ];
 
 self.addEventListener('install', (event) => {
