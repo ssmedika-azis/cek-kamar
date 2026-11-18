@@ -55,7 +55,6 @@
       padding-bottom: max(0.45rem, env(safe-area-inset-bottom));
     }
 
-    /* Cegah kedipan layar login saat sudah ada sesi atau saat membuka tautan laporan penuh */
     html.has-session #login-screen { display: none !important; }
     html.has-session #main-app { display: block !important; }
     html.is-public-report #login-screen,
@@ -74,18 +73,46 @@
       0% { transform: scale(0.92); opacity: 0; }
       100% { transform: scale(1); opacity: 1; }
     }
-    .upload-box {
-      transition: all 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+    @keyframes slideDownBanner {
+      0% { transform: translateY(-120%); opacity: 0; }
+      100% { transform: translateY(0); opacity: 1; }
     }
-    .upload-icon-anim {
-      animation: floatCam 2.4s ease-in-out infinite;
+    @keyframes bellRing {
+      0%, 100% { transform: rotate(0deg); }
+      20% { transform: rotate(18deg); }
+      40% { transform: rotate(-16deg); }
+      60% { transform: rotate(12deg); }
+      80% { transform: rotate(-8deg); }
     }
-    .photo-pop {
-      animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-    }
+    .upload-box { transition: all 0.28s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .upload-icon-anim { animation: floatCam 2.4s ease-in-out infinite; }
+    .photo-pop { animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+    .banner-slide-in { animation: slideDownBanner 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+    .bell-animate { animation: bellRing 0.8s ease-in-out; }
   </style>
 </head>
 <body class="text-slate-800 pb-24 w-full">
+
+  <!-- BANNER NOTIFIKASI LIVE MELAYANG (LAYAKNYA NOTIFIKASI HP) -->
+  <div id="live-toast-banner" class="hidden fixed top-3 left-3 right-3 z-[60] max-w-md mx-auto">
+    <div onclick="openLatestNotifFromBanner()" class="bg-slate-900/95 backdrop-blur-md text-white rounded-2xl p-3.5 shadow-2xl border border-teal-500/40 flex items-center gap-3 cursor-pointer">
+      <div class="w-10 h-10 rounded-xl bg-teal-500/20 border border-teal-400/40 flex items-center justify-center shrink-0">
+        <img src="./192x192.png" alt="Icon" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" class="w-7 h-7 object-contain rounded-lg" />
+        <i data-lucide="bell-ring" class="w-5 h-5 text-teal-400 hidden"></i>
+      </div>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-[10px] font-extrabold uppercase tracking-wider text-teal-400">Laporan Masuk • Baru Saja</span>
+          <span id="toast-banner-time" class="text-[10px] text-slate-400">Baru saja</span>
+        </div>
+        <p id="toast-banner-title" class="text-xs font-extrabold text-white truncate mt-0.5">Kamar 101 - Anggrek • SIAP PAKAI</p>
+        <p id="toast-banner-body" class="text-[11px] text-slate-300 truncate">Oleh Petugas • Skor 100%</p>
+      </div>
+      <button type="button" onclick="event.stopPropagation(); hideToastBanner();" class="p-1 text-slate-400 hover:text-white shrink-0">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </div>
 
   <!-- HALAMAN LAPORAN MODE PENUH (UNTUK PENERIMA LINK WHATSAPP) -->
   <div id="public-report-screen" class="hidden min-h-screen w-full bg-slate-100 pb-12">
@@ -153,7 +180,6 @@
         </button>
       </form>
 
-      <!-- Tombol Install PWA di Layar Login -->
       <button type="button" id="btn-install-login" onclick="triggerPwaInstall()" class="hidden w-full py-2.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition">
         <i data-lucide="download" class="w-4 h-4"></i> Install Aplikasi ke HP
       </button>
@@ -162,39 +188,64 @@
 
   <!-- MAIN APP -->
   <div id="main-app" class="hidden w-full max-w-2xl mx-auto overflow-x-hidden">
-    <!-- HEADER RAPIH, PROPORSIONAL & ANTI-TUMPANG TINDIH -->
+    <!-- HEADER RAPIH DENGAN LONCENG NOTIFIKASI -->
     <header class="sticky top-0 z-30 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 px-3.5 pb-2.5 safe-top shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
       <div class="flex items-center justify-between gap-2 w-full">
-        <div class="flex items-center gap-2.5 min-w-0 flex-1">
-          <div class="w-10 h-10 shrink-0 bg-teal-600 rounded-xl flex items-center justify-center text-white shadow-sm overflow-hidden">
+        <div class="flex items-center gap-2 min-w-0 flex-1">
+          <div class="w-9 h-9 shrink-0 bg-teal-600 rounded-xl flex items-center justify-center text-white shadow-sm overflow-hidden">
             <img src="./192x192.png" alt="Icon" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" class="w-full h-full object-cover" />
             <i data-lucide="clipboard-check" class="w-5 h-5 hidden"></i>
           </div>
           <div class="min-w-0 flex-1">
-            <h1 class="text-[13.5px] font-extrabold text-slate-900 leading-tight whitespace-nowrap">Cek Kesiapan Kamar</h1>
+            <h1 class="text-[13px] font-extrabold text-slate-900 leading-tight whitespace-nowrap">Cek Kesiapan Kamar</h1>
             <div class="flex items-center gap-1.5 mt-0.5 min-w-0">
               <span id="user-role-badge" class="shrink-0 text-[8.5px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide">PETUGAS</span>
-              <p id="user-greeting" class="text-[11px] text-slate-500 font-medium truncate">Halo, Petugas</p>
+              <p id="user-greeting" class="text-[10.5px] text-slate-500 font-medium truncate">Halo, Petugas</p>
             </div>
           </div>
         </div>
 
         <div class="flex items-center gap-1 shrink-0">
-          <button type="button" id="btn-install-header" onclick="triggerPwaInstall()" title="Install Aplikasi" class="hidden px-2 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-full text-[10px] font-bold flex items-center gap-1 shadow-sm whitespace-nowrap transition">
-            <i data-lucide="download" class="w-3 h-3"></i> Install
+          <!-- TOMBOL LONCENG NOTIFIKASI HP -->
+          <button type="button" onclick="openNotificationDrawer()" title="Notifikasi Laporan Masuk" class="relative p-1.5 text-slate-600 hover:text-teal-600 hover:bg-teal-50 rounded-xl transition">
+            <i id="notif-bell-icon" data-lucide="bell" class="w-4 h-4"></i>
+            <span id="notif-unread-badge" class="hidden absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-rose-600 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center shadow-sm">0</span>
           </button>
+
+          <button type="button" id="btn-install-header" onclick="triggerPwaInstall()" title="Install Aplikasi" class="hidden px-2 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-full text-[10px] font-bold flex items-center gap-1 shadow-sm whitespace-nowrap transition">
+            <i data-lucide="download" class="w-3 h-3"></i>
+          </button>
+
           <span id="network-status" class="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Online
           </span>
+
           <button onclick="document.getElementById('modal-about').classList.remove('hidden')" title="Tentang Aplikasi" class="p-1.5 text-slate-500 hover:text-teal-600 hover:bg-teal-50 rounded-xl transition">
             <i data-lucide="info" class="w-4 h-4"></i>
           </button>
+
           <button onclick="logout()" title="Keluar" class="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition">
             <i data-lucide="log-out" class="w-4 h-4"></i>
           </button>
         </div>
       </div>
     </header>
+
+    <!-- BANNER IZIN NOTIFIKASI HP (MUNCUL JIKA BELUM DIAKTIFKAN) -->
+    <div id="notif-permission-bar" class="hidden mx-4 mt-3 bg-gradient-to-r from-teal-600 to-emerald-600 text-white rounded-2xl p-3 shadow-md flex items-center justify-between gap-2.5">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+          <i data-lucide="bell-ring" class="w-4 h-4 text-white"></i>
+        </div>
+        <div class="min-w-0">
+          <p class="text-xs font-extrabold leading-tight">Aktifkan Notifikasi HP</p>
+          <p class="text-[10.5px] text-teal-100 truncate">Dapatkan bunyi & popup saat laporan masuk</p>
+        </div>
+      </div>
+      <button type="button" onclick="requestNativeNotificationPermission()" class="shrink-0 px-3 py-1.5 bg-white text-teal-800 hover:bg-teal-50 font-extrabold rounded-xl text-[11px] shadow-sm transition">
+        Aktifkan
+      </button>
+    </div>
 
     <!-- CONTENT -->
     <main class="p-4 space-y-5 w-full">
@@ -238,7 +289,6 @@
           </div>
 
           <form id="inspection-form" class="space-y-4">
-            <!-- DROPDOWN PILIHAN NAMA PETUGAS OTOMATIS -->
             <div class="bg-teal-50/80 border border-teal-200/80 rounded-2xl p-3 space-y-1.5">
               <div class="flex items-center justify-between">
                 <label for="inspect-officer-select" class="text-[10px] font-bold uppercase tracking-wider text-teal-700 flex items-center gap-1.5">
@@ -249,7 +299,6 @@
               <select id="inspect-officer-select" required class="w-full p-2.5 bg-white border border-teal-200 rounded-xl text-xs font-extrabold text-slate-900 outline-none focus:border-teal-500"></select>
             </div>
 
-            <!-- PILIH KAMAR & SHIFT (TERPISAH) -->
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="block text-xs font-bold text-slate-600 mb-1">Pilih Kamar</label>
@@ -273,9 +322,7 @@
               <div id="checklist-container" class="space-y-2"></div>
             </div>
 
-            <!-- KAMERA LANGSUNG & UPLOAD GALERI AKTIF KEDUANYA -->
             <div class="grid grid-cols-2 gap-3">
-              <!-- FOTO AREA KAMAR -->
               <div>
                 <label class="block text-xs font-bold text-slate-600 mb-1.5">Foto Area Kamar</label>
                 <div id="box-upload-room" class="upload-box p-3 bg-gradient-to-b from-teal-50/70 to-slate-50 border-2 border-dashed border-teal-300 rounded-2xl text-center space-y-2">
@@ -302,7 +349,6 @@
                 </div>
               </div>
 
-              <!-- FOTO KAMAR MANDI -->
               <div>
                 <label class="block text-xs font-bold text-slate-600 mb-1.5">Foto Kamar Mandi</label>
                 <div id="box-upload-toilet" class="upload-box p-3 bg-gradient-to-b from-indigo-50/70 to-slate-50 border-2 border-dashed border-indigo-300 rounded-2xl text-center space-y-2">
@@ -335,7 +381,6 @@
               <textarea id="inspect-notes" rows="2" placeholder="Catatan kendala / kerusakan jika ada..." class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none"></textarea>
             </div>
 
-            <!-- TOMBOL SIMPAN & TOMBOL KIRIM WHATSAPP DINAMIS -->
             <div class="space-y-2.5 pt-1">
               <button type="submit" id="btn-submit-inspect" class="w-full py-3.5 bg-teal-600 hover:bg-teal-700 active:scale-[0.99] text-white font-bold rounded-xl text-sm shadow-lg shadow-teal-600/20 transition">
                 Simpan Laporan Kesiapan
@@ -393,6 +438,25 @@
 
       <!-- TAB 4: PENGATURAN -->
       <section id="tab-master" class="page-section hidden space-y-5">
+        <!-- Pengaturan Notifikasi HP -->
+        <div class="glass-card rounded-3xl p-5 shadow-sm space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <h2 class="text-base font-extrabold text-slate-900">Notifikasi Laporan Masuk</h2>
+              <p class="text-xs text-slate-500">Bunyi & notifikasi layar HP saat ada petugas mengisi form</p>
+            </div>
+            <button type="button" onclick="testNotificationAlert()" class="px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-xl text-xs font-bold flex items-center gap-1.5">
+              <i data-lucide="volume-2" class="w-3.5 h-3.5"></i> Tes Bunyi
+            </button>
+          </div>
+          <div class="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-100">
+            <span id="notif-status-label" class="text-xs font-bold text-slate-700">Status Izin Notifikasi HP: Mengecek...</span>
+            <button type="button" id="btn-enable-notif-settings" onclick="requestNativeNotificationPermission()" class="px-3 py-1.5 bg-teal-600 text-white rounded-xl text-xs font-bold">
+              Izinkan Notifikasi
+            </button>
+          </div>
+        </div>
+
         <!-- 1. Kelola Akun -->
         <div id="user-management-card" class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
           <div>
@@ -492,7 +556,38 @@
     </nav>
   </div>
 
-  <!-- MODAL SHARE WHATSAPP DINAMIS + TOMBOL LINK RINGKAS -->
+  <!-- MODAL PANEL NOTIFIKASI LAPORAN MASUK -->
+  <div id="modal-notifications" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-3.5 shadow-2xl max-h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2">
+          <div class="w-9 h-9 bg-teal-100 text-teal-700 rounded-xl flex items-center justify-center">
+            <i data-lucide="bell-ring" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-extrabold text-slate-900">Notifikasi Laporan Masuk</h3>
+            <p class="text-[11px] text-slate-500">Update real-time pengisian form kamar</p>
+          </div>
+        </div>
+        <button onclick="document.getElementById('modal-notifications').classList.add('hidden')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div id="notif-drawer-list" class="overflow-y-auto space-y-2 pr-1 flex-1"></div>
+
+      <div class="flex gap-2 pt-1 shrink-0">
+        <button type="button" onclick="testNotificationAlert()" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">
+          Tes Notifikasi HP
+        </button>
+        <button type="button" onclick="document.getElementById('modal-notifications').classList.add('hidden'); switchTab('analytics');" class="flex-1 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs">
+          Semua Riwayat
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL SHARE WHATSAPP DINAMIS -->
   <div id="modal-wa-share" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-3.5 shadow-2xl max-h-[92vh] overflow-y-auto">
       <div class="flex items-center justify-between">
@@ -598,7 +693,7 @@
           </div>
           <div>
             <h3 class="text-sm font-extrabold text-slate-900">Tentang Aplikasi</h3>
-            <p class="text-[11px] text-teal-600 font-bold">Versi 3.4 PWA • Live Cloud Sync</p>
+            <p class="text-[11px] text-teal-600 font-bold">Versi 3.5 PWA • Live Notifikasi</p>
           </div>
         </div>
         <button onclick="document.getElementById('modal-about').classList.add('hidden')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
@@ -610,10 +705,9 @@
         <p class="font-bold text-slate-900">Sistem Monitoring Kesiapan Kamar Rawat Inap</p>
         <p>Aplikasi PWA (Progressive Web App) untuk memantau kesiapan, kebersihan, dan kelengkapan fasilitas kamar secara real-time di lingkungan <strong>RS Khusus Bedah SS Medika</strong>.</p>
         <ul class="space-y-1 text-[11px] text-slate-600 pt-1">
+          <li>• <strong>Notifikasi HP Real-Time:</strong> Muncul bunyi & pemberitahuan setiap ada laporan masuk.</li>
           <li>• <strong>Scan & Cetak QR Pintu:</strong> Identifikasi unit kamar cepat.</li>
-          <li>• <strong>Kamera & Galeri Ber-Watermark:</strong> Dokumentasi otomatis waktu & nama petugas.</li>
           <li>• <strong>Laporan WhatsApp Mode Penuh:</strong> Penerima pesan dapat membuka laporan lengkap beserta foto & unduh PDF.</li>
-          <li>• <strong>Mode Offline & Install PWA:</strong> Dapat dipasang langsung di layar utama HP.</li>
         </ul>
       </div>
 
@@ -652,7 +746,268 @@
     let activeWaPayload = null;
     let currentPublicReport = null;
 
+    // Variabel Notifikasi Real-Time
+    let realtimeChannel = null;
+    let pollingInterval = null;
+    let lastKnownReportId = localStorage.getItem('ck_last_seen_id') || null;
+    let unreadNotifCount = 0;
+    let latestNotifReport = null;
+    let toastTimeout = null;
+
     lucide.createIcons();
+
+    // --- SUARA NOTIFIKASI LEMBUT TANPA FILE EKSTERNAL (WEB AUDIO API) ---
+    function playNotificationChime() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const now = ctx.currentTime;
+
+        const notes = [880, 1174.66]; // Nada A5 -> D6 jernih ala notifikasi HP
+        notes.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.14);
+
+          gain.gain.setValueAtTime(0.001, now + idx * 0.14);
+          gain.gain.exponentialRampToValueAtTime(0.22, now + idx * 0.14 + 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.14 + 0.35);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + idx * 0.14);
+          osc.stop(now + idx * 0.14 + 0.38);
+        });
+      } catch (e) {}
+    }
+
+    // --- IZIN & NOTIFIKASI SISTEM HP (STATUS BAR / LOCKSCREEN) ---
+    function updateNotificationPermissionUI() {
+      const bar = document.getElementById('notif-permission-bar');
+      const label = document.getElementById('notif-status-label');
+      const btnSettings = document.getElementById('btn-enable-notif-settings');
+
+      if (!('Notification' in window)) {
+        if (bar) bar.classList.add('hidden');
+        if (label) label.textContent = 'Browser tidak mendukung notifikasi sistem';
+        if (btnSettings) btnSettings.classList.add('hidden');
+        return;
+      }
+
+      if (Notification.permission === 'granted') {
+        if (bar) bar.classList.add('hidden');
+        if (label) label.textContent = 'Status Notifikasi HP: Aktif ✅';
+        if (btnSettings) btnSettings.classList.add('hidden');
+      } else if (Notification.permission === 'denied') {
+        if (bar) bar.classList.add('hidden');
+        if (label) label.textContent = 'Status Notifikasi HP: Diblokir di Pengaturan Browser';
+        if (btnSettings) btnSettings.classList.add('hidden');
+      } else {
+        if (bar) bar.classList.remove('hidden');
+        if (label) label.textContent = 'Status Notifikasi HP: Belum Diaktifkan';
+        if (btnSettings) btnSettings.classList.remove('hidden');
+      }
+    }
+
+    async function requestNativeNotificationPermission() {
+      if (!('Notification' in window)) {
+        alert('Perangkat atau browser ini tidak mendukung notifikasi sistem.');
+        return;
+      }
+      const perm = await Notification.requestPermission();
+      updateNotificationPermissionUI();
+      if (perm === 'granted') {
+        testNotificationAlert();
+      }
+    }
+
+    async function triggerNativePhoneNotification(title, body, reportId) {
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+      const targetUrl = reportId ? getPublicReportUrl(reportId, true) : window.location.href;
+      const options = {
+        body: body,
+        icon: './192x192.png',
+        badge: './192x192.png',
+        vibrate: [200, 100, 200],
+        tag: 'cek-kamar-' + (reportId || Date.now()),
+        renotify: true,
+        data: { url: targetUrl }
+      };
+
+      try {
+        if ('serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.getRegistration();
+          if (reg && reg.showNotification) {
+            await reg.showNotification(title, options);
+            return;
+          }
+        }
+        const n = new Notification(title, options);
+        n.onclick = () => {
+          window.focus();
+          if (reportId) window.open(targetUrl, '_blank');
+        };
+      } catch (e) {}
+    }
+
+    function showInAppBanner(report) {
+      latestNotifReport = report;
+      const banner = document.getElementById('live-toast-banner');
+      const statusLabel = report.final_status === 'siap' ? 'SIAP PAKAI ✅' : 'PERLU CEK ⚠️';
+      document.getElementById('toast-banner-title').textContent = `${report.unit_name} • ${statusLabel}`;
+      document.getElementById('toast-banner-body').textContent = `Oleh ${report.inspector_name} (Shift ${report.shift}) • Skor ${report.readiness_score}%`;
+      document.getElementById('toast-banner-time').textContent = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+      banner.classList.remove('hidden', 'banner-slide-in');
+      void banner.offsetWidth;
+      banner.classList.add('banner-slide-in');
+
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(hideToastBanner, 7500);
+    }
+
+    function hideToastBanner() {
+      const banner = document.getElementById('live-toast-banner');
+      if (banner) banner.classList.add('hidden');
+    }
+
+    function openLatestNotifFromBanner() {
+      hideToastBanner();
+      if (latestNotifReport && latestNotifReport.id) {
+        window.open(getPublicReportUrl(latestNotifReport.id, true), '_blank');
+      } else {
+        switchTab('analytics');
+      }
+    }
+
+    function handleIncomingNewReport(report) {
+      if (!report || !report.id) return;
+      if (lastKnownReportId === report.id) return;
+      lastKnownReportId = report.id;
+      localStorage.setItem('ck_last_seen_id', report.id);
+
+      // Update badge lonceng
+      unreadNotifCount++;
+      const badge = document.getElementById('notif-unread-badge');
+      const bell = document.getElementById('notif-bell-icon');
+      if (badge) {
+        badge.textContent = unreadNotifCount > 9 ? '9+' : String(unreadNotifCount);
+        badge.classList.remove('hidden');
+      }
+      if (bell) {
+        bell.classList.remove('bell-animate');
+        void bell.offsetWidth;
+        bell.classList.add('bell-animate');
+      }
+
+      // Bunyi + Getar + Banner layar + Notifikasi HP
+      playNotificationChime();
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      showInAppBanner(report);
+
+      const statusText = report.final_status === 'siap' ? 'SIAP PAKAI' : 'PERLU CEK';
+      triggerNativePhoneNotification(
+        `Laporan Baru: ${report.unit_name}`,
+        `Status: ${statusText} (${report.readiness_score}%) • Petugas: ${report.inspector_name}`,
+        report.id
+      );
+
+      // Segarkan data dasbor & riwayat secara otomatis
+      loadAllData();
+    }
+
+    function testNotificationAlert() {
+      const sample = inspectionsData[0] || {
+        id: null,
+        unit_name: 'Kamar 101 - Anggrek',
+        inspector_name: currentUser ? currentUser.full_name : 'Petugas',
+        shift: 'Siang',
+        readiness_score: 100,
+        final_status: 'siap'
+      };
+      playNotificationChime();
+      if (navigator.vibrate) navigator.vibrate([180, 80, 180]);
+      showInAppBanner(sample);
+      triggerNativePhoneNotification(
+        'Tes Notifikasi Cek Kamar',
+        'Notifikasi HP aktif! Setiap laporan baru akan tampil di sini.',
+        sample.id
+      );
+    }
+
+    function openNotificationDrawer() {
+      unreadNotifCount = 0;
+      const badge = document.getElementById('notif-unread-badge');
+      if (badge) badge.classList.add('hidden');
+
+      const listEl = document.getElementById('notif-drawer-list');
+      if (!inspectionsData.length) {
+        listEl.innerHTML = '<p class="text-xs text-slate-400 text-center py-6">Belum ada riwayat laporan masuk.</p>';
+      } else {
+        listEl.innerHTML = inspectionsData.slice(0, 12).map(r => {
+          const isSiap = r.final_status === 'siap';
+          const waktu = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+          return `
+            <div onclick="${r.id ? `window.open('${getPublicReportUrl(r.id, true)}', '_blank')` : ''}" class="p-3 rounded-2xl bg-slate-50 hover:bg-teal-50/60 border border-slate-200/80 cursor-pointer transition space-y-1">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-extrabold text-slate-900 truncate">${r.unit_name}</span>
+                <span class="shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full ${isSiap ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
+                  ${isSiap ? 'SIAP' : 'PERLU CEK'} (${r.readiness_score}%)
+                </span>
+              </div>
+              <div class="flex items-center justify-between text-[11px] text-slate-500">
+                <span class="truncate">Oleh: <strong>${r.inspector_name}</strong></span>
+                <span class="shrink-0 text-[10px]">${waktu}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      document.getElementById('modal-notifications').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function startRealtimeReportListener() {
+      if (realtimeChannel) {
+        db.removeChannel(realtimeChannel);
+      }
+
+      realtimeChannel = db
+        .channel('room-inspections-live')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'room_inspections' },
+          (payload) => {
+            if (payload && payload.new) {
+              handleIncomingNewReport(payload.new);
+            }
+          }
+        )
+        .subscribe();
+
+      // Cadangan polling ringan setiap 12 detik jika jaringan memblokir WebSocket
+      clearInterval(pollingInterval);
+      pollingInterval = setInterval(async () => {
+        if (!navigator.onLine) return;
+        const { data } = await db
+          .from('room_inspections')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (data && data[0]) {
+          if (!lastKnownReportId) {
+            lastKnownReportId = data[0].id;
+            localStorage.setItem('ck_last_seen_id', data[0].id);
+          } else if (data[0].id !== lastKnownReportId) {
+            handleIncomingNewReport(data[0]);
+          }
+        }
+      }, 12000);
+    }
 
     // --- URL SINGKAT MODE LAPORAN PENUH (?l=8_KARAKTER_ID) ---
     function getPublicReportUrl(reportId, withProtocol = true) {
@@ -906,7 +1261,6 @@
       }
     });
 
-    // --- DROPDOWN NAMA PETUGAS & SHIFT OTOMATIS ---
     function populateOfficerDropdown() {
       const sel = document.getElementById('inspect-officer-select');
       if (!sel) return;
@@ -939,12 +1293,13 @@
       shiftSel.value = autoShift;
     }
 
-    function enterApp() {
+    async function enterApp() {
       document.getElementById('login-screen').classList.add('hidden');
       document.getElementById('main-app').classList.remove('hidden');
       document.getElementById('user-greeting').textContent = 'Halo, ' + currentUser.full_name;
       populateOfficerDropdown();
       setAutoShift();
+      updateNotificationPermissionUI();
 
       const badge = document.getElementById('user-role-badge');
       badge.textContent = currentUser.role.toUpperCase();
@@ -955,7 +1310,12 @@
       const userCard = document.getElementById('user-management-card');
       if (userCard) userCard.style.display = currentUser.role === 'manajemen' ? 'block' : 'none';
 
-      loadAllData();
+      await loadAllData();
+      if (inspectionsData[0] && !lastKnownReportId) {
+        lastKnownReportId = inspectionsData[0].id;
+        localStorage.setItem('ck_last_seen_id', lastKnownReportId);
+      }
+      startRealtimeReportListener();
     }
 
     function logout() {
@@ -1066,7 +1426,6 @@
       document.getElementById('inspect-unit').value = unitId;
     }
 
-    // --- FORM INSPEKSI ---
     function startTimer() {
       clearInterval(timerInterval);
       secondsElapsed = 0;
@@ -1330,6 +1689,8 @@
         } else {
           if (insertedRows && insertedRows[0]) {
             savedRecord = insertedRows[0];
+            lastKnownReportId = savedRecord.id;
+            localStorage.setItem('ck_last_seen_id', savedRecord.id);
           }
           await db.from('master_units').update({
             status: finalStatus,
@@ -1350,6 +1711,7 @@
         setAutoShift();
         watermarkedPhotos = { room: null, toilet: null };
         resetPhotoBoxes();
+        playNotificationChime();
         await loadAllData();
         switchTab('analytics');
         if (alsoSendWa) {
@@ -1459,7 +1821,7 @@
       link.click();
     }
 
-    // --- MANAJEMEN AKUN (TAMBAH, EDIT & HAPUS) ---
+    // --- MANAJEMEN AKUN ---
     function renderUsers() {
       const list = document.getElementById('master-user-list');
       if (!list) return;
