@@ -435,7 +435,7 @@
           </div>
           <div>
             <h3 class="text-sm font-extrabold text-slate-900">Tentang Aplikasi</h3>
-            <p class="text-[11px] text-teal-600 font-bold">Versi 2.4 • Live Cloud Sync</p>
+            <p class="text-[11px] text-teal-600 font-bold">Versi 2.5 • Live Cloud Sync</p>
           </div>
         </div>
         <button onclick="document.getElementById('modal-about').classList.add('hidden')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
@@ -449,7 +449,7 @@
         <ul class="space-y-1 text-[11px] text-slate-600 pt-1">
           <li>• <strong>Scan & Cetak QR Pintu:</strong> Identifikasi unit kamar cepat.</li>
           <li>• <strong>Kamera & Galeri Ber-Watermark:</strong> Dokumentasi otomatis waktu & nama petugas.</li>
-          <li>• <strong>Laporan WhatsApp & PDF/CSV:</strong> Kirim rekapitulasi langsung ke grup/manajemen.</li>
+          <li>• <strong>Laporan WhatsApp & PDF/CSV:</strong> Kirim rekapitulasi & unduh PDF langsung.</li>
           <li>• <strong>Mode Offline & Online:</strong> Tetap bisa input saat sinyal lemah.</li>
         </ul>
       </div>
@@ -1176,7 +1176,7 @@
       loadAllData();
     }
 
-    // --- ANALITIK, EKSPOR CSV & PDF ---
+    // --- ANALITIK, EKSPOR CSV & DOWNLOAD PDF ---
     function renderAnalytics() {
       const siap = unitsData.filter(u => u.status === 'siap').length;
       const kotor = unitsData.filter(u => u.status === 'kotor').length;
@@ -1244,6 +1244,7 @@
       const printWin = window.open('', '_blank');
       if (!printWin) return alert('Izinkan pop-up browser untuk mengekspor PDF.');
 
+      const fileDate = new Date().toISOString().slice(0, 10);
       const rowsHtml = inspectionsData.map((r, i) => `
         <tr>
           <td>${i + 1}</td>
@@ -1262,35 +1263,71 @@
         <html lang="id">
         <head>
           <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <title>Rekap Kesiapan Kamar - RS Khusus Bedah SS Medika</title>
+          <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script>
           <style>
-            body { font-family: Arial, sans-serif; padding: 24px; color: #1e293b; }
-            h2 { margin: 0 0 4px; color: #0d9488; }
+            body { font-family: Arial, sans-serif; padding: 20px; color: #1e293b; background: #f8fafc; margin: 0; }
+            .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; background: #ffffff; padding: 12px 16px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+            .btn { padding: 10px 16px; border: none; border-radius: 10px; font-weight: bold; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+            .btn-download { background: #0d9488; color: #ffffff; }
+            .btn-print { background: #334155; color: #ffffff; }
+            .report-box { background: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #e2e8f0; }
+            h2 { margin: 0 0 4px; color: #0d9488; font-size: 18px; }
             p { margin: 0 0 16px; font-size: 12px; color: #64748b; }
             table { width: 100%; border-collapse: collapse; font-size: 11px; }
             th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; }
             th { background-color: #f1f5f9; font-weight: bold; }
+            @media print {
+              .no-print { display: none !important; }
+              body { background: #ffffff; padding: 0; }
+              .report-box { border: none; padding: 0; }
+            }
           </style>
         </head>
         <body>
-          <h2>REKAPITULASI LAPORAN KESIAPAN KAMAR</h2>
-          <p>RS Khusus Bedah SS Medika • Dicetak pada: ${new Date().toLocaleString('id-ID')}</p>
-          <table>
-            <thead>
-              <tr>
-                <th>No</th>
-                <th>Waktu</th>
-                <th>Unit Kamar</th>
-                <th>Petugas</th>
-                <th>Shift</th>
-                <th>Skor</th>
-                <th>Status</th>
-                <th>Catatan</th>
-              </tr>
-            </thead>
-            <tbody>${rowsHtml || '<tr><td colspan="8">Belum ada data laporan.</td></tr>'}</tbody>
-          </table>
-          <script>window.onload = function() { window.print(); };<\/script>
+          <div class="toolbar no-print">
+            <button type="button" id="btn-dl-pdf" class="btn btn-download" onclick="downloadDirectPdf()">⬇ Download PDF</button>
+            <button type="button" class="btn btn-print" onclick="window.print()">🖨 Cetak / Print</button>
+          </div>
+          <div id="pdf-content" class="report-box">
+            <h2>REKAPITULASI LAPORAN KESIAPAN KAMAR</h2>
+            <p>RS Khusus Bedah SS Medika • Dicetak pada: ${new Date().toLocaleString('id-ID')}</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>No</th>
+                  <th>Waktu</th>
+                  <th>Unit Kamar</th>
+                  <th>Petugas</th>
+                  <th>Shift</th>
+                  <th>Skor</th>
+                  <th>Status</th>
+                  <th>Catatan</th>
+                </tr>
+              </thead>
+              <tbody>${rowsHtml || '<tr><td colspan="8">Belum ada data laporan.</td></tr>'}</tbody>
+            </table>
+          </div>
+          <script>
+            function downloadDirectPdf() {
+              const btn = document.getElementById('btn-dl-pdf');
+              btn.textContent = 'Memproses PDF...';
+              btn.disabled = true;
+              const element = document.getElementById('pdf-content');
+              const opt = {
+                margin: 10,
+                filename: 'Rekap_Kesiapan_Kamar_${fileDate}.pdf',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2 },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+              };
+              html2pdf().set(opt).from(element).save().then(function() {
+                btn.textContent = '⬇ Download PDF';
+                btn.disabled = false;
+              });
+            }
+          <\/script>
         </body>
         </html>
       `);
