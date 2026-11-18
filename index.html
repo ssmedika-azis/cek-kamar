@@ -9,22 +9,56 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Cek Kamar" />
-  <link rel="icon" type="image/png" href="1000219682.png">
-  <link rel="apple-touch-icon" href="1000219682.png">
+
+  <!-- FAVICON & IKON TERBARU -->
+  <link rel="icon" type="image/png" sizes="192x192" href="./192x192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="./512x512.png" />
+  <link rel="apple-touch-icon" href="./192x192.png" />
+
+  <!-- DETEKSI MODE LAPORAN PENUH & ANTI-KEDIP SESI -->
+  <script>
+    (function() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('laporan')) {
+          document.documentElement.classList.add('is-public-report');
+        } else if (localStorage.getItem('ck_user')) {
+          document.documentElement.classList.add('has-session');
+        }
+      } catch (e) {}
+    })();
+  </script>
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f1f5f9; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      max-width: 100%;
+      overflow-x: hidden;
+      overscroll-behavior-x: none;
+    }
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #f1f5f9;
+      -webkit-tap-highlight-color: transparent;
+    }
+    /* Cegah kedipan layar login saat sudah ada sesi atau saat membuka tautan laporan penuh */
+    html.has-session #login-screen { display: none !important; }
+    html.has-session #main-app { display: block !important; }
+    html.is-public-report #login-screen,
+    html.is-public-report #main-app { display: none !important; }
+    html.is-public-report #public-report-screen { display: block !important; }
+
     .glass-card { background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(10px); border: 1px solid rgba(226, 232, 240, 0.8); }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-    /* Animasi Upload Foto */
     @keyframes floatCam {
       0%, 100% { transform: translateY(0px) scale(1); }
       50% { transform: translateY(-4px) scale(1.06); }
@@ -44,14 +78,48 @@
     }
   </style>
 </head>
-<body class="text-slate-800 pb-24">
+<body class="text-slate-800 pb-24 w-full">
+
+  <!-- HALAMAN LAPORAN MODE PENUH (UNTUK PENERIMA LINK WHATSAPP) -->
+  <div id="public-report-screen" class="hidden min-h-screen w-full bg-slate-100 pb-12">
+    <header class="sticky top-0 z-30 bg-teal-700 text-white px-4 py-3.5 shadow-md">
+      <div class="max-w-2xl mx-auto flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-9 h-9 bg-white rounded-xl flex items-center justify-center shrink-0 overflow-hidden p-0.5">
+            <img src="./192x192.png" alt="Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" class="w-full h-full object-contain" />
+            <i data-lucide="hospital" class="w-5 h-5 text-teal-700 hidden"></i>
+          </div>
+          <div class="min-w-0">
+            <h1 class="text-sm font-extrabold leading-tight truncate">Laporan Kesiapan Kamar</h1>
+            <p class="text-[11px] text-teal-100 truncate">RS Khusus Bedah SS Medika</p>
+          </div>
+        </div>
+        <button type="button" onclick="downloadPublicReportPdf()" id="btn-public-pdf" class="shrink-0 px-3 py-1.5 bg-white text-teal-800 hover:bg-teal-50 font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i> Download PDF
+        </button>
+      </div>
+    </header>
+
+    <div id="public-report-container" class="max-w-2xl mx-auto p-4 space-y-4">
+      <div class="bg-white rounded-3xl p-8 text-center shadow-sm space-y-2">
+        <p class="text-xs font-bold text-slate-500">Memuat data laporan kesiapan kamar...</p>
+      </div>
+    </div>
+
+    <div class="max-w-2xl mx-auto px-4 pt-2">
+      <button type="button" onclick="exitPublicReportMode()" class="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-sm transition">
+        <i data-lucide="layout-grid" class="w-4 h-4"></i> Buka Aplikasi Utama Cek Kesiapan Kamar
+      </button>
+    </div>
+  </div>
 
   <!-- LOGIN SCREEN -->
-  <div id="login-screen" class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-teal-700 via-teal-600 to-emerald-600">
+  <div id="login-screen" class="min-h-screen w-full flex items-center justify-center p-4 bg-gradient-to-br from-teal-700 via-teal-600 to-emerald-600">
     <div class="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl space-y-5">
       <div class="text-center space-y-2">
-        <div class="w-16 h-16 bg-teal-50 rounded-2xl flex items-center justify-center mx-auto border border-teal-100">
-          <i data-lucide="hospital" class="w-8 h-8 text-teal-600"></i>
+        <div class="w-16 h-16 bg-teal-50 rounded-2xl flex items-center justify-center mx-auto border border-teal-100 overflow-hidden">
+          <img src="./192x192.png" alt="Logo SS Medika" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" class="w-12 h-12 object-contain" />
+          <i data-lucide="hospital" class="w-8 h-8 text-teal-600 hidden"></i>
         </div>
         <h1 class="text-xl font-extrabold text-slate-900">Cek Kesiapan Kamar</h1>
         <p class="text-xs text-slate-500 font-medium">RS Khusus Bedah SS Medika</p>
@@ -73,7 +141,7 @@
         </button>
       </form>
 
-      <!-- Tombol Install PWA di Layar Login (muncul jika browser mendukung) -->
+      <!-- Tombol Install PWA di Layar Login -->
       <button type="button" id="btn-install-login" onclick="triggerPwaInstall()" class="hidden w-full py-2.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition">
         <i data-lucide="download" class="w-4 h-4"></i> Install Aplikasi ke HP
       </button>
@@ -81,39 +149,43 @@
   </div>
 
   <!-- MAIN APP -->
-  <div id="main-app" class="hidden max-w-2xl mx-auto">
-    <!-- HEADER -->
-    <header class="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between">
-      <div class="flex items-center gap-2.5">
-        <div class="w-10 h-10 bg-teal-600 rounded-xl flex items-center justify-center text-white shadow-sm">
-          <i data-lucide="clipboard-check" class="w-5 h-5"></i>
-        </div>
-        <div>
-          <div class="flex items-center gap-1.5">
-            <h1 class="text-sm font-extrabold text-slate-900 leading-tight">Cek Kesiapan Kamar</h1>
-            <span id="user-role-badge" class="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">PETUGAS</span>
+  <div id="main-app" class="hidden w-full max-w-2xl mx-auto overflow-x-hidden">
+    <!-- HEADER PRESISI -->
+    <header class="sticky top-0 z-30 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 px-3.5 py-2.5">
+      <div class="flex items-center justify-between gap-2 w-full">
+        <div class="flex items-center gap-2.5 min-w-0 flex-1">
+          <div class="w-9 h-9 shrink-0 bg-teal-600 rounded-xl flex items-center justify-center text-white shadow-sm overflow-hidden">
+            <img src="./192x192.png" alt="Icon" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" class="w-full h-full object-cover" />
+            <i data-lucide="clipboard-check" class="w-5 h-5 hidden"></i>
           </div>
-          <p id="user-greeting" class="text-xs text-slate-500 font-medium">Halo, Petugas</p>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1.5">
+              <h1 class="text-[13px] font-extrabold text-slate-900 leading-tight truncate">Cek Kesiapan Kamar</h1>
+              <span id="user-role-badge" class="shrink-0 text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700">PETUGAS</span>
+            </div>
+            <p id="user-greeting" class="text-[11px] text-slate-500 font-medium truncate">Halo, Petugas</p>
+          </div>
         </div>
-      </div>
-      <div class="flex items-center gap-1">
-        <button type="button" id="btn-install-header" onclick="triggerPwaInstall()" title="Install Aplikasi" class="hidden px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-full text-[11px] font-bold flex items-center gap-1 shadow-sm transition">
-          <i data-lucide="download" class="w-3 h-3"></i> Install
-        </button>
-        <span id="network-status" class="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-          <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Online
-        </span>
-        <button onclick="document.getElementById('modal-about').classList.remove('hidden')" title="Tentang Aplikasi" class="p-2 text-slate-500 hover:text-teal-600 hover:bg-teal-50 rounded-xl transition">
-          <i data-lucide="info" class="w-5 h-5"></i>
-        </button>
-        <button onclick="logout()" title="Keluar" class="p-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition">
-          <i data-lucide="log-out" class="w-5 h-5"></i>
-        </button>
+
+        <div class="flex items-center gap-1 shrink-0">
+          <button type="button" id="btn-install-header" onclick="triggerPwaInstall()" title="Install Aplikasi" class="hidden px-2 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-full text-[10px] font-bold flex items-center gap-1 shadow-sm whitespace-nowrap transition">
+            <i data-lucide="download" class="w-3 h-3"></i> Install
+          </button>
+          <span id="network-status" class="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Online
+          </span>
+          <button onclick="document.getElementById('modal-about').classList.remove('hidden')" title="Tentang Aplikasi" class="p-1.5 text-slate-500 hover:text-teal-600 hover:bg-teal-50 rounded-xl transition">
+            <i data-lucide="info" class="w-4 h-4"></i>
+          </button>
+          <button onclick="logout()" title="Keluar" class="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition">
+            <i data-lucide="log-out" class="w-4 h-4"></i>
+          </button>
+        </div>
       </div>
     </header>
 
     <!-- CONTENT -->
-    <main class="p-4 space-y-5">
+    <main class="p-4 space-y-5 w-full">
 
       <!-- TAB 1: DASBOR -->
       <section id="tab-dashboard" class="page-section space-y-4">
@@ -208,10 +280,10 @@
                   <img id="preview-room" class="hidden w-full h-24 object-cover rounded-xl shadow-sm photo-pop" />
 
                   <div class="grid grid-cols-2 gap-1.5 pt-1">
-                    <button type="button" onclick="document.getElementById('input-camera-room').click()" class="py-1.5 px-2 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 shadow-sm transition">
+                    <button type="button" onclick="document.getElementById('input-camera-room').click()" class="py-1.5 px-1.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 shadow-sm transition">
                       <i data-lucide="camera" class="w-3 h-3"></i> Kamera
                     </button>
-                    <button type="button" onclick="document.getElementById('input-gallery-room').click()" class="py-1.5 px-2 bg-white hover:bg-teal-50 active:scale-95 text-teal-700 border border-teal-300 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition">
+                    <button type="button" onclick="document.getElementById('input-gallery-room').click()" class="py-1.5 px-1.5 bg-white hover:bg-teal-50 active:scale-95 text-teal-700 border border-teal-300 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition">
                       <i data-lucide="image" class="w-3 h-3"></i> Galeri
                     </button>
                   </div>
@@ -235,10 +307,10 @@
                   <img id="preview-toilet" class="hidden w-full h-24 object-cover rounded-xl shadow-sm photo-pop" />
 
                   <div class="grid grid-cols-2 gap-1.5 pt-1">
-                    <button type="button" onclick="document.getElementById('input-camera-toilet').click()" class="py-1.5 px-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 shadow-sm transition">
+                    <button type="button" onclick="document.getElementById('input-camera-toilet').click()" class="py-1.5 px-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 shadow-sm transition">
                       <i data-lucide="camera" class="w-3 h-3"></i> Kamera
                     </button>
-                    <button type="button" onclick="document.getElementById('input-gallery-toilet').click()" class="py-1.5 px-2 bg-white hover:bg-indigo-50 active:scale-95 text-indigo-700 border border-indigo-300 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition">
+                    <button type="button" onclick="document.getElementById('input-gallery-toilet').click()" class="py-1.5 px-1.5 bg-white hover:bg-indigo-50 active:scale-95 text-indigo-700 border border-indigo-300 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition">
                       <i data-lucide="image" class="w-3 h-3"></i> Galeri
                     </button>
                   </div>
@@ -251,7 +323,7 @@
               <textarea id="inspect-notes" rows="2" placeholder="Catatan kendala / kerusakan jika ada..." class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none"></textarea>
             </div>
 
-            <!-- TOMBOL SIMPAN & TOMBOL KIRIM WHATSAPP -->
+            <!-- TOMBOL SIMPAN & TOMBOL KIRIM WHATSAPP DINAMIS -->
             <div class="space-y-2.5 pt-1">
               <button type="submit" id="btn-submit-inspect" class="w-full py-3.5 bg-teal-600 hover:bg-teal-700 active:scale-[0.99] text-white font-bold rounded-xl text-sm shadow-lg shadow-teal-600/20 transition">
                 Simpan Laporan Kesiapan
@@ -385,27 +457,92 @@
       </section>
     </main>
 
-    <!-- BOTTOM NAV -->
-    <nav class="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 px-2 py-1.5">
-      <div class="max-w-2xl mx-auto grid grid-cols-4 gap-1">
-        <button onclick="switchTab('dashboard')" data-tab="dashboard" class="nav-btn flex flex-col items-center justify-center py-1 text-teal-600 font-bold">
-          <i data-lucide="layout-grid" class="w-5 h-5"></i>
-          <span class="text-[10px] mt-0.5">Dasbor</span>
+    <!-- BOTTOM NAVBAR PRESISI ANTI GESER -->
+    <nav class="fixed bottom-0 left-0 right-0 z-30 w-full bg-white/95 backdrop-blur-md border-t border-slate-200 py-1.5">
+      <div class="w-full max-w-2xl mx-auto grid grid-cols-4 items-center px-1">
+        <button onclick="switchTab('dashboard')" data-tab="dashboard" class="nav-btn flex flex-col items-center justify-center py-1 text-teal-600 font-bold min-w-0">
+          <i data-lucide="layout-grid" class="w-5 h-5 shrink-0"></i>
+          <span class="text-[10px] mt-0.5 truncate max-w-full">Dasbor</span>
         </button>
-        <button onclick="switchTab('inspect')" data-tab="inspect" class="nav-btn flex flex-col items-center justify-center py-1 text-slate-400">
-          <i data-lucide="clipboard-list" class="w-5 h-5"></i>
-          <span class="text-[10px] mt-0.5">Cek Kamar</span>
+        <button onclick="switchTab('inspect')" data-tab="inspect" class="nav-btn flex flex-col items-center justify-center py-1 text-slate-400 min-w-0">
+          <i data-lucide="clipboard-list" class="w-5 h-5 shrink-0"></i>
+          <span class="text-[10px] mt-0.5 truncate max-w-full">Cek Kamar</span>
         </button>
-        <button onclick="switchTab('analytics')" data-tab="analytics" class="nav-btn flex flex-col items-center justify-center py-1 text-slate-400">
-          <i data-lucide="bar-chart-2" class="w-5 h-5"></i>
-          <span class="text-[10px] mt-0.5">Analitik</span>
+        <button onclick="switchTab('analytics')" data-tab="analytics" class="nav-btn flex flex-col items-center justify-center py-1 text-slate-400 min-w-0">
+          <i data-lucide="bar-chart-2" class="w-5 h-5 shrink-0"></i>
+          <span class="text-[10px] mt-0.5 truncate max-w-full">Analitik</span>
         </button>
-        <button onclick="switchTab('master')" data-tab="master" class="nav-btn flex flex-col items-center justify-center py-1 text-slate-400">
-          <i data-lucide="sliders" class="w-5 h-5"></i>
-          <span class="text-[10px] mt-0.5">Pengaturan</span>
+        <button onclick="switchTab('master')" data-tab="master" class="nav-btn flex flex-col items-center justify-center py-1 text-slate-400 min-w-0">
+          <i data-lucide="sliders" class="w-5 h-5 shrink-0"></i>
+          <span class="text-[10px] mt-0.5 truncate max-w-full">Pengaturan</span>
         </button>
       </div>
     </nav>
+  </div>
+
+  <!-- MODAL SHARE WHATSAPP DINAMIS + TAUTAN LAPORAN MODE PENUH -->
+  <div id="modal-wa-share" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-3.5 shadow-2xl max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <div class="w-9 h-9 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
+            <i data-lucide="send" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-extrabold text-slate-900">Kirim Laporan WhatsApp</h3>
+            <p class="text-[11px] text-slate-500">Dilengkapi link laporan mode penuh</p>
+          </div>
+        </div>
+        <button onclick="document.getElementById('modal-wa-share').classList.add('hidden')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="space-y-2.5">
+        <div>
+          <label class="block text-[11px] font-bold text-slate-600 mb-1">Nomor WA Tujuan (Opsional)</label>
+          <input type="tel" id="wa-target-phone" placeholder="Kosongkan untuk pilih Grup / Kontak di WA" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:border-emerald-500" />
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="flex items-center gap-2 p-2.5 bg-teal-50/70 rounded-xl border border-teal-200 cursor-pointer">
+            <input type="checkbox" id="wa-include-link" checked onchange="refreshWaPreview()" class="rounded text-teal-600" />
+            <span class="text-xs font-bold text-teal-800">Sertakan tombol link Laporan Mode Penuh (Foto & Detail)</span>
+          </label>
+          <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
+            <input type="checkbox" id="wa-include-checklist" checked onchange="refreshWaPreview()" class="rounded text-emerald-600" />
+            <span class="text-xs font-bold text-slate-700">Sertakan rincian kelengkapan di teks</span>
+          </label>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-[11px] font-bold text-slate-600">Pratinjau Pesan</label>
+            <button type="button" onclick="previewFullReportFromModal()" class="text-[11px] font-bold text-teal-600 hover:underline flex items-center gap-1">
+              <i data-lucide="external-link" class="w-3 h-3"></i> Lihat Tampilan Penuh
+            </button>
+          </div>
+          <textarea id="wa-message-preview" rows="7" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-mono text-slate-700 outline-none focus:border-emerald-500"></textarea>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 pt-1">
+        <button type="button" onclick="executeWhatsAppSend(false)" class="py-3 px-3 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
+          <i data-lucide="users" class="w-3.5 h-3.5"></i> Pilih Grup / Kontak
+        </button>
+        <button type="button" onclick="executeWhatsAppSend(true)" class="py-3 px-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
+          <i data-lucide="send" class="w-3.5 h-3.5"></i> Kirim ke Nomor
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL LIGHTBOX ZOOM FOTO -->
+  <div id="modal-photo-zoom" onclick="this.classList.add('hidden')" class="hidden fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="max-w-2xl w-full space-y-3 text-center">
+      <img id="zoom-photo-img" src="" class="w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl mx-auto" />
+      <p class="text-xs text-slate-300">Ketuk di mana saja untuk menutup foto</p>
+    </div>
   </div>
 
   <!-- MODAL QR SCANNER -->
@@ -443,12 +580,13 @@
     <div class="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2.5">
-          <div class="w-10 h-10 bg-teal-600 rounded-2xl flex items-center justify-center text-white">
-            <i data-lucide="hospital" class="w-5 h-5"></i>
+          <div class="w-10 h-10 bg-teal-600 rounded-2xl flex items-center justify-center text-white overflow-hidden">
+            <img src="./192x192.png" alt="Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" class="w-full h-full object-cover" />
+            <i data-lucide="hospital" class="w-5 h-5 hidden"></i>
           </div>
           <div>
             <h3 class="text-sm font-extrabold text-slate-900">Tentang Aplikasi</h3>
-            <p class="text-[11px] text-teal-600 font-bold">Versi 3.0 PWA • Live Cloud Sync</p>
+            <p class="text-[11px] text-teal-600 font-bold">Versi 3.2 PWA • Live Cloud Sync</p>
           </div>
         </div>
         <button onclick="document.getElementById('modal-about').classList.add('hidden')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
@@ -462,7 +600,7 @@
         <ul class="space-y-1 text-[11px] text-slate-600 pt-1">
           <li>• <strong>Scan & Cetak QR Pintu:</strong> Identifikasi unit kamar cepat.</li>
           <li>• <strong>Kamera & Galeri Ber-Watermark:</strong> Dokumentasi otomatis waktu & nama petugas.</li>
-          <li>• <strong>Laporan WhatsApp & PDF/CSV:</strong> Kirim rekapitulasi & unduh PDF langsung.</li>
+          <li>• <strong>Laporan WhatsApp Mode Penuh:</strong> Penerima pesan dapat membuka laporan lengkap beserta foto & unduh PDF.</li>
           <li>• <strong>Mode Offline & Install PWA:</strong> Dapat dipasang langsung di layar utama HP.</li>
         </ul>
       </div>
@@ -499,8 +637,147 @@
     let statusChart = null;
     let activeQrMeta = { code: '', name: '' };
     let deferredInstallPrompt = null;
+    let activeWaPayload = null;
+    let currentPublicReport = null;
 
     lucide.createIcons();
+
+    // --- MODE LAPORAN PENUH UNTUK PENERIMA WHATSAPP ---
+    function getPublicReportUrl(reportId) {
+      const baseUrl = window.location.origin + window.location.pathname;
+      return reportId ? `${baseUrl}?laporan=${encodeURIComponent(reportId)}` : baseUrl;
+    }
+
+    async function loadPublicReport(reportId) {
+      const container = document.getElementById('public-report-container');
+      try {
+        const { data, error } = await db
+          .from('room_inspections')
+          .select('*')
+          .eq('id', reportId)
+          .single();
+
+        if (error || !data) {
+          throw new Error('Data laporan tidak ditemukan atau sudah dihapus.');
+        }
+
+        currentPublicReport = data;
+        renderPublicReportView(data);
+      } catch (err) {
+        container.innerHTML = `
+          <div class="bg-white rounded-3xl p-6 text-center shadow-sm space-y-2 border border-rose-200">
+            <p class="text-sm font-extrabold text-rose-600">Laporan Tidak Ditemukan</p>
+            <p class="text-xs text-slate-500">${err.message}</p>
+          </div>
+        `;
+      }
+    }
+
+    function renderPublicReportView(r) {
+      const container = document.getElementById('public-report-container');
+      const isSiap = r.final_status === 'siap';
+      const waktu = r.created_at ? new Date(r.created_at).toLocaleString('id-ID') : '-';
+      const checklistHtml = Array.isArray(r.checklist_data) && r.checklist_data.length > 0
+        ? r.checklist_data.map(c => `
+            <div class="flex items-center justify-between py-2 px-3 rounded-xl ${c.checked ? 'bg-emerald-50/70 text-slate-800' : 'bg-rose-50/70 text-rose-800'}">
+              <span class="text-xs font-bold">${c.item}</span>
+              <span class="text-xs font-extrabold">${c.checked ? '✅ Sesuai' : '❌ Belum'}</span>
+            </div>
+          `).join('')
+        : '<p class="text-xs text-slate-400">Tidak ada rincian checklist.</p>';
+
+      container.innerHTML = `
+        <div id="public-pdf-area" class="bg-white rounded-3xl p-5 shadow-sm border border-slate-200 space-y-4">
+          <div class="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <span class="text-[10px] font-extrabold uppercase tracking-wider text-teal-600">RS Khusus Bedah SS Medika</span>
+              <h2 class="text-lg font-extrabold text-slate-900 mt-0.5">${r.unit_name}</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Waktu Cek: <strong>${waktu}</strong></p>
+            </div>
+            <div class="text-right shrink-0">
+              <span class="inline-block text-xs font-extrabold px-3 py-1 rounded-full ${isSiap ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
+                ${isSiap ? 'SIAP PAKAI ✅' : 'PERLU CEK ⚠️'}
+              </span>
+              <p class="text-lg font-extrabold text-teal-700 mt-1">Skor: ${r.readiness_score}%</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs">
+            <div>
+              <span class="text-[10px] text-slate-400 font-bold block">PETUGAS PEMERIKSA</span>
+              <span class="font-extrabold text-slate-800">${r.inspector_name}</span>
+            </div>
+            <div>
+              <span class="text-[10px] text-slate-400 font-bold block">SHIFT KERJA</span>
+              <span class="font-extrabold text-slate-800">Shift ${r.shift}</span>
+            </div>
+          </div>
+
+          ${(r.photo_room_url || r.photo_toilet_url) ? `
+            <div class="space-y-2">
+              <h3 class="text-xs font-extrabold text-slate-800">Dokumentasi Foto (Ketuk untuk Perbesar)</h3>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                ${r.photo_room_url ? `
+                  <div class="space-y-1">
+                    <span class="text-[10px] font-bold text-slate-500">Area Kamar</span>
+                    <img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" />
+                  </div>
+                ` : ''}
+                ${r.photo_toilet_url ? `
+                  <div class="space-y-1">
+                    <span class="text-[10px] font-bold text-slate-500">Kamar Mandi</span>
+                    <img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" />
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          ` : ''}
+
+          <div class="space-y-2">
+            <h3 class="text-xs font-extrabold text-slate-800">Rincian Kelengkapan & Kebersihan</h3>
+            <div class="space-y-1.5">${checklistHtml}</div>
+          </div>
+
+          ${r.notes ? `
+            <div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-3">
+              <span class="text-[10px] font-extrabold uppercase text-amber-800 block">Catatan Tambahan</span>
+              <p class="text-xs text-slate-700 mt-0.5">${r.notes}</p>
+            </div>
+          ` : ''}
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    function zoomPhoto(src) {
+      document.getElementById('zoom-photo-img').src = src;
+      document.getElementById('modal-photo-zoom').classList.remove('hidden');
+    }
+
+    function downloadPublicReportPdf() {
+      if (!currentPublicReport) return;
+      const btn = document.getElementById('btn-public-pdf');
+      btn.disabled = true;
+      btn.textContent = 'Memproses...';
+      const el = document.getElementById('public-pdf-area');
+      const safeName = (currentPublicReport.unit_name || 'Kamar').replace(/[^a-zA-Z0-9_-]/g, '_');
+      html2pdf().set({
+        margin: 10,
+        filename: `Laporan_${safeName}_${new Date().toISOString().slice(0, 10)}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      }).from(el).save().then(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="download" class="w-3.5 h-3.5"></i> Download PDF';
+        lucide.createIcons();
+      });
+    }
+
+    function exitPublicReportMode() {
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.location.href = cleanUrl;
+    }
 
     // --- PWA INSTALL PROMPT ---
     window.addEventListener('beforeinstallprompt', (e) => {
@@ -531,10 +808,21 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      const reportId = params.get('laporan');
+      if (reportId) {
+        loadPublicReport(reportId);
+        return;
+      }
+
       updateNetworkStatus();
       window.addEventListener('online', () => { updateNetworkStatus(); syncOfflineQueue(); });
       window.addEventListener('offline', updateNetworkStatus);
-      if (currentUser) enterApp();
+      if (currentUser) {
+        enterApp();
+      } else {
+        document.documentElement.classList.remove('has-session');
+      }
     });
 
     // --- AUTH / LOGIN ---
@@ -572,6 +860,7 @@
         }
 
         localStorage.setItem('ck_user', JSON.stringify(currentUser));
+        document.documentElement.classList.add('has-session');
         enterApp();
       } catch (err) {
         errBox.textContent = err.message || 'Gagal terhubung ke server';
@@ -625,8 +914,8 @@
       const badge = document.getElementById('user-role-badge');
       badge.textContent = currentUser.role.toUpperCase();
       badge.className = currentUser.role === 'manajemen'
-        ? 'text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700'
-        : 'text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-teal-100 text-teal-700';
+        ? 'shrink-0 text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700'
+        : 'shrink-0 text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700';
 
       const userCard = document.getElementById('user-management-card');
       if (userCard) userCard.style.display = currentUser.role === 'manajemen' ? 'block' : 'none';
@@ -636,17 +925,18 @@
 
     function logout() {
       localStorage.removeItem('ck_user');
+      document.documentElement.classList.remove('has-session');
       location.reload();
     }
 
     function updateNetworkStatus() {
       const el = document.getElementById('network-status');
       if (navigator.onLine) {
-        el.className = 'flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
-        el.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span> Online';
+        el.className = 'flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap';
+        el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Online';
       } else {
-        el.className = 'flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200';
-        el.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-500"></span> Offline';
+        el.className = 'flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap';
+        el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Offline';
       }
     }
 
@@ -841,12 +1131,14 @@
       });
     }
 
-    function sendInspectionToWhatsApp(data) {
+    // --- SHARE WHATSAPP DINAMIS + TAUTAN MODE PENUH ---
+    function buildWaMessage(data, includeChecklist, includeFullLink) {
       const waktu = data.created_at
         ? new Date(data.created_at).toLocaleString('id-ID')
         : new Date().toLocaleString('id-ID');
       const statusText = data.final_status === 'siap' ? 'SIAP PAKAI ✅' : 'PERLU CEK ⚠️';
-      const pesan = [
+
+      const lines = [
         '*LAPORAN CEK KESIAPAN KAMAR*',
         '*RS Khusus Bedah SS Medika*',
         '--------------------------------',
@@ -855,18 +1147,93 @@
         `• *Petugas:* ${data.inspector_name}`,
         `• *Skor Kesiapan:* ${data.readiness_score}%`,
         `• *Status:* ${statusText}`,
-        `• *Waktu:* ${waktu}`,
-        data.notes ? `• *Catatan:* ${data.notes}` : ''
-      ].filter(Boolean).join('\n');
+        `• *Waktu:* ${waktu}`
+      ];
 
-      const waUrl = `https://wa.me/?text=${encodeURIComponent(pesan)}`;
+      if (includeChecklist && Array.isArray(data.checklist_data) && data.checklist_data.length > 0) {
+        lines.push('--------------------------------');
+        lines.push('*Rincian Kelengkapan:*');
+        data.checklist_data.forEach(c => {
+          lines.push(`${c.checked ? '✅' : '❌'} ${c.item}`);
+        });
+      }
+
+      if (data.notes) {
+        lines.push('--------------------------------');
+        lines.push(`• *Catatan:* ${data.notes}`);
+      }
+
+      if (includeFullLink && data.id) {
+        lines.push('--------------------------------');
+        lines.push('📄 *Buka Laporan Mode Penuh (Foto & PDF):*');
+        lines.push(getPublicReportUrl(data.id));
+      }
+
+      return lines.join('\n');
+    }
+
+    function openWaShareModal(data) {
+      activeWaPayload = data;
+      const savedPhone = localStorage.getItem('ck_last_wa_phone') || '';
+      document.getElementById('wa-target-phone').value = savedPhone;
+      document.getElementById('wa-include-checklist').checked = true;
+      const linkChk = document.getElementById('wa-include-link');
+      linkChk.checked = Boolean(data.id);
+      linkChk.disabled = !data.id;
+      refreshWaPreview();
+      document.getElementById('modal-wa-share').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function refreshWaPreview() {
+      if (!activeWaPayload) return;
+      const incChecklist = document.getElementById('wa-include-checklist').checked;
+      const incLink = document.getElementById('wa-include-link').checked;
+      document.getElementById('wa-message-preview').value = buildWaMessage(activeWaPayload, incChecklist, incLink);
+    }
+
+    function previewFullReportFromModal() {
+      if (!activeWaPayload) return;
+      if (activeWaPayload.id) {
+        window.open(getPublicReportUrl(activeWaPayload.id), '_blank');
+      } else {
+        alert('Laporan ini tersimpan saat offline dan belum memiliki tautan cloud.');
+      }
+    }
+
+    function normalizePhone(raw) {
+      let digits = (raw || '').replace(/\D/g, '');
+      if (!digits) return '';
+      if (digits.startsWith('0')) digits = '62' + digits.slice(1);
+      else if (digits.startsWith('8')) digits = '62' + digits;
+      return digits;
+    }
+
+    function executeWhatsAppSend(usePhone) {
+      const text = document.getElementById('wa-message-preview').value;
+      const rawPhone = document.getElementById('wa-target-phone').value.trim();
+      let waUrl = '';
+
+      if (usePhone) {
+        const phone = normalizePhone(rawPhone);
+        if (!phone) {
+          alert('Masukkan nomor WhatsApp tujuan terlebih dahulu, atau ketuk "Pilih Grup / Kontak".');
+          return;
+        }
+        localStorage.setItem('ck_last_wa_phone', rawPhone);
+        waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+      } else {
+        waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+      }
+
+      document.getElementById('modal-wa-share').classList.add('hidden');
       window.open(waUrl, '_blank');
     }
 
     function shareHistoryWa(index) {
       const item = inspectionsData[index];
       if (!item) return;
-      sendInspectionToWhatsApp(item);
+      openWaShareModal(item);
     }
 
     async function processInspectionSubmit(alsoSendWa = false) {
@@ -908,16 +1275,25 @@
       btn.textContent = 'Menyimpan...';
 
       let savedOk = false;
+      let savedRecord = { ...payload, created_at: new Date().toISOString() };
+
       if (!navigator.onLine) {
         const q = JSON.parse(localStorage.getItem('ck_offline_queue') || '[]');
         q.push(payload);
         localStorage.setItem('ck_offline_queue', JSON.stringify(q));
         savedOk = true;
       } else {
-        const { error } = await db.from('room_inspections').insert([payload]);
+        const { data: insertedRows, error } = await db
+          .from('room_inspections')
+          .insert([payload])
+          .select();
+
         if (error) {
           alert('Gagal menyimpan laporan: ' + error.message);
         } else {
+          if (insertedRows && insertedRows[0]) {
+            savedRecord = insertedRows[0];
+          }
           await db.from('master_units').update({
             status: finalStatus,
             last_checked_at: new Date().toISOString(),
@@ -940,7 +1316,7 @@
         await loadAllData();
         switchTab('analytics');
         if (alsoSendWa) {
-          sendInspectionToWhatsApp(payload);
+          openWaShareModal(savedRecord);
         } else {
           alert('Laporan kesiapan kamar berhasil disimpan!');
         }
@@ -1260,10 +1636,11 @@
           </div>
           ${r.notes ? `<p class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg">Catatan: ${r.notes}</p>` : ''}
           <div class="grid grid-cols-2 gap-2">
-            ${r.photo_room_url ? `<img src="${r.photo_room_url}" class="w-full h-28 object-cover rounded-xl border" />` : ''}
-            ${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" class="w-full h-28 object-cover rounded-xl border" />` : ''}
+            ${r.photo_room_url ? `<img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />` : ''}
+            ${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />` : ''}
           </div>
-          <div class="pt-1 flex justify-end">
+          <div class="pt-1 flex items-center justify-end gap-2">
+            ${r.id ? `<a href="${getPublicReportUrl(r.id)}" target="_blank" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl flex items-center gap-1 transition"><i data-lucide="maximize-2" class="w-3 h-3"></i> Mode Penuh</a>` : ''}
             <button type="button" onclick="shareHistoryWa(${idx})" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-[11px] font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition">
               <i data-lucide="send" class="w-3.5 h-3.5"></i> Kirim ke WhatsApp
             </button>
