@@ -1,152 +1,1144 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Form Kesiapan Kamar</title>
-  <link rel="manifest" href="manifest.json">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0d9488" />
+  <title>Cek Kesiapan Kamar - SS Medika</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="1000219682.png" />
 
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Supabase JS -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Chart.js untuk Analitik -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- HTML5 QR Code Scanner & Generator -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
   <style>
-    * { box-sizing: border-box; font-family: system-ui, sans-serif; }
-    body { background: #f1f5f9; color: #1e293b; margin: 0; padding: 14px; }
-    .container { max-width: 500px; margin: 0 auto; }
-    .card { background: #fff; border-radius: 14px; padding: 16px; margin-bottom: 12px; border: 1px solid #e2e8f0; }
-    h2 { margin: 0 0 12px; color: #0f766e; font-size: 18px; }
-    .fg { margin-bottom: 12px; }
-    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
-    input, select, textarea { width: 100%; padding: 10px; border: 1.5px solid #cbd5e1; border-radius: 9px; font-size: 14px; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 13px; }
-    .btn { width: 100%; padding: 13px; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; background: #0d9488; color: #fff; cursor: pointer; }
-    .btn-sub { background: #e2e8f0; color: #1e293b; padding: 7px 12px; border-radius: 8px; text-decoration: none; font-size: 12.5px; font-weight: 600; }
-    img { width: 100%; max-height: 160px; object-fit: cover; border-radius: 8px; margin-top: 6px; display: none; }
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #f1f5f9;
+      -webkit-tap-highlight-color: transparent;
+      padding-bottom: 84px;
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(226, 232, 240, 0.8);
+    }
+    .page-section {
+      display: none;
+      animation: slideFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .page-section.active {
+      display: block;
+    }
+    @keyframes slideFadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .nav-btn.active {
+      color: #0d9488;
+      transform: translateY(-2px);
+    }
+    .nav-btn {
+      transition: all 0.25s ease;
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
   </style>
 </head>
-<body>
-<div class="container">
-  <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
-    <strong style="color:#0f766e;">🏥 Cek Kesiapan Kamar</strong>
-    <a href="rekap.html" class="btn-sub">📊 Dashboard</a>
-  </div>
+<body class="text-slate-800 antialiased">
 
-  <div class="card">
-    <h2>📋 Input Laporan Kamar</h2>
-    <div class="fg"><label>Nama Pemeriksa (Petugas / Manajemen)</label><input type="text" id="petugas" placeholder="Ketik nama lengkap Anda"></div>
-    <div class="fg"><label>Kamar</label><select id="kamar"></select></div>
-    <div class="fg"><label>Shift</label><select id="shift"></select></div>
-    <div class="fg">
-      <label>Kondisi Aroma</label>
-      <select id="aroma">
-        <option value="Wangi / Segar">Wangi / Segar</option>
-        <option value="Netral / Tidak Berbau">Netral / Tidak Berbau</option>
-        <option value="Bau Amis">Bau Amis</option>
-        <option value="Bau Apek / Lembap">Bau Apek / Lembap</option>
-      </select>
-    </div>
-    <div class="fg">
-      <label>Kondisi Toilet</label>
-      <select id="toilet">
-        <option value="Bersih, Kering & Wangi">Bersih, Kering & Wangi</option>
-        <option value="Perlu Dibersihkan Ulang">Perlu Dibersihkan Ulang</option>
-      </select>
-    </div>
-    <div class="fg">
-      <label>Kelengkapan</label>
-      <div class="grid">
-        <label><input type="checkbox" name="alat" value="Sprei Rapi" checked> Sprei Rapi</label>
-        <label><input type="checkbox" name="alat" value="AC & Lampu" checked> AC & Lampu</label>
-        <label><input type="checkbox" name="alat" value="TV & Remote" checked> TV & Remote</label>
-        <label><input type="checkbox" name="alat" value="Bel Pasien" checked> Bel Pasien</label>
-        <label><input type="checkbox" name="alat" value="Sabun & Tisu" checked> Sabun & Tisu</label>
-        <label><input type="checkbox" name="alat" value="Tempat Sampah" checked> Tempat Sampah</label>
+  <!-- ================= 1. HALAMAN LOGIN ================= -->
+  <div id="login-screen" class="fixed inset-0 z-50 bg-gradient-to-br from-teal-700 via-teal-600 to-emerald-700 flex items-center justify-center p-5">
+    <div class="w-full max-w-md bg-white rounded-3xl shadow-2xl p-7 space-y-6 animate-[slideFadeIn_0.4s_ease]">
+      <div class="text-center space-y-2">
+        <img src="1000219682.png" alt="Logo" class="w-20 h-20 mx-auto rounded-2xl shadow-md object-cover border-2 border-teal-100" />
+        <h1 class="text-2xl font-extrabold text-slate-900 tracking-tight">Cek Kesiapan Kamar</h1>
+        <p class="text-xs text-slate-500 font-medium">Sistem Manajemen & Inspeksi Unit Terpadu</p>
+      </div>
+
+      <form id="login-form" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 uppercase mb-1.5">Username</label>
+          <div class="relative">
+            <i data-lucide="user" class="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5"></i>
+            <input type="text" id="login-username" required placeholder="Masukkan username (admin / petugas1)"
+              class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 uppercase mb-1.5">Password</label>
+          <div class="relative">
+            <i data-lucide="lock" class="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5"></i>
+            <input type="password" id="login-password" required placeholder="Masukkan password"
+              class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition" />
+          </div>
+        </div>
+        <div id="login-error" class="hidden text-xs font-semibold text-rose-600 bg-rose-50 p-3 rounded-xl border border-rose-100"></div>
+        <button type="submit" id="btn-login"
+          class="w-full py-3.5 bg-teal-600 hover:bg-teal-700 active:scale-[0.98] text-white font-bold rounded-xl shadow-lg shadow-teal-600/30 transition flex items-center justify-center gap-2">
+          <span>Masuk ke Aplikasi</span>
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>
+      </form>
+
+      <div class="bg-slate-50 rounded-xl p-3 text-[11px] text-slate-500 border border-slate-100 space-y-1">
+        <p class="font-bold text-slate-700">Akun Demo Tersedia:</p>
+        <p>• Manajemen: <span class="font-mono text-teal-700">admin</span> / <span class="font-mono">admin123</span></p>
+        <p>• Petugas: <span class="font-mono text-teal-700">petugas1</span> / <span class="font-mono">petugas123</span></p>
       </div>
     </div>
-    <div class="fg">
-      <label>Foto Toilet (Wajib)</label>
-      <input type="file" id="fToilet" accept="image/*" capture="environment" onchange="prev(this,'p1')">
-      <img id="p1">
-    </div>
-    <div class="fg">
-      <label>Foto Kamar (Wajib)</label>
-      <input type="file" id="fKamar" accept="image/*" capture="environment" onchange="prev(this,'p2')">
-      <img id="p2">
-    </div>
-    <div class="fg"><label>Catatan</label><textarea id="catatan" rows="2" placeholder="Opsional..."></textarea></div>
-    <button class="btn" id="btnKirim" onclick="kirim()">✅ Kirim Laporan</button>
   </div>
-</div>
 
-<script>
-  const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_AXcmTZqRh9W-Qs0yoEcUdQ_bxLpar50';
-  const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  <!-- ================= HEADER UTAMA ================= -->
+  <header id="app-header" class="hidden sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-4 py-3">
+    <div class="max-w-3xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <img src="1000219682.png" alt="Logo" class="w-9 h-9 rounded-xl object-cover border border-teal-100" />
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-sm font-extrabold text-slate-900">Cek Kesiapan Kamar</h1>
+            <span id="role-badge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 uppercase">Role</span>
+          </div>
+          <p id="user-greeting" class="text-xs text-slate-500 font-medium">Halo, Pengguna</p>
+        </div>
+      </div>
 
-  window.onload = async () => {
-    const { data: { session } } = await db.auth.getSession();
-    if (session) {
-      const { data: p } = await db.from('profil_pengguna').select('nama_lengkap').eq('user_id', session.user.id).single();
-      if (p) document.getElementById('petugas').value = p.nama_lengkap;
+      <div class="flex items-center gap-2">
+        <!-- Indikator Online / Offline Sync -->
+        <button onclick="syncOfflineQueue()" id="network-status" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span id="network-text">Online</span>
+        </button>
+        <button onclick="logout()" title="Keluar" class="p-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition">
+          <i data-lucide="log-out" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= KONTEN UTAMA ================= -->
+  <main id="app-main" class="hidden max-w-3xl mx-auto px-4 pt-4 space-y-5">
+
+    <!-- BANNER ANTREAN OFFLINE -->
+    <div id="offline-banner" class="hidden bg-amber-50 border border-amber-200 rounded-2xl p-3.5 flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <i data-lucide="wifi-off" class="w-5 h-5 text-amber-600"></i>
+        <div>
+          <p class="text-xs font-bold text-amber-900">Mode Offline Aktif (<span id="offline-count">0</span> Laporan Tertunda)</p>
+          <p class="text-[11px] text-amber-700">Data aman di memori HP dan otomatis terkirim saat sinyal kembali.</p>
+        </div>
+      </div>
+      <button onclick="syncOfflineQueue()" class="px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-xl">Kirim Sekarang</button>
+    </div>
+
+    <!-- ================= TAB 1: DASBOR LIVE ================= -->
+    <section id="tab-dashboard" class="page-section active space-y-5">
+      <!-- Ringkasan Kartu Status -->
+      <div class="grid grid-cols-3 gap-3">
+        <div class="glass-card rounded-2xl p-3.5 shadow-sm border-l-4 border-l-emerald-500">
+          <p class="text-[11px] font-bold text-slate-500 uppercase">Kamar Siap</p>
+          <p id="stat-siap" class="text-2xl font-extrabold text-emerald-600 mt-1">0</p>
+        </div>
+        <div class="glass-card rounded-2xl p-3.5 shadow-sm border-l-4 border-l-amber-500">
+          <p class="text-[11px] font-bold text-slate-500 uppercase">Perlu Cek</p>
+          <p id="stat-kotor" class="text-2xl font-extrabold text-amber-600 mt-1">0</p>
+        </div>
+        <div class="glass-card rounded-2xl p-3.5 shadow-sm border-l-4 border-l-rose-500">
+          <p class="text-[11px] font-bold text-slate-500 uppercase">Maintenance</p>
+          <p id="stat-maint" class="text-2xl font-extrabold text-rose-600 mt-1">0</p>
+        </div>
+      </div>
+
+      <!-- Tombol Aksi Cepat -->
+      <div class="grid grid-cols-2 gap-3">
+        <button onclick="switchTab('tab-inspect')" class="bg-teal-600 hover:bg-teal-700 active:scale-[0.98] text-white p-3.5 rounded-2xl shadow-md shadow-teal-600/20 flex items-center justify-center gap-2 font-bold text-xs transition">
+          <i data-lucide="clipboard-check" class="w-4 h-4"></i>
+          <span>Mulai Cek Kamar</span>
+        </button>
+        <button onclick="openQrScanner()" class="bg-slate-800 hover:bg-slate-900 active:scale-[0.98] text-white p-3.5 rounded-2xl shadow-md flex items-center justify-center gap-2 font-bold text-xs transition">
+          <i data-lucide="qr-code" class="w-4 h-4"></i>
+          <span>Scan QR Pintu</span>
+        </button>
+      </div>
+
+      <!-- Daftar Status Unit Real-Time -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-extrabold text-slate-800">Status Unit Kamar Real-Time</h2>
+          <button onclick="loadAllData()" class="text-xs font-bold text-teal-600 flex items-center gap-1">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Segarkan
+          </button>
+        </div>
+        <div id="unit-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <!-- Diisi via JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= TAB 2: FORM PENGECEKAN ================= -->
+    <section id="tab-inspect" class="page-section space-y-4">
+      <div class="glass-card rounded-3xl p-5 shadow-sm space-y-5">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div>
+            <h2 class="text-base font-extrabold text-slate-900">Formulir Inspeksi Kamar</h2>
+            <p class="text-xs text-slate-500">Dilengkapi Auto-Watermark & Smart Score</p>
+          </div>
+          <!-- Timer Durasi Pengecekan -->
+          <div class="bg-teal-50 text-teal-700 px-3 py-1.5 rounded-xl border border-teal-100 text-right">
+            <p class="text-[10px] font-bold uppercase">Durasi Cek</p>
+            <p id="inspect-timer" class="text-sm font-mono font-extrabold">00:00</p>
+          </div>
+        </div>
+
+        <!-- Pilih Unit & Shift -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Pilih Unit Kamar *</label>
+            <div class="flex gap-2">
+              <select id="inspect-unit" onchange="startTimer()" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-teal-500">
+                <option value="">-- Pilih Kamar --</option>
+              </select>
+              <button type="button" onclick="openQrScanner()" class="px-3.5 bg-slate-800 text-white rounded-xl flex items-center justify-center" title="Scan QR Kamar">
+                <i data-lucide="scan-line" class="w-5 h-5"></i>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Shift Kerja *</label>
+            <select id="inspect-shift" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-teal-500">
+              <option value="Pagi (07:00 - 14:00)">Shift Pagi (07:00 - 14:00)</option>
+              <option value="Siang (14:00 - 21:00)">Shift Siang (14:00 - 21:00)</option>
+              <option value="Malam (21:00 - 07:00)">Shift Malam (21:00 - 07:00)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Smart Readiness Score Live Bar -->
+        <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-700">Smart Readiness Score</span>
+            <span id="live-score-badge" class="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">100% - SIAP PAKAI</span>
+          </div>
+          <div class="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
+            <div id="live-score-bar" class="bg-emerald-500 h-full transition-all duration-300" style="width: 100%"></div>
+          </div>
+        </div>
+
+        <!-- Daftar Checklist Kelengkapan Dinamis -->
+        <div class="space-y-3">
+          <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-500">Checklist Kelengkapan & Kondisi</h3>
+          <div id="checklist-container" class="space-y-2.5">
+            <!-- Diisi otomatis dari master_items -->
+          </div>
+        </div>
+
+        <!-- Upload Foto Kamar & Toilet (Kamera + Album/Galeri + Auto Watermark) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+          <!-- Foto Kamar -->
+          <div class="bg-slate-50 p-3.5 rounded-2xl border border-dashed border-slate-300 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <i data-lucide="bed-double" class="w-4 h-4 text-teal-600"></i> Foto Kondisi Kamar
+              </span>
+              <span class="text-[10px] font-semibold text-teal-600 bg-teal-50 px-2 py-0.5 rounded">Auto-Watermark</span>
+            </div>
+            <img id="preview-room" class="hidden w-full h-40 object-cover rounded-xl border border-slate-200" />
+            <div class="grid grid-cols-2 gap-2">
+              <label class="cursor-pointer py-2 px-3 bg-teal-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-teal-700 transition">
+                <i data-lucide="camera" class="w-3.5 h-3.5"></i> Kamera
+                <input type="file" accept="image/*" capture="environment" class="hidden" onchange="handlePhotoInput(event, 'room')" />
+              </label>
+              <label class="cursor-pointer py-2 px-3 bg-white border border-slate-300 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-slate-100 transition">
+                <i data-lucide="image" class="w-3.5 h-3.5"></i> Album/Galeri
+                <input type="file" accept="image/*" class="hidden" onchange="handlePhotoInput(event, 'room')" />
+              </label>
+            </div>
+          </div>
+
+          <!-- Foto Toilet -->
+          <div class="bg-slate-50 p-3.5 rounded-2xl border border-dashed border-slate-300 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <i data-lucide="bath" class="w-4 h-4 text-teal-600"></i> Foto Kondisi Toilet
+              </span>
+              <span class="text-[10px] font-semibold text-teal-600 bg-teal-50 px-2 py-0.5 rounded">Auto-Watermark</span>
+            </div>
+            <img id="preview-toilet" class="hidden w-full h-40 object-cover rounded-xl border border-slate-200" />
+            <div class="grid grid-cols-2 gap-2">
+              <label class="cursor-pointer py-2 px-3 bg-teal-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-teal-700 transition">
+                <i data-lucide="camera" class="w-3.5 h-3.5"></i> Kamera
+                <input type="file" accept="image/*" capture="environment" class="hidden" onchange="handlePhotoInput(event, 'toilet')" />
+              </label>
+              <label class="cursor-pointer py-2 px-3 bg-white border border-slate-300 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-slate-100 transition">
+                <i data-lucide="image" class="w-3.5 h-3.5"></i> Album/Galeri
+                <input type="file" accept="image/*" class="hidden" onchange="handlePhotoInput(event, 'toilet')" />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Catatan Tambahan -->
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">Catatan / Temuan Kerusakan</label>
+          <textarea id="inspect-notes" rows="2" placeholder="Tuliskan detail jika ada barang kurang atau butuh teknisi..."
+            class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-teal-500"></textarea>
+        </div>
+
+        <!-- Tombol Simpan & Kirim WhatsApp -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+          <button type="button" onclick="submitInspection(false)" id="btn-submit-inspect"
+            class="w-full py-3.5 bg-teal-600 hover:bg-teal-700 active:scale-[0.98] text-white font-bold rounded-xl shadow-lg shadow-teal-600/25 transition flex items-center justify-center gap-2 text-sm">
+            <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+            <span>Simpan Laporan Kesiapan</span>
+          </button>
+          <button type="button" onclick="submitInspection(true)"
+            class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold rounded-xl shadow-lg shadow-emerald-600/25 transition flex items-center justify-center gap-2 text-sm">
+            <i data-lucide="send" class="w-4 h-4"></i>
+            <span>Simpan & Lapor WhatsApp</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= TAB 3: ANALITIK & RIWAYAT (BISA DIAKSES PETUGAS & MANAJEMEN) ================= -->
+    <section id="tab-analytics" class="page-section space-y-5">
+      <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-base font-extrabold text-slate-900">Analitik & Kinerja Inspeksi</h2>
+            <p class="text-xs text-slate-500">Statistik kesiapan unit, durasi pembersihan & log aktivitas</p>
+          </div>
+          <button onclick="exportCsv()" class="px-3 py-2 bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i> Unduh CSV
+          </button>
+        </div>
+
+        <!-- Grafik -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+            <h3 class="text-xs font-bold text-slate-600 mb-2">Proporsi Status Unit Saat Ini</h3>
+            <canvas id="chart-status" height="180"></canvas>
+          </div>
+          <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col justify-between">
+            <h3 class="text-xs font-bold text-slate-600 mb-2">Ringkasan Performa Shift</h3>
+            <div class="space-y-3 my-auto">
+              <div class="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100">
+                <span class="text-xs text-slate-500 font-medium">Total Inspeksi Tercatat</span>
+                <span id="analytic-total" class="text-sm font-extrabold text-slate-900">0 Laporan</span>
+              </div>
+              <div class="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100">
+                <span class="text-xs text-slate-500 font-medium">Rata-Rata Skor Kesiapan</span>
+                <span id="analytic-avg-score" class="text-sm font-extrabold text-teal-600">0%</span>
+              </div>
+              <div class="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100">
+                <span class="text-xs text-slate-500 font-medium">Rata-Rata Durasi Cek</span>
+                <span id="analytic-avg-time" class="text-sm font-extrabold text-indigo-600">0 Detik</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Riwayat Laporan Terbaru -->
+      <div class="space-y-3">
+        <h3 class="text-sm font-extrabold text-slate-800">Riwayat Inspeksi & Bukti Foto</h3>
+        <div id="history-list" class="space-y-3">
+          <!-- Diisi via JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= TAB 4: KELOLA UNIT & KELENGKAPAN (CRUD + CETAK QR) ================= -->
+    <section id="tab-master" class="page-section space-y-5">
+      <!-- Tambah / Edit Unit Kamar -->
+      <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-base font-extrabold text-slate-900">Kelola Unit Kamar & QR Pintu</h2>
+            <p class="text-xs text-slate-500">Tambah kamar baru, ubah status, atau cetak stiker QR Code</p>
+          </div>
+        </div>
+
+        <form id="form-add-unit" class="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/70">
+          <input type="hidden" id="edit-unit-id" />
+          <input type="text" id="unit-code" required placeholder="Kode (mis: KMR-105)" class="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none" />
+          <input type="text" id="unit-name" required placeholder="Nama Kamar (mis: Kamar 105)" class="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none" />
+          <input type="text" id="unit-floor" required placeholder="Lantai / Kelas (mis: Lt.1 VIP)" class="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none" />
+          <button type="submit" id="btn-save-unit" class="py-2.5 px-4 bg-teal-600 text-white font-bold rounded-xl text-xs hover:bg-teal-700 transition">
+            + Simpan Unit
+          </button>
+        </form>
+
+        <div id="master-unit-list" class="divide-y divide-slate-100">
+          <!-- Daftar unit -->
+        </div>
+      </div>
+
+      <!-- Tambah / Edit Daftar Kelengkapan -->
+      <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
+        <div>
+          <h2 class="text-base font-extrabold text-slate-900">Kelola Daftar Kelengkapan</h2>
+          <p class="text-xs text-slate-500">Atur item checklist kamar & toilet serta tanda item krusial</p>
+        </div>
+
+        <form id="form-add-item" class="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/70">
+          <input type="hidden" id="edit-item-id" />
+          <input type="text" id="item-name" required placeholder="Nama Kelengkapan (mis: Dispenser)" class="sm:col-span-2 p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none" />
+          <select id="item-category" class="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none">
+            <option value="Kamar">Area Kamar</option>
+            <option value="Toilet">Area Toilet</option>
+          </select>
+          <div class="flex items-center gap-2">
+            <label class="flex items-center gap-1.5 text-xs font-bold text-rose-600 cursor-pointer">
+              <input type="checkbox" id="item-critical" class="rounded text-rose-600" /> Krusial
+            </label>
+            <button type="submit" id="btn-save-item" class="flex-1 py-2.5 px-3 bg-teal-600 text-white font-bold rounded-xl text-xs hover:bg-teal-700 transition">
+              + Simpan
+            </button>
+          </div>
+        </form>
+
+        <div id="master-item-list" class="divide-y divide-slate-100">
+          <!-- Daftar kelengkapan -->
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================= BOTTOM NAVIGATION BAR ================= -->
+  <nav id="app-nav" class="hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-2 py-2">
+    <div class="max-w-3xl mx-auto grid grid-cols-4 gap-1">
+      <button onclick="switchTab('tab-dashboard')" data-target="tab-dashboard" class="nav-btn active flex flex-col items-center justify-center py-1 text-slate-400">
+        <i data-lucide="layout-grid" class="w-5 h-5"></i>
+        <span class="text-[10px] font-bold mt-1">Dasbor</span>
+      </button>
+      <button onclick="switchTab('tab-inspect')" data-target="tab-inspect" class="nav-btn flex flex-col items-center justify-center py-1 text-slate-400">
+        <i data-lucide="clipboard-check" class="w-5 h-5"></i>
+        <span class="text-[10px] font-bold mt-1">Cek Kamar</span>
+      </button>
+      <button onclick="switchTab('tab-analytics')" data-target="tab-analytics" class="nav-btn flex flex-col items-center justify-center py-1 text-slate-400">
+        <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+        <span class="text-[10px] font-bold mt-1">Analitik</span>
+      </button>
+      <button onclick="switchTab('tab-master')" data-target="tab-master" id="nav-master-btn" class="nav-btn flex flex-col items-center justify-center py-1 text-slate-400">
+        <i data-lucide="sliders" class="w-5 h-5"></i>
+        <span class="text-[10px] font-bold mt-1">Unit & Item</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ================= MODAL SCANNER QR ================= -->
+  <div id="modal-qr-scanner" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-extrabold text-slate-900">Scan QR Code Pintu Kamar</h3>
+        <button onclick="closeQrScanner()" class="p-1.5 bg-slate-100 rounded-full text-slate-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <div id="qr-reader" class="w-full rounded-2xl overflow-hidden border border-slate-200"></div>
+      <p class="text-[11px] text-center text-slate-500">Arahkan kamera ke stiker QR Code yang tertempel di pintu kamar.</p>
+    </div>
+  </div>
+
+  <!-- ================= MODAL GENERATOR STIKER QR ================= -->
+  <div id="modal-qr-print" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-xs rounded-3xl p-6 text-center space-y-4">
+      <h3 id="qr-print-title" class="text-base font-extrabold text-slate-900">QR Code Kamar</h3>
+      <div id="qr-code-box" class="flex justify-center p-4 bg-white border-2 border-teal-600 rounded-2xl mx-auto w-fit"></div>
+      <p id="qr-print-code" class="text-xs font-mono font-bold text-slate-600"></p>
+      <p class="text-[11px] text-slate-500">Screenshot atau cetak kode QR ini untuk ditempel pada pintu unit.</p>
+      <button onclick="document.getElementById('modal-qr-print').classList.add('hidden')" class="w-full py-2.5 bg-slate-800 text-white font-bold rounded-xl text-xs">Tutup</button>
+    </div>
+  </div>
+
+  <!-- ================= JAVASCRIPT LOGIC ================= -->
+  <script>
+    // 1. KONFIGURASI SUPABASE (GANTI DENGAN URL & ANON KEY ANDA)
+    const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_AXcmTZqRh9W-Qs0yoEcUdQ_bxLpar50';
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // State Aplikasi
+    let currentUser = JSON.parse(localStorage.getItem('ck_user') || 'null');
+    let unitsData = [];
+    let itemsData = [];
+    let inspectionsData = [];
+    let watermarkedPhotos = { room: null, toilet: null };
+    let timerInterval = null;
+    let secondsElapsed = 0;
+    let qrScannerInstance = null;
+    let statusChart = null;
+
+    // Inisialisasi Ikon
+    lucide.createIcons();
+
+    // Cek Sesi Login saat halaman dimuat
+    window.addEventListener('DOMContentLoaded', () => {
+      updateNetworkStatus();
+      window.addEventListener('online', () => { updateNetworkStatus(); syncOfflineQueue(); });
+      window.addEventListener('offline', updateNetworkStatus);
+
+      if (currentUser) {
+        enterApp();
+      }
+    });
+
+    // ================= AUTH / LOGIN =================
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value.trim();
+      const errBox = document.getElementById('login-error');
+      const btn = document.getElementById('btn-login');
+
+      errBox.classList.add('hidden');
+      btn.disabled = true;
+      btn.innerHTML = '<span>Memverifikasi...</span>';
+
+      try {
+        const { data, error } = await db
+          .from('app_users')
+          .select('*')
+          .eq('username', username)
+          .eq('password', password)
+          .single();
+
+        if (error || !data) {
+          // Fallback akun demo lokal jika Supabase belum diisi URL-nya
+          if ((username === 'admin' && password === 'admin123') || (username === 'petugas1' && password === 'petugas123')) {
+            currentUser = {
+              username,
+              full_name: username === 'admin' ? 'Supervisor Manajemen' : 'Petugas Shift Pagi',
+              role: username === 'admin' ? 'manajemen' : 'petugas'
+            };
+          } else {
+            throw new Error('Username atau password salah!');
+          }
+        } else {
+          currentUser = data;
+        }
+
+        localStorage.setItem('ck_user', JSON.stringify(currentUser));
+        enterApp();
+      } catch (err) {
+        errBox.textContent = err.message;
+        errBox.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>Masuk ke Aplikasi</span><i data-lucide="arrow-right" class="w-4 h-4"></i>';
+        lucide.createIcons();
+      }
+    });
+
+    function enterApp() {
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('app-header').classList.remove('hidden');
+      document.getElementById('app-main').classList.remove('hidden');
+      document.getElementById('app-nav').classList.remove('hidden');
+
+      document.getElementById('user-greeting').textContent = `Halo, ${currentUser.full_name}`;
+      document.getElementById('role-badge').textContent = currentUser.role;
+
+      // Manajemen & Petugas sama-sama bisa akses Dasbor & Analitik.
+      // Menu Master Unit & Item tetap tampil untuk Manajemen (dan mode baca/kelola sesuai kebutuhan)
+      if (currentUser.role !== 'manajemen') {
+        document.getElementById('form-add-unit').classList.add('hidden');
+        document.getElementById('form-add-item').classList.add('hidden');
+      } else {
+        document.getElementById('form-add-unit').classList.remove('hidden');
+        document.getElementById('form-add-item').classList.remove('hidden');
+      }
+
+      loadAllData();
+      checkOfflineBanner();
     }
-    const [rk, rs] = await Promise.all([
-      db.from('daftar_kamar').select('nama_kamar').order('nama_kamar'),
-      db.from('daftar_shift').select('nama_shift').order('id')
-    ]);
-    document.getElementById('kamar').innerHTML = (rk.data && rk.data.length)
-      ? rk.data.map(x => `<option value="${x.nama_kamar}">${x.nama_kamar}</option>`).join('')
-      : '<option value="VIP 01">VIP 01</option><option value="Kelas 1">Kelas 1</option>';
-    document.getElementById('shift').innerHTML = (rs.data && rs.data.length)
-      ? rs.data.map(x => `<option value="${x.nama_shift}">${x.nama_shift}</option>`).join('')
-      : '<option value="Pagi">Pagi</option><option value="Siang">Siang</option><option value="Malam">Malam</option>';
-  };
 
-  function prev(inp, id) {
-    if (inp.files[0]) {
-      const img = document.getElementById(id);
-      img.src = URL.createObjectURL(inp.files[0]);
-      img.style.display = 'block';
-    }
-  }
-
-  async function upFoto(file, tag) {
-    const name = `${tag}_${Date.now()}.jpg`;
-    const { error } = await db.storage.from('foto-kamar').upload(name, file);
-    if (error) throw error;
-    return db.storage.from('foto-kamar').getPublicUrl(name).data.publicUrl;
-  }
-
-  async function kirim() {
-    const petugas = document.getElementById('petugas').value.trim();
-    const f1 = document.getElementById('fToilet').files[0];
-    const f2 = document.getElementById('fKamar').files[0];
-    if (!petugas || !f1 || !f2) return alert('Isi nama pemeriksa serta foto toilet & kamar.');
-
-    const btn = document.getElementById('btnKirim');
-    btn.disabled = true; btn.textContent = '⏳ Menyimpan...';
-    try {
-      const [u1, u2] = await Promise.all([upFoto(f1, 'toilet'), upFoto(f2, 'kamar')]);
-      const alat = Array.from(document.querySelectorAll('input[name="alat"]:checked')).map(e => e.value).join(', ');
-      const { error } = await db.from('laporan_kamar').insert([{
-        petugas,
-        kamar: document.getElementById('kamar').value,
-        shift: document.getElementById('shift').value,
-        aroma: document.getElementById('aroma').value,
-        toilet: document.getElementById('toilet').value,
-        alat,
-        catatan: document.getElementById('catatan').value.trim(),
-        foto_toilet: u1,
-        foto_kamar: u2
-      }]);
-      if (error) throw error;
-      alert('✅ Laporan berhasil tersimpan!');
+    function logout() {
+      localStorage.removeItem('ck_user');
       location.reload();
-    } catch (e) {
-      alert('❌ Gagal: ' + e.message);
-    } finally {
-      btn.disabled = false; btn.textContent = '✅ Kirim Laporan';
     }
-  }
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 
-</script>
+    // ================= NAVIGASI TAB =================
+    function switchTab(tabId) {
+      document.querySelectorAll('.page-section').forEach(sec => sec.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.classList.remove('active', 'text-teal-600');
+        btn.classList.add('text-slate-400');
+        if (btn.dataset.target === tabId) {
+          btn.classList.add('active', 'text-teal-600');
+          btn.classList.remove('text-slate-400');
+        }
+      });
+
+      if (tabId === 'tab-analytics') renderAnalytics();
+    }
+
+    // ================= MUAT DATA DARI SUPABASE =================
+    async function loadAllData() {
+      try {
+        const [uRes, iRes, rRes] = await Promise.all([
+          db.from('master_units').select('*').order('unit_code', { ascending: true }),
+          db.from('master_items').select('*').order('category', { ascending: true }),
+          db.from('room_inspections').select('*').order('created_at', { ascending: false }).limit(30)
+        ]);
+
+        if (uRes.data) {
+          unitsData = uRes.data;
+          localStorage.setItem('cache_units', JSON.stringify(unitsData));
+        }
+        if (iRes.data) {
+          itemsData = iRes.data;
+          localStorage.setItem('cache_items', JSON.stringify(itemsData));
+        }
+        if (rRes.data) {
+          inspectionsData = rRes.data;
+          localStorage.setItem('cache_inspections', JSON.stringify(inspectionsData));
+        }
+      } catch (e) {
+        // Jika offline, muat dari cache lokal
+        unitsData = JSON.parse(localStorage.getItem('cache_units') || '[]');
+        itemsData = JSON.parse(localStorage.getItem('cache_items') || '[]');
+        inspectionsData = JSON.parse(localStorage.getItem('cache_inspections') || '[]');
+      }
+
+      renderDashboard();
+      renderInspectForm();
+      renderMasterData();
+      renderAnalytics();
+    }
+
+    // ================= RENDER DASBOR =================
+    function renderDashboard() {
+      const siap = unitsData.filter(u => u.status === 'siap').length;
+      const kotor = unitsData.filter(u => u.status === 'kotor').length;
+      const maint = unitsData.filter(u => u.status === 'maintenance').length;
+
+      document.getElementById('stat-siap').textContent = siap;
+      document.getElementById('stat-kotor').textContent = kotor;
+      document.getElementById('stat-maint').textContent = maint;
+
+      const grid = document.getElementById('unit-grid');
+      grid.innerHTML = unitsData.map(u => {
+        const badgeStyle = u.status === 'siap'
+          ? 'bg-emerald-100 text-emerald-700'
+          : u.status === 'maintenance'
+          ? 'bg-rose-100 text-rose-700'
+          : 'bg-amber-100 text-amber-700';
+
+        const statusLabel = u.status === 'siap' ? 'SIAP PAKAI' : u.status === 'maintenance' ? 'MAINTENANCE' : 'PERLU CEK';
+
+        return `
+          <div class="glass-card rounded-2xl p-4 shadow-sm hover:shadow-md transition flex flex-col justify-between gap-3">
+            <div class="flex items-start justify-between">
+              <div>
+                <span class="text-[10px] font-mono font-bold text-slate-400">${u.unit_code} • ${u.floor}</span>
+                <h3 class="text-sm font-extrabold text-slate-900">${u.unit_name}</h3>
+              </div>
+              <span class="text-[10px] font-extrabold px-2.5 py-1 rounded-full ${badgeStyle}">${statusLabel}</span>
+            </div>
+            <div class="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+              <span>${u.last_checked_by ? 'Oleh: ' + u.last_checked_by : 'Belum dicek'}</span>
+              <button onclick="quickInspect('${u.id}')" class="font-bold text-teal-600 hover:underline">Periksa →</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function quickInspect(unitId) {
+      switchTab('tab-inspect');
+      document.getElementById('inspect-unit').value = unitId;
+      startTimer();
+    }
+
+    // ================= FORM INSPEKSI & SMART SCORE =================
+    function renderInspectForm() {
+      const select = document.getElementById('inspect-unit');
+      const currentVal = select.value;
+      select.innerHTML = '<option value="">-- Pilih Kamar --</option>' +
+        unitsData.map(u => `<option value="${u.id}">${u.unit_code} - ${u.unit_name}</option>`).join('');
+      select.value = currentVal;
+
+      const container = document.getElementById('checklist-container');
+      container.innerHTML = itemsData.map(item => `
+        <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200/70">
+          <div>
+            <p class="text-xs font-bold text-slate-800">${item.item_name} ${item.is_critical ? '<span class="text-[10px] text-rose-600 font-extrabold">(Krusial)</span>' : ''}</p>
+            <p class="text-[10px] text-slate-400 font-semibold">${item.category}</p>
+          </div>
+          <select data-item-id="${item.id}" data-item-name="${item.item_name}" data-critical="${item.is_critical}" onchange="calculateLiveScore()"
+            class="item-status-select text-xs font-bold p-2 rounded-lg border border-slate-200 bg-white outline-none">
+            <option value="baik">✅ Baik / Lengkap</option>
+            <option value="kurang">⚠️ Kurang / Kotor</option>
+            <option value="rusak">❌ Rusak</option>
+          </select>
+        </div>
+      `).join('');
+
+      calculateLiveScore();
+    }
+
+    function calculateLiveScore() {
+      const selects = document.querySelectorAll('.item-status-select');
+      if (selects.length === 0) return { score: 100, status: 'siap' };
+
+      let total = selects.length;
+      let points = 0;
+      let criticalBroken = false;
+
+      selects.forEach(sel => {
+        if (sel.value === 'baik') points += 1;
+        else if (sel.value === 'kurang') points += 0.5;
+        else if (sel.value === 'rusak' && sel.dataset.critical === 'true') criticalBroken = true;
+      });
+
+      const score = Math.round((points / total) * 100);
+      let status = 'siap';
+      let label = `${score}% - SIAP PAKAI`;
+      let badgeClass = 'bg-emerald-100 text-emerald-700';
+      let barClass = 'bg-emerald-500';
+
+      if (criticalBroken || score < 70) {
+        status = 'maintenance';
+        label = `${score}% - BUTUH PERBAIKAN`;
+        badgeClass = 'bg-rose-100 text-rose-700';
+        barClass = 'bg-rose-500';
+      } else if (score < 95) {
+        status = 'kotor';
+        label = `${score}% - PERLU KELENGKAPAN`;
+        badgeClass = 'bg-amber-100 text-amber-700';
+        barClass = 'bg-amber-500';
+      }
+
+      const badge = document.getElementById('live-score-badge');
+      const bar = document.getElementById('live-score-bar');
+      badge.textContent = label;
+      badge.className = `text-xs font-extrabold px-2.5 py-0.5 rounded-full ${badgeClass}`;
+      bar.style.width = `${score}%`;
+      bar.className = `${barClass} h-full transition-all duration-300`;
+
+      return { score, status };
+    }
+
+    // Timer Durasi Pengecekan
+    function startTimer() {
+      if (timerInterval) clearInterval(timerInterval);
+      secondsElapsed = 0;
+      timerInterval = setInterval(() => {
+        secondsElapsed++;
+        const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
+        const secs = String(secondsElapsed % 60).padStart(2, '0');
+        document.getElementById('inspect-timer').textContent = `${mins}:${secs}`;
+      }, 1000);
+    }
+
+    // ================= AUTO-WATERMARK BUKTI FOTO (KAMERA & GALERI) =================
+    function handlePhotoInput(event, type) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const unitSelect = document.getElementById('inspect-unit');
+      const unitLabel = unitSelect.options[unitSelect.selectedIndex]?.text || 'Unit Belum Dipilih';
+      const nowStr = new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          const maxW = 1024;
+          const scale = Math.min(1, maxW / img.width);
+          canvas.width = img.width * scale;
+          canvas.height = img.height * scale;
+
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+          // Banner Watermark Bawah
+          const barHeight = Math.max(54, canvas.height * 0.09);
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+          ctx.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = `bold ${Math.max(13, Math.round(canvas.width * 0.022))}px sans-serif`;
+          ctx.fillText(`📍 ${unitLabel} (${type.toUpperCase()})`, 16, canvas.height - barHeight + 22);
+
+          ctx.fillStyle = '#5eead4';
+          ctx.font = `${Math.max(11, Math.round(canvas.width * 0.018))}px sans-serif`;
+          ctx.fillText(`🕒 ${nowStr} • Petugas: ${currentUser.full_name}`, 16, canvas.height - 12);
+
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+          watermarkedPhotos[type] = dataUrl;
+
+          const previewEl = document.getElementById(`preview-${type}`);
+          previewEl.src = dataUrl;
+          previewEl.classList.remove('hidden');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function uploadBase64ToSupabase(base64Data, prefix) {
+      if (!base64Data) return null;
+      try {
+        const res = await fetch(base64Data);
+        const blob = await res.blob();
+        const fileName = `${prefix}_${Date.now()}.jpg`;
+        const { data, error } = await db.storage.from('room-photos').upload(fileName, blob, { contentType: 'image/jpeg' });
+        if (error) return base64Data; // Fallback simpan base64 jika bucket belum dibuat
+        const { data: pub } = db.storage.from('room-photos').getPublicUrl(fileName);
+        return pub.publicUrl;
+      } catch {
+        return base64Data;
+      }
+    }
+
+    // ================= SIMPAN INSPEKSI & OFFLINE SYNC =================
+    async function submitInspection(sendWhatsApp) {
+      const unitId = document.getElementById('inspect-unit').value;
+      if (!unitId) {
+        alert('Silakan pilih Unit Kamar terlebih dahulu!');
+        return;
+      }
+
+      const unitObj = unitsData.find(u => u.id === unitId);
+      const shift = document.getElementById('inspect-shift').value;
+      const notes = document.getElementById('inspect-notes').value.trim();
+      const { score, status } = calculateLiveScore();
+
+      const checklist = [];
+      document.querySelectorAll('.item-status-select').forEach(sel => {
+        checklist.push({
+          name: sel.dataset.itemName,
+          status: sel.value
+        });
+      });
+
+      const btn = document.getElementById('btn-submit-inspect');
+      btn.disabled = true;
+      btn.innerHTML = '<span>Menyimpan Laporan...</span>';
+
+      const payload = {
+        unit_id: unitId,
+        unit_name: unitObj.unit_name,
+        inspector_name: currentUser.full_name,
+        inspector_role: currentUser.role,
+        shift,
+        readiness_score: score,
+        final_status: status,
+        duration_seconds: secondsElapsed,
+        checklist_data: checklist,
+        notes,
+        photo_room_url: watermarkedPhotos.room,
+        photo_toilet_url: watermarkedPhotos.toilet,
+        created_at: new Date().toISOString()
+      };
+
+      if (!navigator.onLine) {
+        // Simpan ke Antrean Offline
+        const queue = JSON.parse(localStorage.getItem('offline_queue') || '[]');
+        queue.push(payload);
+        localStorage.setItem('offline_queue', JSON.stringify(queue));
+        checkOfflineBanner();
+        alert('Sinyal sedang offline. Laporan disimpan di memori HP dan otomatis terkirim saat online!');
+      } else {
+        await processAndSendPayload(payload);
+      }
+
+      if (sendWhatsApp) {
+        const waText = `*LAPORAN KESIAPAN KAMAR*\n` +
+          `• Unit: *${unitObj.unit_name}*\n` +
+          `• Status: *${status.toUpperCase()}* (Skor: ${score}%)\n` +
+          `• Petugas: ${currentUser.full_name} (${shift})\n` +
+          `• Catatan: ${notes || 'Semua kondisi terpantau baik'}`;
+        window.open(`https://wa.me/?text=${encodeURIComponent(waText)}`, '_blank');
+      }
+
+      // Reset Form & Animasi Confetti
+      clearInterval(timerInterval);
+      secondsElapsed = 0;
+      document.getElementById('inspect-timer').textContent = '00:00';
+      document.getElementById('inspect-notes').value = '';
+      watermarkedPhotos = { room: null, toilet: null };
+      document.getElementById('preview-room').classList.add('hidden');
+      document.getElementById('preview-toilet').classList.add('hidden');
+
+      confetti({ particleCount: 70, spread: 60, origin: { y: 0.7 } });
+
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="check-circle-2" class="w-4 h-4"></i><span>Simpan Laporan Kesiapan</span>';
+      lucide.createIcons();
+
+      await loadAllData();
+      switchTab('tab-dashboard');
+    }
+
+    async function processAndSendPayload(payload) {
+      if (payload.photo_room_url && payload.photo_room_url.startsWith('data:')) {
+        payload.photo_room_url = await uploadBase64ToSupabase(payload.photo_room_url, 'room');
+      }
+      if (payload.photo_toilet_url && payload.photo_toilet_url.startsWith('data:')) {
+        payload.photo_toilet_url = await uploadBase64ToSupabase(payload.photo_toilet_url, 'toilet');
+      }
+
+      await db.from('room_inspections').insert([payload]);
+      await db.from('master_units').update({
+        status: payload.final_status,
+        last_checked_at: new Date().toISOString(),
+        last_checked_by: payload.inspector_name
+      }).eq('id', payload.unit_id);
+    }
+
+    async function syncOfflineQueue() {
+      const queue = JSON.parse(localStorage.getItem('offline_queue') || '[]');
+      if (queue.length === 0 || !navigator.onLine) return;
+
+      for (const item of queue) {
+        await processAndSendPayload(item);
+      }
+      localStorage.removeItem('offline_queue');
+      checkOfflineBanner();
+      loadAllData();
+    }
+
+    function checkOfflineBanner() {
+      const queue = JSON.parse(localStorage.getItem('offline_queue') || '[]');
+      const banner = document.getElementById('offline-banner');
+      if (queue.length > 0) {
+        document.getElementById('offline-count').textContent = queue.length;
+        banner.classList.remove('hidden');
+      } else {
+        banner.classList.add('hidden');
+      }
+    }
+
+    function updateNetworkStatus() {
+      const el = document.getElementById('network-status');
+      const txt = document.getElementById('network-text');
+      if (navigator.onLine) {
+        el.className = 'flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
+        txt.textContent = 'Online';
+      } else {
+        el.className = 'flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200';
+        txt.textContent = 'Offline';
+      }
+    }
+
+    // ================= QR CODE SCANNER & GENERATOR =================
+    function openQrScanner() {
+      document.getElementById('modal-qr-scanner').classList.remove('hidden');
+      qrScannerInstance = new Html5Qrcode('qr-reader');
+      qrScannerInstance.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 220, height: 220 } },
+        (decodedText) => {
+          closeQrScanner();
+          const found = unitsData.find(u => u.unit_code.toLowerCase() === decodedText.trim().toLowerCase());
+          if (found) {
+            quickInspect(found.id);
+          } else {
+            alert(`Kode QR "${decodedText}" tidak ditemukan di daftar unit.`);
+          }
+        }
+      ).catch(() => {
+        alert('Izin kamera diperlukan untuk memindai QR Code.');
+        closeQrScanner();
+      });
+    }
+
+    function closeQrScanner() {
+      document.getElementById('modal-qr-scanner').classList.add('hidden');
+      if (qrScannerInstance) {
+        qrScannerInstance.stop().catch(() => {});
+      }
+    }
+
+    function showQrSticker(code, name) {
+      document.getElementById('qr-print-title').textContent = name;
+      document.getElementById('qr-print-code').textContent = `Kode Unit: ${code}`;
+      const box = document.getElementById('qr-code-box');
+      box.innerHTML = '';
+      new QRCode(box, { text: code, width: 180, height: 180 });
+      document.getElementById('modal-qr-print').classList.remove('hidden');
+    }
+
+    // ================= KELOLA MASTER UNIT & KELENGKAPAN (CRUD) =================
+    function renderMasterData() {
+      const isAdmin = currentUser.role === 'manajemen';
+
+      document.getElementById('master-unit-list').innerHTML = unitsData.map(u => `
+        <div class="py-3 flex items-center justify-between gap-2">
+          <div>
+            <p class="text-xs font-extrabold text-slate-800">${u.unit_name} <span class="font-mono text-teal-600">(${u.unit_code})</span></p>
+            <p class="text-[11px] text-slate-500">${u.floor} • Status: ${u.status.toUpperCase()}</p>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button onclick="showQrSticker('${u.unit_code}', '${u.unit_name}')" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold">QR</button>
+            ${isAdmin ? `
+              <button onclick="editUnit('${u.id}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold">Edit</button>
+              <button onclick="deleteUnit('${u.id}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>
+            ` : ''}
+          </div>
+        </div>
+      `).join('');
+
+      document.getElementById('master-item-list').innerHTML = itemsData.map(i => `
+        <div class="py-3 flex items-center justify-between gap-2">
+          <div>
+            <p class="text-xs font-extrabold text-slate-800">${i.item_name} ${i.is_critical ? '<span class="text-rose-600 text-[10px]">[Krusial]</span>' : ''}</p>
+            <p class="text-[11px] text-slate-500">Kategori: ${i.category}</p>
+          </div>
+          ${isAdmin ? `
+            <div class="flex items-center gap-1.5">
+              <button onclick="editItem('${i.id}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold">Edit</button>
+              <button onclick="deleteItem('${i.id}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>
+            </div>
+          ` : ''}
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('form-add-unit').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('edit-unit-id').value;
+      const payload = {
+        unit_code: document.getElementById('unit-code').value.trim(),
+        unit_name: document.getElementById('unit-name').value.trim(),
+        floor: document.getElementById('unit-floor').value.trim()
+      };
+      if (id) await db.from('master_units').update(payload).eq('id', id);
+      else await db.from('master_units').insert([payload]);
+
+      e.target.reset();
+      document.getElementById('edit-unit-id').value = '';
+      document.getElementById('btn-save-unit').textContent = '+ Simpan Unit';
+      loadAllData();
+    });
+
+    function editUnit(id) {
+      const u = unitsData.find(x => x.id === id);
+      document.getElementById('edit-unit-id').value = u.id;
+      document.getElementById('unit-code').value = u.unit_code;
+      document.getElementById('unit-name').value = u.unit_name;
+      document.getElementById('unit-floor').value = u.floor;
+      document.getElementById('btn-save-unit').textContent = 'Perbarui Unit';
+    }
+
+    async function deleteUnit(id) {
+      if (!confirm('Hapus unit kamar ini?')) return;
+      await db.from('master_units').delete().eq('id', id);
+      loadAllData();
+    }
+
+    document.getElementById('form-add-item').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('edit-item-id').value;
+      const payload = {
+        item_name: document.getElementById('item-name').value.trim(),
+        category: document.getElementById('item-category').value,
+        is_critical: document.getElementById('item-critical').checked
+      };
+      if (id) await db.from('master_items').update(payload).eq('id', id);
+      else await db.from('master_items').insert([payload]);
+
+      e.target.reset();
+      document.getElementById('edit-item-id').value = '';
+      document.getElementById('btn-save-item').textContent = '+ Simpan';
+      loadAllData();
+    });
+
+    function editItem(id) {
+      const i = itemsData.find(x => x.id === id);
+      document.getElementById('edit-item-id').value = i.id;
+      document.getElementById('item-name').value = i.item_name;
+      document.getElementById('item-category').value = i.category;
+      document.getElementById('item-critical').checked = i.is_critical;
+      document.getElementById('btn-save-item').textContent = 'Perbarui';
+    }
+
+    async function deleteItem(id) {
+      if (!confirm('Hapus item kelengkapan ini?')) return;
+      await db.from('master_items').delete().eq('id', id);
+      loadAllData();
+    }
+
+    // ================= ANALITIK & EKSPOR CSV =================
+    function renderAnalytics() {
+      const siap = unitsData.filter(u => u.status === 'siap').length;
+      const kotor = unitsData.filter(u => u.status === 'kotor').length;
+      const maint = unitsData.filter(u => u.status === 'maintenance').length;
+
+      const ctx = document.getElementById('chart-status');
+      if (statusChart) statusChart.destroy();
+      statusChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Siap Pakai', 'Perlu Cek', 'Maintenance'],
+          datasets: [{
+            data: [siap, kotor, maint],
+            backgroundColor: ['#10b981', '#f59e0b', '#f43f5e'],
+            borderWidth: 0
+          }]
+        },
+        options: { plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } }
+      });
+
+      const total = inspectionsData.length;
+      const avgScore = total ? Math.round(inspectionsData.reduce((a, b) => a + b.readiness_score, 0) / total) : 0;
+      const avgTime = total ? Math.round(inspectionsData.reduce((a, b) => a + (b.duration_seconds || 0), 0) / total) : 0;
+
+      document.getElementById('analytic-total').textContent = `${total} Laporan`;
+      document.getElementById('analytic-avg-score').textContent = `${avgScore}%`;
+      document.getElementById('analytic-avg-time').textContent = `${avgTime} Detik`;
+
+      document.getElementById('history-list').innerHTML = inspectionsData.map(r => `
+        <div class="glass-card rounded-2xl p-4 shadow-sm space-y-2.5">
+          <div class="flex items-start justify-between">
+            <div>
+              <h4 class="text-xs font-extrabold text-slate-900">${r.unit_name}</h4>
+              <p class="text-[11px] text-slate-500">${r.inspector_name} • ${r.shift}</p>
+            </div>
+            <span class="text-[10px] font-extrabold px-2.5 py-1 rounded-full ${r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}">
+              ${r.final_status.toUpperCase()} (${r.readiness_score}%)
+            </span>
+          </div>
+          ${r.notes ? `<p class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg">Catatan: ${r.notes}</p>` : ''}
+          <div class="grid grid-cols-2 gap-2">
+            ${r.photo_room_url ? `<img src="${r.photo_room_url}" class="w-full h-28 object-cover rounded-xl border border-slate-200" />` : ''}
+            ${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" class="w-full h-28 object-cover rounded-xl border border-slate-200" />` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function exportCsv() {
+      const headers = ['Waktu,Unit,Petugas,Shift,Skor,Status,Durasi(Detik),Catatan'];
+      const rows = inspectionsData.map(r =>
+        `"${r.created_at}","${r.unit_name}","${r.inspector_name}","${r.shift}",${r.readiness_score},"${r.final_status}",${r.duration_seconds},"${(r.notes || '').replace(/"/g, '""')}"`
+      );
+      const blob = new Blob([headers.concat(rows).join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Rekap_Kesiapan_Kamar_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+    }
+  </script>
 </body>
 </html>
