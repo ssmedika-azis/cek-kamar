@@ -131,18 +131,15 @@ function getEffectiveUnitStatus(u) {
   const unitUpdatedAt = u.last_checked_at ? new Date(u.last_checked_at).getTime() : 0;
   const repCreatedAt = latestRep?.created_at ? new Date(latestRep.created_at).getTime() : 0;
 
-  // Jika kamar sudah dikosongkan (Pasien Pulang) setelah laporan terakhir, status mutlak KOSONG
   const isExplicitlyClearedAfterReport = (!checkedByStr && u.status === 'kotor' && unitUpdatedAt > (repCreatedAt + 2000));
   if (isExplicitlyClearedAfterReport) return 'kosong';
 
-  // Jika ada laporan petugas yang masuk dan BELUM di-approve Manajemen -> MENUNGGU APPROVAL
   if (latestRep && !isInspectionOfficiallyApproved(latestRep)) {
     const meta = parseNotesMetadata(latestRep.notes);
     if (meta.feedbackStatus.includes('Sedang Dibersihkan')) return 'dibersihkan';
     return 'pending_approval';
   }
 
-  // Jika laporan terakhir sudah di-approve Manajemen -> SIAP PAKAI
   if (latestRep && isInspectionOfficiallyApproved(latestRep)) return 'siap';
   if (u.status === 'siap' && hasApprovedStampOnUnit) return 'siap';
   if (checkedByStr && !hasApprovedStampOnUnit) return 'pending_approval';
@@ -1145,7 +1142,6 @@ function loadExistingInspectionToForm(unitId) {
   const eff = getEffectiveUnitStatus(unit);
   const latestRep = getLatestInspectionForUnit(unit.id, unit.unit_name);
 
-  // HANYA muat hasil form petugas jika kamar sedang MENUNGGU APPROVAL / PROSES dan belum di-approve
   if ((eff === 'pending_approval' || eff === 'dibersihkan') && latestRep && !isInspectionOfficiallyApproved(latestRep)) {
     const meta = parseNotesMetadata(latestRep.notes);
     const ownerName = meta.executor || latestRep.inspector_name;
@@ -1155,7 +1151,6 @@ function loadExistingInspectionToForm(unitId) {
     }
   }
 
-  // Jika kamar KOSONG atau sudah SIAP PAKAI -> form dibuka bersih/kosong
   clearPrefillFormState();
   populateOfficerDropdown();
   setAutoShift();
@@ -1348,7 +1343,7 @@ function renderDashboard() {
     const st = statusMap[eff] || statusMap.kosong;
 
     const dropdownOptions = `
-      <option value="siap" ${eff === 'siap' ? 'selected' : ''}>SIAP PAKAI (APPROVE)</option>
+      <option value="siap" ${eff === 'siap' ? 'selected' : ''}>SIAP PAKAI</option>
       <option value="pending_approval" ${eff === 'pending_approval' ? 'selected' : ''}>MENUNGGU APPROVAL</option>
       <option value="dibersihkan" ${eff === 'dibersihkan' ? 'selected' : ''}>SEDANG DIBERSIHKAN</option>
       <option value="kosong" ${eff === 'kosong' ? 'selected' : ''}>KOSONG</option>
@@ -1363,7 +1358,6 @@ function renderDashboard() {
       ? `openReportInForm('${latestRep.id}')`
       : `quickInspect('${u.id}')`;
 
-    // Tombol Cek Form & Approve HANYA tampil jika petugas sudah mengisi form & status belum di-approve
     const showApprovalButtons = isManagerRole() && isWaitingApproval;
 
     return `
