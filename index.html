@@ -309,45 +309,49 @@
             </button>
           </div>
 
-          <form id="inspection-form" class="space-y-4">
-            <!-- 1. UNIT KAMAR & SHIFT KERJA (DI ATAS, BERJEJER MENYAMPING) -->
+          <form id="inspection-form" class="space-y-3.5">
+            <!-- 1. POSISI PERTAMA (PALING ATAS): PEMERIKSA MANAJEMEN -->
+            <div class="bg-indigo-50/60 p-3 rounded-2xl border border-indigo-100">
+              <label class="block text-[11px] font-bold text-indigo-950 mb-1">1. Pemeriksa (Manajemen)</label>
+              <select id="inspect-officer-select" required class="w-full px-3 py-2.5 rounded-xl bg-white border border-indigo-200 text-xs font-bold text-slate-800"></select>
+            </div>
+
+            <!-- 2. POSISI KEDUA: PETUGAS PELAKSANA -->
+            <div class="bg-teal-50/60 p-3 rounded-2xl border border-teal-100">
+              <div class="flex items-center justify-between gap-2 mb-1">
+                <label class="block text-[11px] font-bold text-teal-950">2. Petugas Pelaksana</label>
+                <span id="executor-lock-badge" class="text-[9px] font-bold text-teal-700"></span>
+              </div>
+              <select id="inspect-executor-select" required class="w-full px-3 py-2.5 rounded-xl bg-white border border-teal-200 text-xs font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-700"></select>
+            </div>
+
+            <!-- 3. POSISI KETIGA: UNIT KAMAR & SHIFT KERJA (BISA DIPILIH & DIEDIT BEBAS) -->
             <div class="grid grid-cols-2 gap-2.5 bg-slate-50/90 p-3 rounded-2xl border border-slate-200/80">
               <div class="min-w-0">
-                <label class="block text-[11px] font-bold text-slate-600 mb-1">Unit Kamar</label>
+                <label class="block text-[11px] font-bold text-slate-600 mb-1">3. Unit Kamar</label>
                 <select id="inspect-unit" onchange="handleInspectUnitChange()" required class="w-full px-2.5 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-800"></select>
               </div>
               <div class="min-w-0">
-                <label class="block text-[11px] font-bold text-slate-600 mb-1">Shift Kerja</label>
-                <select id="inspect-shift" class="w-full px-2.5 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-800">
-                  <option value="Pagi">Shift Pagi (07-14)</option>
-                  <option value="Siang">Shift Siang (14-21)</option>
-                  <option value="Malam">Shift Malam (21-07)</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- 2. PETUGAS PEMERIKSA & PELAKSANA (DI BAWAH KAMAR & SHIFT, TIDAK TERPOTONG) -->
-            <div class="grid grid-cols-2 gap-2.5 bg-teal-50/50 p-3 rounded-2xl border border-teal-100">
-              <div class="min-w-0">
-                <label class="block text-[10.5px] font-bold text-teal-900 mb-1 leading-snug">Pemeriksa (Manajemen)</label>
-                <select id="inspect-officer-select" required class="w-full px-2.5 py-2.5 rounded-xl bg-white border border-teal-200 text-xs font-semibold text-slate-800"></select>
-              </div>
-              <div class="min-w-0">
                 <div class="flex items-center justify-between gap-1 mb-1">
-                  <label class="block text-[10.5px] font-bold text-teal-900 leading-snug">Petugas Pelaksana</label>
-                  <span id="executor-lock-badge" class="text-[8.5px] font-bold text-teal-700 shrink-0"></span>
+                  <label class="block text-[11px] font-bold text-slate-600">Shift Kerja</label>
+                  <span class="text-[9px] font-semibold text-teal-600">Bisa diedit</span>
                 </div>
-                <select id="inspect-executor-select" required class="w-full px-2.5 py-2.5 rounded-xl bg-white border border-teal-200 text-xs font-semibold text-slate-800 disabled:bg-slate-100 disabled:text-slate-700"></select>
+                <input type="text" id="inspect-shift" list="shift-presets" value="Pagi" required placeholder="Pilih / ketik shift..." class="w-full px-2.5 py-2.5 rounded-xl bg-white border border-slate-200 focus:border-teal-600 focus:outline-none text-xs font-bold text-slate-800" />
+                <datalist id="shift-presets">
+                  <option value="Pagi">Shift Pagi (07:00 - 14:00)</option>
+                  <option value="Siang">Shift Siang (14:00 - 21:00)</option>
+                  <option value="Malam">Shift Malam (21:00 - 07:00)</option>
+                </datalist>
               </div>
             </div>
 
-            <!-- 3. CHECKLIST KELENGKAPAN & KEBERSIHAN -->
-            <div class="space-y-2">
+            <!-- 4. CHECKLIST KELENGKAPAN & KEBERSIHAN -->
+            <div class="space-y-2 pt-0.5">
               <label class="block text-xs font-bold text-slate-600">Checklist Kelengkapan & Kebersihan</label>
               <div id="checklist-container" class="space-y-2"></div>
             </div>
 
-            <!-- 4. DOKUMENTASI FOTO: SEIMBANG 2 KOLOM + ANIMASI -->
+            <!-- 5. DOKUMENTASI FOTO: SEIMBANG 2 KOLOM + ANIMASI -->
             <div class="space-y-2">
               <div class="flex items-center justify-between">
                 <label class="block text-xs font-bold text-slate-600">Dokumentasi Foto</label>
@@ -428,7 +432,7 @@
               </div>
             </div>
 
-            <!-- 5. STATUS APPROVAL & TANGGAPAN PEMERIKSA -->
+            <!-- 6. STATUS APPROVAL & TANGGAPAN PEMERIKSA -->
             <div class="bg-amber-50/70 p-3.5 rounded-2xl border border-amber-200/80 space-y-3">
               <div>
                 <label class="block text-xs font-extrabold text-amber-900 mb-1">Status Approval / Tanggapan Pemeriksa</label>
