@@ -49,58 +49,56 @@
     @keyframes popIn { 0% { transform: scale(0.92); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
     @keyframes slideDownBanner { 0% { transform: translateY(-120%); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
     @keyframes bellRing { 0%, 100% { transform: rotate(0deg); } 20% { transform: rotate(18deg); } 40% { transform: rotate(-16deg); } 60% { transform: rotate(12deg); } 80% { transform: rotate(-8deg); } }
+    @keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 0 0 rgba(13, 148, 136, 0.45); } 50% { box-shadow: 0 0 0 6px rgba(13, 148, 136, 0); } }
     .upload-box { transition: all 0.28s cubic-bezier(0.34, 1.56, 0.64, 1); }
     .upload-icon-anim { animation: floatCam 2.4s ease-in-out infinite; }
     .photo-pop { animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
     .banner-slide-in { animation: slideDownBanner 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
     .bell-animate { animation: bellRing 0.8s ease-in-out; }
+    .btn-back-glow { animation: pulseGlow 2.2s infinite; }
   </style>
 </head>
 <body class="text-slate-800 pb-24 w-full">
 
   <!-- BANNER NOTIFIKASI LIVE -->
   <div id="live-toast-banner" class="hidden fixed top-3 left-3 right-3 z-[60] max-w-md mx-auto">
-    <div onclick="openLatestNotifFromBanner()" class="bg-slate-900/95 backdrop-blur-md text-white rounded-2xl p-3.5 shadow-2xl border border-teal-500/40 flex items-center gap-3 cursor-pointer">
-      <div class="w-10 h-10 rounded-xl bg-teal-500/20 border border-teal-400/40 flex items-center justify-center shrink-0">
+    <div onclick="openLatestNotifFromBanner()" class="bg-slate-900/95 backdrop-blur-md text-white rounded-2xl p-3.5 shadow-2xl border border-amber-400/60 flex items-center gap-3 cursor-pointer">
+      <div class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/50 flex items-center justify-center shrink-0">
         <img src="./192x192.png" alt="Icon" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" class="w-7 h-7 object-contain rounded-lg" />
-        <i data-lucide="bell-ring" class="w-5 h-5 text-teal-400 hidden"></i>
+        <i data-lucide="bell-ring" class="w-5 h-5 text-amber-400 hidden"></i>
       </div>
       <div class="min-w-0 flex-1">
         <div class="flex items-center justify-between gap-2">
-          <span class="text-[10px] font-extrabold uppercase tracking-wider text-teal-400">Laporan Masuk • Baru Saja</span>
+          <span id="toast-banner-badge" class="text-[10px] font-extrabold uppercase tracking-wider text-amber-400">Butuh Approval • Baru Saja</span>
           <span id="toast-banner-time" class="text-[10px] text-slate-400">Baru saja</span>
         </div>
-        <p id="toast-banner-title" class="text-xs font-extrabold text-white truncate mt-0.5">Kamar 101 - Anggrek • SIAP PAKAI</p>
-        <p id="toast-banner-body" class="text-[11px] text-slate-300 truncate">Oleh Petugas • Skor 100%</p>
+        <p id="toast-banner-title" class="text-xs font-extrabold text-white truncate mt-0.5">Kamar 101 - Anggrek • MENUNGGU APPROVAL</p>
+        <p id="toast-banner-body" class="text-[11px] text-slate-300 truncate">Oleh Petugas • Segera approve agar Siap Pakai</p>
       </div>
-      <button type="button" onclick="event.stopPropagation(); hideToastBanner();" class="p-1 text-slate-400 hover:text-white shrink-0">
+      <button type="button" onclick="event.stopPropagation(); hideToastBanner();" class="p-1.5 bg-white/10 rounded-lg text-slate-300 hover:text-white shrink-0">
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
     </div>
   </div>
 
   <!-- HALAMAN LAPORAN MODE PENUH -->
-  <div id="public-report-screen" class="hidden min-h-screen w-full bg-slate-100 pb-12">
-    <header class="sticky top-0 z-30 bg-teal-700 text-white px-4 pb-3.5 safe-top shadow-md">
+  <div id="public-report-screen" class="hidden min-h-screen w-full bg-slate-100 pb-14">
+    <header class="sticky top-0 z-30 bg-teal-700 text-white px-3.5 pb-3.5 safe-top shadow-md">
       <div class="max-w-2xl mx-auto flex items-center justify-between gap-2">
         <div class="flex items-center gap-2 min-w-0 flex-1">
-          <button type="button" onclick="exitPublicReportMode()" title="Kembali ke Aplikasi" class="p-2 bg-teal-800/80 hover:bg-teal-900 text-white rounded-xl shrink-0 flex items-center justify-center transition">
-            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+          <button type="button" onclick="exitPublicReportMode()" class="btn-back-glow px-3 py-2 bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-extrabold rounded-xl text-xs shrink-0 flex items-center gap-1.5 shadow-lg transition">
+            <i data-lucide="arrow-left" class="w-4 h-4 stroke-[2.75]"></i> Kembali
           </button>
-          <div class="w-9 h-9 bg-white rounded-xl flex items-center justify-center shrink-0 overflow-hidden p-0.5">
-            <img src="./192x192.png" alt="Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" class="w-full h-full object-contain" />
-            <i data-lucide="hospital" class="w-5 h-5 text-teal-700 hidden"></i>
-          </div>
           <div class="min-w-0 flex-1">
             <h1 class="text-sm font-extrabold leading-tight truncate">Laporan Kesiapan Kamar</h1>
             <p class="text-[11px] text-teal-100 truncate">RS Khusus Bedah SS Medika</p>
           </div>
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
-          <button type="button" onclick="sharePublicReportWa()" class="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold rounded-xl text-xs flex items-center gap-1 shadow-sm transition">
+          <button type="button" onclick="sharePublicReportWa()" class="px-2.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold rounded-xl text-xs flex items-center gap-1 shadow-sm transition">
             <i data-lucide="send" class="w-3.5 h-3.5"></i> WA
           </button>
-          <button type="button" onclick="downloadPublicReportPdf()" id="btn-public-pdf" class="px-2.5 py-1.5 bg-white text-teal-800 hover:bg-teal-50 font-extrabold rounded-xl text-xs flex items-center gap-1 shadow-sm transition">
+          <button type="button" onclick="downloadPublicReportPdf()" id="btn-public-pdf" class="px-2.5 py-2 bg-white text-teal-800 hover:bg-teal-50 font-extrabold rounded-xl text-xs flex items-center gap-1 shadow-sm transition">
             <i data-lucide="download" class="w-3.5 h-3.5"></i> PDF
           </button>
         </div>
@@ -112,8 +110,8 @@
       </div>
     </div>
     <div class="max-w-2xl mx-auto px-4 pt-2">
-      <button type="button" onclick="exitPublicReportMode()" class="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-sm transition">
-        <i data-lucide="arrow-left" class="w-4 h-4"></i> Kembali ke Aplikasi Utama
+      <button type="button" onclick="exitPublicReportMode()" class="btn-back-glow w-full py-3.5 bg-amber-400 hover:bg-amber-300 active:scale-[0.99] text-slate-950 font-extrabold rounded-2xl text-sm flex items-center justify-center gap-2 shadow-lg transition">
+        <i data-lucide="arrow-left" class="w-5 h-5 stroke-[2.75]"></i> Kembali ke Menu Utama
       </button>
     </div>
   </div>
@@ -167,7 +165,7 @@
           </div>
         </div>
         <div class="flex items-center gap-1 shrink-0">
-          <button type="button" onclick="openNotificationDrawer()" title="Notifikasi" class="relative p-1.5 text-slate-600 hover:text-teal-600 hover:bg-teal-50 rounded-xl transition">
+          <button type="button" onclick="openNotificationDrawer()" title="Notifikasi & Approval" class="relative p-1.5 text-slate-600 hover:text-teal-600 hover:bg-teal-50 rounded-xl transition">
             <i id="notif-bell-icon" data-lucide="bell" class="w-4 h-4"></i>
             <span id="notif-unread-badge" class="hidden absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-rose-600 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center shadow-sm">0</span>
           </button>
@@ -186,6 +184,22 @@
         </div>
       </div>
     </header>
+
+    <!-- BANNER APPROVAL UNTUK MANAJEMEN -->
+    <div id="management-approval-alert" class="hidden mx-4 mt-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-3.5 shadow-lg flex items-center justify-between gap-2.5">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+          <i data-lucide="shield-alert" class="w-5 h-5 text-amber-300"></i>
+        </div>
+        <div class="min-w-0">
+          <p id="approval-alert-title" class="text-xs font-extrabold leading-tight">1 Kamar Menunggu Approval</p>
+          <p class="text-[10.5px] text-indigo-100 truncate">Petugas sudah selesai — cek & approve agar Siap Pakai</p>
+        </div>
+      </div>
+      <button type="button" onclick="openNotificationDrawer()" class="shrink-0 px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-xl text-[11px] shadow-sm transition">
+        Cek & Approve
+      </button>
+    </div>
 
     <div id="notif-permission-bar" class="hidden mx-4 mt-3 bg-gradient-to-r from-teal-600 to-emerald-600 text-white rounded-2xl p-3 shadow-md flex items-center justify-between gap-2.5">
       <div class="flex items-center gap-2.5 min-w-0">
@@ -211,7 +225,7 @@
             <p id="stat-siap" class="text-2xl font-extrabold text-emerald-600 mt-0.5">0</p>
           </div>
           <div class="glass-card rounded-2xl p-3.5 text-center shadow-sm">
-            <p class="text-[11px] font-bold text-slate-500">Kosong / Bersih</p>
+            <p class="text-[11px] font-bold text-slate-500">Kosong / Proses</p>
             <p id="stat-kotor" class="text-2xl font-extrabold text-amber-500 mt-0.5">0</p>
           </div>
           <div class="glass-card rounded-2xl p-3.5 text-center shadow-sm">
@@ -232,16 +246,16 @@
       <section id="tab-inspect" class="page-section hidden space-y-4">
         <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
           <div class="flex items-center justify-between gap-2">
-            <div class="flex items-center gap-2">
-              <button type="button" onclick="switchTab('dashboard')" title="Kembali ke Dasbor" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition">
-                <i data-lucide="arrow-left" class="w-4 h-4"></i>
+            <div class="flex items-center gap-2.5">
+              <button type="button" onclick="switchTab('dashboard')" class="btn-back-glow px-3 py-2 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition">
+                <i data-lucide="arrow-left" class="w-4 h-4 stroke-[2.75]"></i> Kembali
               </button>
               <div>
-                <h2 class="text-base font-extrabold text-slate-900">Form Inspeksi Kamar</h2>
-                <p class="text-xs text-slate-500">Isi checklist kelengkapan & kebersihan</p>
+                <h2 class="text-sm font-extrabold text-slate-900">Form Inspeksi Kamar</h2>
+                <p class="text-[11px] text-slate-500">Checklist kelengkapan & kebersihan</p>
               </div>
             </div>
-            <div class="px-3 py-1.5 bg-slate-100 rounded-xl text-xs font-mono font-bold text-slate-700" id="timer-display">00:00</div>
+            <div class="px-2.5 py-1.5 bg-slate-100 rounded-xl text-xs font-mono font-bold text-slate-700 shrink-0" id="timer-display">00:00</div>
           </div>
 
           <form id="inspection-form" class="space-y-4">
@@ -285,11 +299,12 @@
                 <label for="inspect-feedback-status" class="text-[10px] font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
                   <i data-lucide="message-square-warning" class="w-3.5 h-3.5"></i> Tanggapan Pemeriksa Hasil Kerja
                 </label>
-                <span class="text-[10px] font-bold text-amber-700">Evaluasi</span>
+                <span id="role-approval-hint" class="text-[10px] font-bold text-amber-700">Evaluasi</span>
               </div>
               <select id="inspect-feedback-status" onchange="handleFeedbackStatusChange()" class="w-full p-2.5 bg-white border border-amber-200 rounded-xl text-xs font-extrabold text-slate-800 outline-none focus:border-amber-500">
                 <option value="Sesuai Standar (Baik)">✅ Hasil Kerja Sesuai Standar (Approved / Siap Pakai)</option>
-                <option value="Sedang Dibersihkan / Proses">🧹 Sedang Dibersihkan / Menunggu Approval</option>
+                <option value="Menunggu Approval Manajemen">⏳ Selesai Dibersihkan (Minta Approval Manajemen)</option>
+                <option value="Sedang Dibersihkan / Proses">🧹 Sedang Dibersihkan / Dalam Proses</option>
                 <option value="Perlu Perbaikan Ringan">⚠️ Perlu Perbaikan Ringan (Tandai Bagian)</option>
                 <option value="Wajib Diperbaiki Segera">🚨 Wajib Diperbaiki Segera (Belum Layak)</option>
               </select>
@@ -374,17 +389,17 @@
         <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="flex items-center gap-2">
-              <button type="button" onclick="switchTab('dashboard')" title="Kembali ke Dasbor" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition">
-                <i data-lucide="arrow-left" class="w-4 h-4"></i>
+              <button type="button" onclick="switchTab('dashboard')" class="btn-back-glow px-3 py-2 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition">
+                <i data-lucide="arrow-left" class="w-4 h-4 stroke-[2.75]"></i> Kembali
               </button>
-              <h2 class="text-base font-extrabold text-slate-900">Analitik & Riwayat</h2>
+              <h2 class="text-sm font-extrabold text-slate-900">Analitik & Riwayat</h2>
             </div>
             <div class="flex items-center gap-1.5">
-              <button onclick="exportCsv()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm">
-                <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Ekspor CSV
+              <button onclick="exportCsv()" class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1 shadow-sm">
+                <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> CSV
               </button>
-              <button onclick="exportPdf()" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm">
-                <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Ekspor PDF
+              <button onclick="exportPdf()" class="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl flex items-center gap-1 shadow-sm">
+                <i data-lucide="file-text" class="w-3.5 h-3.5"></i> PDF
               </button>
             </div>
           </div>
@@ -472,17 +487,17 @@
       <section id="tab-master" class="page-section hidden space-y-5">
         <div class="glass-card rounded-3xl p-5 shadow-sm space-y-3">
           <div class="flex items-center justify-between gap-2">
-            <div class="flex items-center gap-2">
-              <button type="button" onclick="switchTab('dashboard')" title="Kembali ke Dasbor" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition">
-                <i data-lucide="arrow-left" class="w-4 h-4"></i>
+            <div class="flex items-center gap-2.5">
+              <button type="button" onclick="switchTab('dashboard')" class="btn-back-glow px-3 py-2 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition">
+                <i data-lucide="arrow-left" class="w-4 h-4 stroke-[2.75]"></i> Kembali
               </button>
               <div>
-                <h2 class="text-base font-extrabold text-slate-900">Notifikasi Laporan Masuk</h2>
-                <p class="text-xs text-slate-500">Bunyi & notifikasi layar HP saat ada petugas mengisi form</p>
+                <h2 class="text-sm font-extrabold text-slate-900">Notifikasi Laporan Masuk</h2>
+                <p class="text-[11px] text-slate-500">Bunyi & popup HP saat laporan masuk</p>
               </div>
             </div>
-            <button type="button" onclick="testNotificationAlert()" class="px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-xl text-xs font-bold flex items-center gap-1.5">
-              <i data-lucide="volume-2" class="w-3.5 h-3.5"></i> Tes Bunyi
+            <button type="button" onclick="testNotificationAlert()" class="px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0">
+              <i data-lucide="volume-2" class="w-3.5 h-3.5"></i> Tes
             </button>
           </div>
           <div class="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-100">
@@ -577,26 +592,21 @@
     </nav>
   </div>
 
-  <!-- MODAL NOTIFIKASI -->
+  <!-- MODAL NOTIFIKASI & APPROVAL -->
   <div id="modal-notifications" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-3.5 shadow-2xl max-h-[85vh] flex flex-col">
-      <div class="flex items-center justify-between shrink-0">
-        <div class="flex items-center gap-2">
-          <button type="button" onclick="closeActiveModal('modal-notifications')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
-            <i data-lucide="arrow-left" class="w-4 h-4"></i>
-          </button>
-          <div>
-            <h3 class="text-sm font-extrabold text-slate-900">Notifikasi Laporan Masuk</h3>
-            <p class="text-[11px] text-slate-500">Update real-time pengisian form kamar</p>
-          </div>
-        </div>
-        <button onclick="closeActiveModal('modal-notifications')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
-          <i data-lucide="x" class="w-4 h-4"></i>
+      <div class="flex items-center justify-between shrink-0 gap-2">
+        <button type="button" onclick="closeActiveModal('modal-notifications')" class="btn-back-glow px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-extrabold rounded-xl text-xs flex items-center gap-1 shadow-sm">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5 stroke-[2.75]"></i> Kembali
         </button>
+        <div class="text-right min-w-0">
+          <h3 class="text-xs font-extrabold text-slate-900 truncate">Notifikasi & Approval</h3>
+          <p class="text-[10px] text-slate-500 truncate">Persetujuan siap pakai kamar</p>
+        </div>
       </div>
       <div id="notif-drawer-list" class="overflow-y-auto space-y-2 pr-1 flex-1"></div>
       <div class="flex gap-2 pt-1 shrink-0">
-        <button type="button" onclick="testNotificationAlert()" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">Tes Notifikasi HP</button>
+        <button type="button" onclick="testNotificationAlert()" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">Tes Bunyi HP</button>
         <button type="button" onclick="closeActiveModal('modal-notifications'); switchTab('analytics');" class="flex-1 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs">Semua Riwayat</button>
       </div>
     </div>
@@ -605,19 +615,14 @@
   <!-- MODAL SHARE WHATSAPP -->
   <div id="modal-wa-share" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-3.5 shadow-2xl max-h-[92vh] overflow-y-auto">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <button type="button" onclick="closeActiveModal('modal-wa-share')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
-            <i data-lucide="arrow-left" class="w-4 h-4"></i>
-          </button>
-          <div>
-            <h3 class="text-sm font-extrabold text-slate-900">Kirim Laporan WhatsApp</h3>
-            <p class="text-[11px] text-slate-500">Dilengkapi tombol laporan mode penuh</p>
-          </div>
-        </div>
-        <button onclick="closeActiveModal('modal-wa-share')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
-          <i data-lucide="x" class="w-4 h-4"></i>
+      <div class="flex items-center justify-between gap-2">
+        <button type="button" onclick="closeActiveModal('modal-wa-share')" class="btn-back-glow px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-extrabold rounded-xl text-xs flex items-center gap-1 shadow-sm">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5 stroke-[2.75]"></i> Kembali
         </button>
+        <div class="text-right">
+          <h3 class="text-xs font-extrabold text-slate-900">Kirim Laporan WhatsApp</h3>
+          <p class="text-[10px] text-slate-500">Dilengkapi laporan mode penuh</p>
+        </div>
       </div>
       <div class="space-y-2.5">
         <div>
@@ -658,25 +663,24 @@
   <!-- MODAL ZOOM FOTO -->
   <div id="modal-photo-zoom" onclick="closeActiveModal('modal-photo-zoom')" class="hidden fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="max-w-2xl w-full space-y-3 text-center">
-      <div class="flex justify-end">
-        <button type="button" onclick="closeActiveModal('modal-photo-zoom')" class="px-3 py-1.5 bg-white/15 text-white rounded-full text-xs font-bold flex items-center gap-1">
-          <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Kembali
+      <div class="flex justify-start">
+        <button type="button" onclick="closeActiveModal('modal-photo-zoom')" class="btn-back-glow px-4 py-2 bg-amber-400 text-slate-950 rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-lg">
+          <i data-lucide="arrow-left" class="w-4 h-4 stroke-[2.75]"></i> Kembali
         </button>
       </div>
-      <img id="zoom-photo-img" src="" class="w-full max-h-[76vh] object-contain rounded-2xl shadow-2xl mx-auto" />
-      <p class="text-xs text-slate-300">Ketuk di mana saja untuk menutup foto</p>
+      <img id="zoom-photo-img" src="" class="w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl mx-auto" />
+      <p class="text-xs text-slate-300">Ketuk tombol Kembali atau layar untuk menutup</p>
     </div>
   </div>
 
   <!-- MODAL QR SCANNER -->
   <div id="modal-qr-scanner" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-4">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <button type="button" onclick="closeQrScanner()" class="p-1.5 bg-slate-100 rounded-full text-slate-600"><i data-lucide="arrow-left" class="w-4 h-4"></i></button>
-          <h3 class="text-sm font-extrabold text-slate-900">Scan QR Code Pintu Kamar</h3>
-        </div>
-        <button onclick="closeQrScanner()" class="p-1.5 bg-slate-100 rounded-full text-slate-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+      <div class="flex items-center justify-between gap-2">
+        <button type="button" onclick="closeQrScanner()" class="btn-back-glow px-3 py-1.5 bg-teal-600 text-white rounded-xl text-xs font-extrabold flex items-center gap-1 shadow-sm">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5 stroke-[2.75]"></i> Kembali
+        </button>
+        <h3 class="text-xs font-extrabold text-slate-900">Scan QR Pintu Kamar</h3>
       </div>
       <div id="qr-reader" class="w-full rounded-2xl overflow-hidden border border-slate-200"></div>
       <p class="text-[11px] text-center text-slate-500">Arahkan kamera ke stiker QR Code pintu kamar</p>
@@ -692,10 +696,10 @@
       <p class="text-[11px] text-slate-500">Unduh gambar stiker QR siap cetak untuk ditempel di pintu kamar</p>
       <div class="flex gap-2">
         <button type="button" onclick="downloadQrImage()" class="flex-1 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm">
-          <i data-lucide="download" class="w-4 h-4"></i> Download PNG
+          <i data-lucide="download" class="w-4 h-4"></i> PNG
         </button>
-        <button type="button" onclick="closeActiveModal('modal-qr-print')" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">
-          Kembali
+        <button type="button" onclick="closeActiveModal('modal-qr-print')" class="btn-back-glow px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-xl text-xs flex items-center gap-1 shadow-sm">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5 stroke-[2.75]"></i> Kembali
         </button>
       </div>
     </div>
@@ -704,28 +708,22 @@
   <!-- MODAL TENTANG APLIKASI -->
   <div id="modal-about" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2.5">
-          <button type="button" onclick="closeActiveModal('modal-about')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
-            <i data-lucide="arrow-left" class="w-4 h-4"></i>
-          </button>
-          <div>
-            <h3 class="text-sm font-extrabold text-slate-900">Tentang Aplikasi</h3>
-            <p onclick="handleSecretHistoryTap()" class="text-[11px] text-teal-600 font-bold select-none cursor-default">Versi 4.0 PWA • Siklus Status & Revisi</p>
-          </div>
-        </div>
-        <button onclick="closeActiveModal('modal-about')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
-          <i data-lucide="x" class="w-4 h-4"></i>
+      <div class="flex items-center justify-between gap-2">
+        <button type="button" onclick="closeActiveModal('modal-about')" class="btn-back-glow px-3 py-1.5 bg-teal-600 text-white rounded-xl text-xs font-extrabold flex items-center gap-1 shadow-sm">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5 stroke-[2.75]"></i> Kembali
         </button>
+        <div class="text-right">
+          <h3 class="text-xs font-extrabold text-slate-900">Tentang Aplikasi</h3>
+          <p onclick="handleSecretHistoryTap()" class="text-[10px] text-teal-600 font-bold select-none cursor-default">Versi 4.2 PWA • Approval Manajemen</p>
+        </div>
       </div>
 
       <div class="space-y-2.5 text-xs text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100">
         <p class="font-bold text-slate-900">Sistem Monitoring Kesiapan Kamar Rawat Inap</p>
-        <p>Aplikasi PWA (Progressive Web App) untuk memantau kesiapan, kebersihan, dan kelengkapan fasilitas kamar secara real-time di lingkungan <strong>RS Khusus Bedah SS Medika</strong>.</p>
+        <p>Aplikasi PWA untuk memantau kesiapan, kebersihan, dan kelengkapan fasilitas kamar secara real-time di <strong>RS Khusus Bedah SS Medika</strong>.</p>
         <ul class="space-y-1 text-[11px] text-slate-600 pt-1">
-          <li>• <strong>Siklus Status Kamar:</strong> Kosong (belum dicek / pasien pulang), Sedang Dibersihkan, hingga Siap Pakai setelah disetujui pemeriksa.</li>
-          <li>• <strong>Tombol Selesai Revisi:</strong> Petugas dapat langsung menandai perbaikan telah selesai agar status kamar otomatis menjadi Siap Pakai.</li>
-          <li>• <strong>Navigasi Back Aman:</strong> Dilengkapi tombol kembali di tiap halaman & modal agar aplikasi tidak tertutup saat tombol Back HP ditekan.</li>
+          <li>• <strong>Wajib Approval Manajemen:</strong> Sebelum disetujui pemeriksa/manajemen, status kamar tetap <em>Menunggu Approval</em> dan otomatis mengirim notifikasi ke Manajemen.</li>
+          <li>• <strong>Tombol Kembali Menyala:</strong> Ditempatkan jelas di setiap halaman agar pengguna mudah kembali tanpa keluar dari aplikasi.</li>
         </ul>
       </div>
 
@@ -755,8 +753,8 @@
 
       <div class="text-center text-[11px] text-slate-400">&copy; 2026 RS Khusus Bedah SS Medika</div>
 
-      <button type="button" onclick="closeActiveModal('modal-about')" class="w-full py-2.5 bg-teal-600 text-white font-bold rounded-xl text-xs">
-        Kembali
+      <button type="button" onclick="closeActiveModal('modal-about')" class="btn-back-glow w-full py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md">
+        <i data-lucide="arrow-left" class="w-4 h-4 stroke-[2.75]"></i> Kembali ke Menu Utama
       </button>
     </div>
   </div>
@@ -797,6 +795,10 @@
 
     if (window.lucide) lucide.createIcons();
 
+    function isManagerRole() {
+      return currentUser && (currentUser.role || '').toLowerCase() === 'manajemen';
+    }
+
     // --- NAVIGASI BACK HP (MENCEGAH APLIKASI PWA LANGSUNG KELUAR) ---
     function openModalWithHistory(modalId) {
       const el = document.getElementById(modalId);
@@ -825,13 +827,66 @@
       }
     });
 
-    // --- SIKLUS STATUS KAMAR (KOSONG / SEDANG DIBERSIHKAN / SIAP PAKAI / MAINTENANCE) ---
+    // --- SIKLUS STATUS KAMAR (KOSONG / SEDANG DIBERSIHKAN / MENUNGGU APPROVAL / SIAP PAKAI / MAINTENANCE) ---
+    function getLatestInspectionForUnit(unitId) {
+      return inspectionsData.find(r => String(r.unit_id) === String(unitId)) || null;
+    }
+
     function getEffectiveUnitStatus(u) {
       if (u.status === 'maintenance') return 'maintenance';
       if (!u.last_checked_by || u.status === 'kosong') return 'kosong';
-      if (u.status === 'kotor' || u.status === 'dibersihkan') return 'dibersihkan';
       if (u.status === 'siap') return 'siap';
+
+      // Cek apakah laporan terakhir sedang menunggu approval manajemen
+      const latestRep = getLatestInspectionForUnit(u.id);
+      if (latestRep) {
+        const meta = parseNotesMetadata(latestRep.notes);
+        if (
+          meta.feedbackStatus.includes('Menunggu Approval') ||
+          (latestRep.readiness_score === 100 && latestRep.final_status !== 'siap' && !meta.feedbackStatus.includes('Perbaikan') && !meta.feedbackStatus.includes('Wajib Diperbaiki'))
+        ) {
+          return 'pending_approval';
+        }
+      }
+      if (u.status === 'kotor' || u.status === 'dibersihkan') return 'dibersihkan';
       return 'kosong';
+    }
+
+    async function approveUnitByManagement(unitId, unitName) {
+      if (!isManagerRole()) {
+        return alert('Hanya akun Manajemen / Pemeriksa yang dapat menyetujui (Approve) kamar menjadi Siap Pakai.');
+      }
+      if (!confirm(`Approve "${unitName}" sebagai SIAP PAKAI sekarang?`)) return;
+
+      const approverName = currentUser.full_name || 'Supervisor Manajemen';
+      const { error } = await db.from('master_units').update({
+        status: 'siap',
+        last_checked_by: approverName,
+        last_checked_at: new Date().toISOString()
+      }).eq('id', unitId);
+
+      if (error) return alert('Gagal melakukan approval: ' + error.message);
+
+      // Update juga laporan terbaru unit tersebut jika masih belum siap
+      const latestRep = getLatestInspectionForUnit(unitId);
+      if (latestRep && latestRep.final_status !== 'siap') {
+        const meta = parseNotesMetadata(latestRep.notes);
+        const updatedNotes = composeNotesWithMetadata(
+          meta.executor || latestRep.inspector_name,
+          `Sesuai Standar (Approved oleh ${approverName})`,
+          '',
+          meta.cleanNotes
+        );
+        await db.from('room_inspections').update({
+          final_status: 'siap',
+          readiness_score: 100,
+          notes: updatedNotes
+        }).eq('id', latestRep.id);
+      }
+
+      playNotificationChime();
+      await loadAllData();
+      alert(`Berhasil! ${unitName} kini berstatus SIAP PAKAI.`);
     }
 
     async function confirmPatientCheckout(unitId, unitName) {
@@ -852,8 +907,14 @@
       let checkedBy = null;
 
       if (newMode === 'siap') {
-        dbStatus = 'siap';
-        checkedBy = currentUser ? currentUser.full_name : 'Supervisor';
+        if (!isManagerRole()) {
+          alert('Status SIAP PAKAI hanya bisa di-approve oleh bagian Manajemen/Pemeriksa. Status diatur ke Menunggu Approval Manajemen.');
+          dbStatus = 'kotor';
+          checkedBy = currentUser ? `${currentUser.full_name} (Menunggu Approval)` : 'Menunggu Approval';
+        } else {
+          dbStatus = 'siap';
+          checkedBy = currentUser ? currentUser.full_name : 'Supervisor';
+        }
       } else if (newMode === 'dibersihkan') {
         dbStatus = 'kotor';
         checkedBy = currentUser ? currentUser.full_name : 'Petugas';
@@ -872,40 +933,75 @@
       await loadAllData();
     }
 
-    // --- PENYELESAIAN MASALAH / REVISI OLEH PETUGAS ---
+    // --- PENYELESAIAN MASALAH / REVISI OLEH PETUGAS -> KIRIM NOTIFIKASI APPROVAL KE MANAJEMEN ---
     async function markIssueResolvedByOfficer(reportId) {
       const report = inspectionsData.find(r => String(r.id) === String(reportId));
       if (!report) return;
-      if (!confirm(`Konfirmasi bahwa perbaikan pada "${report.unit_name}" sudah selesai dikerjakan dan kamar siap dipakai?`)) return;
+
+      const managerDirectApprove = isManagerRole();
+      const confirmMsg = managerDirectApprove
+        ? `Approve perbaikan pada "${report.unit_name}" dan ubah status menjadi SIAP PAKAI?`
+        : `Konfirmasi perbaikan pada "${report.unit_name}" sudah selesai?\n\nNotifikasi akan dikirim ke bagian Manajemen agar segera di-approve menjadi Siap Pakai.`;
+
+      if (!confirm(confirmMsg)) return;
 
       const meta = parseNotesMetadata(report.notes);
-      const resolverName = currentUser ? currentUser.full_name : 'Petugas';
-      const resolvedNote = composeNotesWithMetadata(
-        meta.executor || resolverName,
-        `Selesai Diperbaiki & Siap Pakai (Oleh ${resolverName})`,
-        '',
-        meta.cleanNotes
-      );
+      const actorName = currentUser ? currentUser.full_name : 'Petugas';
 
-      const { error } = await db.from('room_inspections').update({
-        final_status: 'siap',
-        readiness_score: 100,
-        notes: resolvedNote
-      }).eq('id', report.id);
+      if (managerDirectApprove) {
+        const resolvedNote = composeNotesWithMetadata(
+          meta.executor || actorName,
+          `Sesuai Standar (Approved oleh ${actorName})`,
+          '',
+          meta.cleanNotes
+        );
+        const { error } = await db.from('room_inspections').update({
+          final_status: 'siap',
+          readiness_score: 100,
+          notes: resolvedNote
+        }).eq('id', report.id);
 
-      if (error) return alert('Gagal memperbarui status perbaikan: ' + error.message);
+        if (error) return alert('Gagal memperbarui status: ' + error.message);
 
-      if (report.unit_id) {
-        await db.from('master_units').update({
-          status: 'siap',
-          last_checked_by: resolverName,
-          last_checked_at: new Date().toISOString()
-        }).eq('id', report.unit_id);
+        if (report.unit_id) {
+          await db.from('master_units').update({
+            status: 'siap',
+            last_checked_by: actorName,
+            last_checked_at: new Date().toISOString()
+          }).eq('id', report.unit_id);
+        }
+        playNotificationChime();
+        await loadAllData();
+        alert(`Approved! Status ${report.unit_name} kini telah menjadi SIAP PAKAI.`);
+      } else {
+        // Petugas selesai memperbaiki -> status menunggu approval manajemen + kirim notifikasi baru ke manajemen
+        const pendingNote = composeNotesWithMetadata(
+          meta.executor || actorName,
+          `Menunggu Approval Manajemen (Selesai Dikerjakan ${actorName})`,
+          '',
+          meta.cleanNotes
+        );
+        const { error } = await db.from('room_inspections').update({
+          final_status: 'kotor',
+          readiness_score: 100,
+          notes: pendingNote,
+          created_at: new Date().toISOString()
+        }).eq('id', report.id);
+
+        if (error) return alert('Gagal mengirim pengajuan approval: ' + error.message);
+
+        if (report.unit_id) {
+          await db.from('master_units').update({
+            status: 'kotor',
+            last_checked_by: `${actorName} (Menunggu Approval)`,
+            last_checked_at: new Date().toISOString()
+          }).eq('id', report.unit_id);
+        }
+
+        playNotificationChime();
+        await loadAllData();
+        alert(`Terkirim ke Manajemen! Status ${report.unit_name} menunggu approval dari bagian Manajemen agar menjadi SIAP PAKAI.`);
       }
-
-      playNotificationChime();
-      await loadAllData();
-      alert(`Berhasil! Status ${report.unit_name} kini telah diperbarui menjadi SIAP PAKAI.`);
     }
 
     function getAppMainUrl() {
@@ -923,16 +1019,10 @@
         '--------------------------------',
         'Yth. Bapak/Ibu Tim Manajemen,',
         '',
-        'Berikut tautan aplikasi resmi untuk memantau status kesiapan kamar rawat inap, menerima notifikasi laporan masuk secara real-time, serta mengunduh rekap laporan (PDF/Excel):',
+        'Berikut tautan aplikasi resmi untuk memantau status kesiapan kamar rawat inap, menerima notifikasi approval laporan masuk secara real-time, serta mengunduh rekap laporan (PDF/Excel):',
         '',
         '🔗 *Link Aplikasi:*',
         appUrl,
-        '',
-        '📱 *Cara Pasang di Layar Utama HP:*',
-        '1. Buka link di atas melalui Google Chrome / Safari',
-        '2. Ketuk menu titik tiga (⋮) atau tombol Bagikan',
-        '3. Pilih *"Tambahkan ke Layar Utama / Install Aplikasi"*',
-        '4. Login menggunakan akun Manajemen yang telah didaftarkan',
         '',
         'Terima kasih.'
       ] : [
@@ -942,16 +1032,10 @@
         '--------------------------------',
         'Halo Rekan-Rekan Petugas,',
         '',
-        'Silakan akses aplikasi di bawah ini untuk melakukan pengecekan kesiapan kamar, scan QR pintu, dan dokumentasi foto sebelum & sesudah pembersihan:',
+        'Silakan akses aplikasi di bawah ini untuk melakukan pengecekan kesiapan kamar, scan QR pintu, dan dokumentasi foto:',
         '',
         '🔗 *Link Aplikasi:*',
         appUrl,
-        '',
-        '📱 *Cara Pasang di HP (Wajib):*',
-        '1. Buka link di atas melalui Google Chrome',
-        '2. Ketuk menu titik tiga (⋮) di pojok kanan atas',
-        '3. Pilih *"Install Aplikasi / Tambahkan ke Layar Utama"*',
-        '4. Login menggunakan username & password petugas masing-masing',
         '',
         'Selamat bertugas!'
       ];
@@ -1187,18 +1271,18 @@
         if (!AudioCtx) return;
         const ctx = new AudioCtx();
         const now = ctx.currentTime;
-        [880, 1174.66].forEach((freq, idx) => {
+        [880, 1174.66, 1318.51].forEach((freq, idx) => {
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           osc.type = 'sine';
-          osc.frequency.setValueAtTime(freq, now + idx * 0.14);
-          gain.gain.setValueAtTime(0.001, now + idx * 0.14);
-          gain.gain.exponentialRampToValueAtTime(0.22, now + idx * 0.14 + 0.03);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.14 + 0.35);
+          osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+          gain.gain.setValueAtTime(0.001, now + idx * 0.12);
+          gain.gain.exponentialRampToValueAtTime(0.24, now + idx * 0.12 + 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.35);
           osc.connect(gain);
           gain.connect(ctx.destination);
-          osc.start(now + idx * 0.14);
-          osc.stop(now + idx * 0.14 + 0.38);
+          osc.start(now + idx * 0.12);
+          osc.stop(now + idx * 0.12 + 0.38);
         });
       } catch (e) {}
     }
@@ -1238,7 +1322,7 @@
     async function triggerNativePhoneNotification(title, body, reportId) {
       if (!('Notification' in window) || Notification.permission !== 'granted') return;
       const targetUrl = reportId ? getPublicReportUrl(reportId, true) : window.location.href;
-      const options = { body, icon: './192x192.png', badge: './192x192.png', vibrate: [200, 100, 200], tag: 'cek-kamar-' + (reportId || Date.now()), renotify: true, data: { url: targetUrl } };
+      const options = { body, icon: './192x192.png', badge: './192x192.png', vibrate: [250, 100, 250], tag: 'cek-kamar-' + (reportId || Date.now()), renotify: true, data: { url: targetUrl } };
       try {
         if ('serviceWorker' in navigator) {
           const reg = await navigator.serviceWorker.getRegistration();
@@ -1252,22 +1336,27 @@
     function showInAppBanner(report) {
       latestNotifReport = report;
       const banner = document.getElementById('live-toast-banner');
-      const statusLabel = report.final_status === 'siap' ? 'SIAP PAKAI ✅' : 'SEDANG DIBERSIHKAN 🧹';
+      const isPending = report.final_status !== 'siap';
+      const statusLabel = isPending ? 'MENUNGGU APPROVAL ⏳' : 'SIAP PAKAI ✅';
+      document.getElementById('toast-banner-badge').textContent = isPending ? 'Butuh Approval Manajemen • Baru Saja' : 'Laporan Disetujui • Baru Saja';
       document.getElementById('toast-banner-title').textContent = `${report.unit_name} • ${statusLabel}`;
-      document.getElementById('toast-banner-body').textContent = `Oleh ${report.inspector_name} (Shift ${report.shift}) • Skor ${report.readiness_score}%`;
+      document.getElementById('toast-banner-body').textContent = isPending
+        ? `Oleh ${report.inspector_name} • Segera approve agar Siap Pakai`
+        : `Approved oleh ${report.inspector_name} • Skor ${report.readiness_score}%`;
       document.getElementById('toast-banner-time').textContent = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
       banner.classList.remove('hidden', 'banner-slide-in');
       void banner.offsetWidth;
       banner.classList.add('banner-slide-in');
       clearTimeout(toastTimeout);
-      toastTimeout = setTimeout(hideToastBanner, 7500);
+      toastTimeout = setTimeout(hideToastBanner, 8500);
     }
 
     function hideToastBanner() { document.getElementById('live-toast-banner')?.classList.add('hidden'); }
 
     function openLatestNotifFromBanner() {
       hideToastBanner();
-      if (latestNotifReport && latestNotifReport.id) openReportFullView(latestNotifReport.id);
+      if (isManagerRole()) openNotificationDrawer();
+      else if (latestNotifReport && latestNotifReport.id) openReportFullView(latestNotifReport.id);
       else switchTab('analytics');
     }
 
@@ -1276,30 +1365,40 @@
     }
 
     function handleIncomingNewReport(report) {
-      if (!report || !report.id || lastKnownReportId === report.id) return;
+      if (!report || !report.id) return;
+      const isUpdate = lastKnownReportId === report.id;
       lastKnownReportId = report.id;
       localStorage.setItem('ck_last_seen_id', report.id);
 
-      unreadNotifCount++;
-      const badge = document.getElementById('notif-unread-badge');
-      const bell = document.getElementById('notif-bell-icon');
-      if (badge) { badge.textContent = unreadNotifCount > 9 ? '9+' : String(unreadNotifCount); badge.classList.remove('hidden'); }
-      if (bell) { bell.classList.remove('bell-animate'); void bell.offsetWidth; bell.classList.add('bell-animate'); }
+      if (!isUpdate || report.final_status !== 'siap') {
+        unreadNotifCount++;
+        const badge = document.getElementById('notif-unread-badge');
+        const bell = document.getElementById('notif-bell-icon');
+        if (badge) { badge.textContent = unreadNotifCount > 9 ? '9+' : String(unreadNotifCount); badge.classList.remove('hidden'); }
+        if (bell) { bell.classList.remove('bell-animate'); void bell.offsetWidth; bell.classList.add('bell-animate'); }
 
-      playNotificationChime();
-      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-      showInAppBanner(report);
-      const statusText = report.final_status === 'siap' ? 'SIAP PAKAI' : 'PERLU CEK';
-      triggerNativePhoneNotification(`Laporan Baru: ${report.unit_name}`, `Status: ${statusText} (${report.readiness_score}%) • Petugas: ${report.inspector_name}`, report.id);
+        playNotificationChime();
+        if (navigator.vibrate) navigator.vibrate([250, 100, 250]);
+        showInAppBanner(report);
+
+        const isPending = report.final_status !== 'siap';
+        const notifTitle = isPending
+          ? `Approval Dibutuhkan: ${report.unit_name}`
+          : `Kamar Siap Pakai: ${report.unit_name}`;
+        const notifBody = isPending
+          ? `Petugas ${report.inspector_name} selesai cek (${report.readiness_score}%). Mohon segera di-approve Manajemen.`
+          : `Approved oleh ${report.inspector_name} (${report.readiness_score}%).`;
+        triggerNativePhoneNotification(notifTitle, notifBody, report.id);
+      }
       loadAllData();
     }
 
     function testNotificationAlert() {
-      const sample = inspectionsData[0] || { id: null, unit_name: 'Kamar 101 - Anggrek', inspector_name: currentUser ? currentUser.full_name : 'Petugas', shift: 'Siang', readiness_score: 100, final_status: 'siap' };
+      const sample = inspectionsData[0] || { id: null, unit_name: 'Kamar 101 - Anggrek', inspector_name: currentUser ? currentUser.full_name : 'Petugas', shift: 'Siang', readiness_score: 100, final_status: 'kotor' };
       playNotificationChime();
       if (navigator.vibrate) navigator.vibrate([180, 80, 180]);
       showInAppBanner(sample);
-      triggerNativePhoneNotification('Tes Notifikasi Cek Kamar', 'Notifikasi HP aktif! Setiap laporan baru akan tampil di sini.', sample.id);
+      triggerNativePhoneNotification('Tes Notifikasi Approval Cek Kamar', 'Notifikasi aktif! Setiap laporan petugas akan langsung masuk ke Manajemen untuk di-approve.', sample.id);
     }
 
     function openNotificationDrawer() {
@@ -1309,19 +1408,27 @@
       if (!inspectionsData.length) {
         listEl.innerHTML = '<p class="text-xs text-slate-400 text-center py-6">Belum ada riwayat laporan masuk.</p>';
       } else {
-        listEl.innerHTML = inspectionsData.slice(0, 12).map(r => {
+        listEl.innerHTML = inspectionsData.slice(0, 15).map(r => {
           const isSiap = r.final_status === 'siap';
           const waktu = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+          const canApproveHere = isManagerRole() && !isSiap && r.unit_id;
           return `
-            <div onclick="${r.id ? `openReportFullView('${r.id}')` : ''}" class="p-3 rounded-2xl bg-slate-50 hover:bg-teal-50/60 border border-slate-200/80 cursor-pointer transition space-y-1">
-              <div class="flex items-center justify-between gap-2">
-                <span class="text-xs font-extrabold text-slate-900 truncate">${r.unit_name}</span>
-                <span class="shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full ${isSiap ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${isSiap ? 'SIAP' : 'PROSES'} (${r.readiness_score}%)</span>
+            <div class="p-3 rounded-2xl ${isSiap ? 'bg-slate-50 border-slate-200/80' : 'bg-indigo-50/70 border-indigo-200'} border transition space-y-2">
+              <div onclick="${r.id ? `openReportFullView('${r.id}')` : ''}" class="cursor-pointer space-y-1">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs font-extrabold text-slate-900 truncate">${r.unit_name}</span>
+                  <span class="shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full ${isSiap ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-800'}">${isSiap ? 'SIAP PAKAI' : 'MENUNGGU APPROVAL'} (${r.readiness_score}%)</span>
+                </div>
+                <div class="flex items-center justify-between text-[11px] text-slate-500">
+                  <span class="truncate">Oleh: <strong>${r.inspector_name}</strong></span>
+                  <span class="shrink-0 text-[10px]">${waktu}</span>
+                </div>
               </div>
-              <div class="flex items-center justify-between text-[11px] text-slate-500">
-                <span class="truncate">Oleh: <strong>${r.inspector_name}</strong></span>
-                <span class="shrink-0 text-[10px]">${waktu}</span>
-              </div>
+              ${canApproveHere ? `
+                <button type="button" onclick="approveUnitByManagement('${r.unit_id}', '${(r.unit_name || '').replace(/'/g, "\\'")}')" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
+                  <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Approve Sekarang (Jadikan Siap Pakai)
+                </button>
+              ` : ''}
             </div>
           `;
         }).join('');
@@ -1334,7 +1441,10 @@
       if (realtimeChannel) db.removeChannel(realtimeChannel);
       realtimeChannel = db.channel('room-inspections-live')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'room_inspections' }, (payload) => { if (payload?.new) handleIncomingNewReport(payload.new); })
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'room_inspections' }, () => { loadAllData(); })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'room_inspections' }, (payload) => {
+          if (payload?.new && payload.new.final_status !== 'siap') handleIncomingNewReport(payload.new);
+          else loadAllData();
+        })
         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'room_inspections' }, () => { loadAllData(); })
         .subscribe();
 
@@ -1346,7 +1456,7 @@
           if (!lastKnownReportId) { lastKnownReportId = data[0].id; localStorage.setItem('ck_last_seen_id', data[0].id); }
           else if (data[0].id !== lastKnownReportId) handleIncomingNewReport(data[0]);
         }
-      }, 12000);
+      }, 10000);
     }
 
     function getPublicReportUrl(reportId, withProtocol = true) {
@@ -1394,7 +1504,7 @@
               <p class="text-xs text-slate-500 mt-0.5">Waktu Cek: <strong>${waktu}</strong></p>
             </div>
             <div class="text-right shrink-0">
-              <span class="inline-block text-xs font-extrabold px-3 py-1 rounded-full ${isSiap ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${isSiap ? 'SIAP PAKAI ✅' : 'PERLU CEK ⚠️'}</span>
+              <span class="inline-block text-xs font-extrabold px-3 py-1 rounded-full ${isSiap ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-800'}">${isSiap ? 'SIAP PAKAI ✅' : 'MENUNGGU APPROVAL ⏳'}</span>
               <p class="text-lg font-extrabold text-teal-700 mt-1">Skor: ${r.readiness_score}%</p>
             </div>
           </div>
@@ -1403,7 +1513,7 @@
             <div><span class="text-[10px] text-slate-400 font-bold block">SHIFT KERJA</span><span class="font-extrabold text-slate-800">Shift ${r.shift}</span></div>
             ${meta.executor ? `<div class="col-span-2 pt-1 border-t border-slate-200/70"><span class="text-[10px] text-indigo-600 font-bold block">PETUGAS PELAKSANA</span><span class="font-extrabold text-slate-800">${meta.executor}</span></div>` : ''}
           </div>
-          ${meta.feedbackStatus ? `<div class="${(meta.feedbackStatus.includes('Baik') || meta.feedbackStatus.includes('Selesai Diperbaiki')) ? 'bg-emerald-50/80 border-emerald-200' : 'bg-rose-50/80 border-rose-200'} border rounded-2xl p-3 space-y-1"><span class="text-[10px] font-extrabold uppercase ${(meta.feedbackStatus.includes('Baik') || meta.feedbackStatus.includes('Selesai Diperbaiki')) ? 'text-emerald-800' : 'text-rose-800'} block">Tanggapan Pemeriksa Hasil Kerja</span><p class="text-xs font-extrabold text-slate-800">${meta.feedbackStatus}</p>${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">Bagian Ditandai Perbaikan: ${meta.feedbackDetail}</p>` : ''}</div>` : ''}
+          ${meta.feedbackStatus ? `<div class="${(meta.feedbackStatus.includes('Baik') || meta.feedbackStatus.includes('Approved')) ? 'bg-emerald-50/80 border-emerald-200' : 'bg-amber-50/80 border-amber-200'} border rounded-2xl p-3 space-y-1"><span class="text-[10px] font-extrabold uppercase ${(meta.feedbackStatus.includes('Baik') || meta.feedbackStatus.includes('Approved')) ? 'text-emerald-800' : 'text-amber-800'} block">Status Approval & Tanggapan Pemeriksa</span><p class="text-xs font-extrabold text-slate-800">${meta.feedbackStatus}</p>${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">Bagian Ditandai Perbaikan: ${meta.feedbackDetail}</p>` : ''}</div>` : ''}
           ${(r.photo_room_url || r.photo_toilet_url) ? `<div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Dokumentasi Foto</h3><div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${r.photo_room_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">Area Kamar</span><img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}${r.photo_toilet_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">Kamar Mandi</span><img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}</div></div>` : ''}
           <div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Rincian Kelengkapan & Kebersihan</h3><div class="space-y-1.5">${checklistHtml}</div></div>
           ${meta.cleanNotes ? `<div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-3"><span class="text-[10px] font-extrabold uppercase text-amber-800 block">Catatan Tambahan</span><p class="text-xs text-slate-700 mt-0.5">${meta.cleanNotes}</p></div>` : ''}
@@ -1495,6 +1605,7 @@
     function populateOfficerDropdown() {
       const sel = document.getElementById('inspect-officer-select');
       const execSel = document.getElementById('inspect-executor-select');
+      const fbSel = document.getElementById('inspect-feedback-status');
       const list = [...usersData];
       if (currentUser && !list.some(u => u.full_name === currentUser.full_name)) {
         list.unshift({ full_name: currentUser.full_name, role: currentUser.role || 'petugas' });
@@ -1512,6 +1623,10 @@
         ].join('');
         if (currentUser && (currentUser.role || '').toLowerCase() === 'petugas') execSel.value = currentUser.full_name;
         else if (petugasOnly.length > 0) execSel.value = petugasOnly[0].full_name;
+      }
+      // Jika login sebagai Petugas, default evaluasi adalah Minta Approval Manajemen (bukan langsung Siap Pakai)
+      if (fbSel && !isManagerRole()) {
+        fbSel.value = 'Menunggu Approval Manajemen';
       }
     }
 
@@ -1534,12 +1649,12 @@
 
       const badge = document.getElementById('user-role-badge');
       badge.textContent = currentUser.role.toUpperCase();
-      badge.className = currentUser.role === 'manajemen'
+      badge.className = isManagerRole()
         ? 'shrink-0 text-[8.5px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 tracking-wide'
         : 'shrink-0 text-[8.5px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide';
 
       const userCard = document.getElementById('user-management-card');
-      if (userCard) userCard.style.display = currentUser.role === 'manajemen' ? 'block' : 'none';
+      if (userCard) userCard.style.display = isManagerRole() ? 'block' : 'none';
 
       await loadAllData();
       if (inspectionsData[0] && !lastKnownReportId) {
@@ -1602,12 +1717,24 @@
 
     function renderDashboard() {
       const siap = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
-      const kosongOrProses = unitsData.filter(u => ['kosong', 'dibersihkan'].includes(getEffectiveUnitStatus(u))).length;
+      const kosongOrProses = unitsData.filter(u => ['kosong', 'dibersihkan', 'pending_approval'].includes(getEffectiveUnitStatus(u))).length;
       const maint = unitsData.filter(u => getEffectiveUnitStatus(u) === 'maintenance').length;
+      const pendingCount = unitsData.filter(u => getEffectiveUnitStatus(u) === 'pending_approval').length;
 
       document.getElementById('stat-siap').textContent = siap;
       document.getElementById('stat-kotor').textContent = kosongOrProses;
       document.getElementById('stat-maint').textContent = maint;
+
+      // Banner notifikasi approval khusus Manajemen jika ada kamar menunggu persetujuan
+      const mgmtBanner = document.getElementById('management-approval-alert');
+      if (mgmtBanner) {
+        if (isManagerRole() && pendingCount > 0) {
+          document.getElementById('approval-alert-title').textContent = `${pendingCount} Kamar Menunggu Approval`;
+          mgmtBanner.classList.remove('hidden');
+        } else {
+          mgmtBanner.classList.add('hidden');
+        }
+      }
 
       const grid = document.getElementById('dashboard-unit-grid');
       if (unitsData.length === 0) {
@@ -1618,11 +1745,14 @@
         const eff = getEffectiveUnitStatus(u);
         const statusMap = {
           siap: { label: 'SIAP PAKAI', bg: 'bg-emerald-100 text-emerald-700', border: 'border-emerald-200' },
+          pending_approval: { label: 'MENUNGGU APPROVAL', bg: 'bg-indigo-100 text-indigo-800', border: 'border-indigo-300' },
           dibersihkan: { label: 'SEDANG DIBERSIHKAN', bg: 'bg-amber-100 text-amber-700', border: 'border-amber-200' },
           kosong: { label: 'KOSONG', bg: 'bg-slate-200 text-slate-700', border: 'border-slate-300' },
           maintenance: { label: 'MAINTENANCE', bg: 'bg-rose-100 text-rose-700', border: 'border-rose-200' }
         };
         const st = statusMap[eff] || statusMap.kosong;
+        const canApproveCard = isManagerRole() && eff === 'pending_approval';
+
         return `
           <div class="glass-card rounded-2xl p-4 shadow-sm border ${st.border} flex flex-col justify-between space-y-3">
             <div class="flex items-start justify-between gap-2">
@@ -1630,12 +1760,18 @@
                 <span class="text-[10px] font-mono font-bold text-slate-400">${u.unit_code} • ${u.floor || ''}</span>
                 <h3 class="text-sm font-extrabold text-slate-900 truncate">${u.unit_name}</h3>
               </div>
-              <select onchange="quickChangeUnitStatus('${u.id}', this.value)" class="shrink-0 text-[9.5px] font-extrabold px-2 py-1 rounded-full ${st.bg} outline-none cursor-pointer">
+              <select onchange="quickChangeUnitStatus('${u.id}', this.value)" class="shrink-0 text-[9px] font-extrabold px-2 py-1 rounded-full ${st.bg} outline-none cursor-pointer">
                 <option value="siap" ${eff === 'siap' ? 'selected' : ''}>SIAP PAKAI</option>
+                ${eff === 'pending_approval' ? `<option value="pending_approval" selected>MENUNGGU APPROVAL</option>` : ''}
                 <option value="dibersihkan" ${eff === 'dibersihkan' ? 'selected' : ''}>SEDANG DIBERSIHKAN</option>
                 <option value="kosong" ${eff === 'kosong' ? 'selected' : ''}>KOSONG</option>
               </select>
             </div>
+            ${canApproveCard ? `
+              <button type="button" onclick="approveUnitByManagement('${u.id}', '${(u.unit_name || '').replace(/'/g, "\\'")}')" class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
+                <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Approve Siap Pakai
+              </button>
+            ` : ''}
             <div class="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-100">
               <span class="text-[10px] text-slate-400 truncate">${u.last_checked_by ? 'Cek: ' + u.last_checked_by : 'Belum dicek (Kosong)'}</span>
               <div class="flex items-center gap-1.5 shrink-0">
@@ -1646,6 +1782,7 @@
           </div>
         `;
       }).join('');
+      lucide.createIcons();
     }
 
     function quickInspect(unitId) { switchTab('inspect'); document.getElementById('inspect-unit').value = unitId; }
@@ -1726,13 +1863,13 @@
 
     function buildWaMessage(data, includeChecklist, includeFullLink) {
       const waktu = data.created_at ? new Date(data.created_at).toLocaleString('id-ID') : new Date().toLocaleString('id-ID');
-      const statusText = data.final_status === 'siap' ? 'SIAP PAKAI ✅' : 'SEDANG DIBERSIHKAN / PERLU PERBAIKAN ⚠️';
+      const statusText = data.final_status === 'siap' ? 'SIAP PAKAI ✅' : 'MENUNGGU APPROVAL MANAJEMEN ⏳';
       const meta = parseNotesMetadata(data.notes);
       const lines = ['*LAPORAN CEK KESIAPAN KAMAR*', '*RS Khusus Bedah SS Medika*', '--------------------------------', `• *Kamar:* ${data.unit_name}`, `• *Shift:* ${data.shift}`, `• *Pemeriksa:* ${data.inspector_name}`];
       if (meta.executor) lines.push(`• *Pelaksana:* ${meta.executor}`);
       lines.push(`• *Skor Kesiapan:* ${data.readiness_score}%`, `• *Status:* ${statusText}`, `• *Waktu:* ${waktu}`);
       if (meta.feedbackStatus) {
-        lines.push('--------------------------------', `• *Tanggapan Pemeriksa:* ${meta.feedbackStatus}`);
+        lines.push('--------------------------------', `• *Tanggapan / Status:* ${meta.feedbackStatus}`);
         if (meta.feedbackDetail) lines.push(`• *Bagian Perbaikan:* ${meta.feedbackDetail}`);
       }
       if (includeChecklist && Array.isArray(data.checklist_data) && data.checklist_data.length > 0) {
@@ -1802,7 +1939,7 @@
 
       const officerName = document.getElementById('inspect-officer-select')?.value || currentUser.full_name;
       const executorVal = document.getElementById('inspect-executor-select')?.value || '__same__';
-      const feedbackStatus = document.getElementById('inspect-feedback-status')?.value || '';
+      let feedbackStatus = document.getElementById('inspect-feedback-status')?.value || '';
       const feedbackDetail = document.getElementById('inspect-feedback-detail')?.value.trim() || '';
       const rawExtraNotes = document.getElementById('inspect-notes').value.trim();
 
@@ -1810,8 +1947,23 @@
       const checkedCount = chks.filter(c => c.checked).length;
       const score = chks.length ? Math.round((checkedCount / chks.length) * 100) : 100;
       const missingCritical = chks.some(c => c.dataset.critical === 'true' && !c.checked);
-      const isApproved = feedbackStatus.includes('Sesuai Standar') && score === 100 && !missingCritical;
+
+      // Hanya Manajemen / Pemeriksa berwenang yang bisa langsung menjadikan status SIAP PAKAI
+      const selectedOfficerObj = usersData.find(u => u.full_name === officerName);
+      const officerIsManager = isManagerRole() || (selectedOfficerObj && (selectedOfficerObj.role || '').toLowerCase() === 'manajemen');
+
+      let isApproved = false;
+      if (officerIsManager && feedbackStatus.includes('Sesuai Standar') && score === 100 && !missingCritical) {
+        isApproved = true;
+      } else {
+        isApproved = false;
+        if (feedbackStatus.includes('Sesuai Standar')) {
+          feedbackStatus = 'Menunggu Approval Manajemen';
+        }
+      }
+
       const finalStatus = isApproved ? 'siap' : 'kotor';
+      const unitCheckedByLabel = isApproved ? officerName : `${officerName} (Menunggu Approval)`;
 
       const payload = {
         unit_id: unit.id,
@@ -1849,7 +2001,7 @@
             lastKnownReportId = savedRecord.id;
             localStorage.setItem('ck_last_seen_id', savedRecord.id);
           }
-          await db.from('master_units').update({ status: finalStatus, last_checked_at: new Date().toISOString(), last_checked_by: officerName }).eq('id', unit.id);
+          await db.from('master_units').update({ status: finalStatus, last_checked_at: new Date().toISOString(), last_checked_by: unitCheckedByLabel }).eq('id', unit.id);
           savedOk = true;
         }
       }
@@ -1866,7 +2018,8 @@
         await loadAllData();
         switchTab('analytics');
         if (alsoSendWa) openWaShareModal(savedRecord);
-        else alert('Laporan kesiapan kamar berhasil disimpan!');
+        else if (!isApproved) alert('Laporan tersimpan! Notifikasi telah dikirim ke bagian Manajemen agar segera di-approve menjadi SIAP PAKAI.');
+        else alert('Laporan kesiapan kamar berhasil disimpan dan berstatus SIAP PAKAI!');
       }
     }
 
@@ -2057,7 +2210,7 @@
 
     function renderAnalytics() {
       const siap = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
-      const kotor = unitsData.filter(u => ['kosong', 'dibersihkan'].includes(getEffectiveUnitStatus(u))).length;
+      const kotor = unitsData.filter(u => ['kosong', 'dibersihkan', 'pending_approval'].includes(getEffectiveUnitStatus(u))).length;
       const maint = unitsData.filter(u => getEffectiveUnitStatus(u) === 'maintenance').length;
       const ctx = document.getElementById('chart-status');
       if (statusChart) statusChart.destroy();
@@ -2085,8 +2238,10 @@
       historyBox.innerHTML = filteredRows.map((r) => {
         const waktuStr = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
         const meta = parseNotesMetadata(r.notes);
-        const needsFix = r.final_status !== 'siap' && (meta.feedbackStatus.includes('Perbaikan') || meta.feedbackStatus.includes('Wajib Diperbaiki') || meta.feedbackStatus.includes('Dibersihkan'));
-        const isResolved = meta.feedbackStatus.includes('Baik') || meta.feedbackStatus.includes('Selesai Diperbaiki');
+        const isPendingApproval = r.final_status !== 'siap' && meta.feedbackStatus.includes('Menunggu Approval');
+        const needsFix = r.final_status !== 'siap' && !isPendingApproval;
+        const isApproved = r.final_status === 'siap';
+
         return `
           <div class="glass-card rounded-2xl p-4 shadow-sm space-y-2.5">
             <div class="flex items-start justify-between gap-2">
@@ -2096,17 +2251,22 @@
                 ${meta.executor ? `<p class="text-[11px] text-indigo-700 font-semibold">Pelaksana: <strong>${meta.executor}</strong></p>` : ''}
                 <p class="text-[10px] text-slate-400 mt-0.5">${waktuStr}</p>
               </div>
-              <span class="shrink-0 text-[10px] font-extrabold px-2.5 py-1 rounded-full ${r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${r.final_status === 'siap' ? 'SIAP PAKAI' : 'PERLU PERBAIKAN'} (${r.readiness_score}%)</span>
+              <span class="shrink-0 text-[9.5px] font-extrabold px-2.5 py-1 rounded-full ${isApproved ? 'bg-emerald-100 text-emerald-700' : isPendingApproval ? 'bg-indigo-100 text-indigo-800' : 'bg-amber-100 text-amber-700'}">${isApproved ? 'SIAP PAKAI' : isPendingApproval ? 'MENUNGGU APPROVAL' : 'PERLU PERBAIKAN'} (${r.readiness_score}%)</span>
             </div>
             ${meta.feedbackStatus ? `
-              <div class="text-[11px] px-2.5 py-2 rounded-xl border ${isResolved ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' : 'bg-rose-50/80 border-rose-200 text-rose-900'} space-y-1.5">
+              <div class="text-[11px] px-2.5 py-2 rounded-xl border ${isApproved ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' : isPendingApproval ? 'bg-indigo-50/80 border-indigo-200 text-indigo-900' : 'bg-rose-50/80 border-rose-200 text-rose-900'} space-y-1.5">
                 <div>
-                  <p class="font-extrabold">Tanggapan Pemeriksa: ${meta.feedbackStatus}</p>
+                  <p class="font-extrabold">Status: ${meta.feedbackStatus}</p>
                   ${meta.feedbackDetail ? `<p class="text-[10.5px] mt-0.5">Bagian Perbaikan: <strong>${meta.feedbackDetail}</strong></p>` : ''}
                 </div>
                 ${(needsFix && r.id) ? `
                   <button type="button" onclick="markIssueResolvedByOfficer('${r.id}')" class="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-                    <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Masalah Selesai & Siap Pakai
+                    <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> ${isManagerRole() ? 'Masalah Selesai & Approve Siap Pakai' : 'Masalah Selesai & Kirim Approval Manajemen'}
+                  </button>
+                ` : ''}
+                ${(isPendingApproval && isManagerRole() && r.unit_id) ? `
+                  <button type="button" onclick="approveUnitByManagement('${r.unit_id}', '${(r.unit_name || '').replace(/'/g, "\\'")}')" class="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
+                    <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Approve Manajemen (Ubah Status Jadi Siap Pakai)
                   </button>
                 ` : ''}
               </div>
