@@ -1,4 +1,4 @@
-const APP_VERSION = '5.6';
+const APP_VERSION = '5.7';
 const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteHB4cnJqeG51anlnYWJyaHNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MDk0MjAsImV4cCI6MjExMDQ4NTQyMH0.tFMCbg1_R-I08KEIs-h6wwxXhYLP2Z0oYgnDGC7T2YU';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -24,6 +24,14 @@ let creatorDeleteUnlocked = false;
 let secretTapCount = 0;
 let secretTapTimer = null;
 
+const SHIFT_CATEGORY_KEY = '__SHIFT__';
+const DEFAULT_SHIFTS = [
+  { id: 'def-pagi', name: 'Shift Pagi', hours: '07:00 - 14:00', isLocal: true },
+  { id: 'def-siang', name: 'Shift Siang', hours: '14:00 - 21:00', isLocal: true },
+  { id: 'def-malam', name: 'Shift Malam', hours: '21:00 - 07:00', isLocal: true }
+];
+
+let shiftsData = JSON.parse(localStorage.getItem('ck_shifts') || 'null') || [...DEFAULT_SHIFTS];
 let currentUser = JSON.parse(localStorage.getItem('ck_user') || 'null');
 let unitsData = [];
 let itemsData = [];
@@ -49,6 +57,157 @@ let latestNotifReport = null;
 let toastTimeout = null;
 
 if (window.lucide) lucide.createIcons();
+
+async function ensureDefaultShiftsInDb() {
+  if (!navigator.onLine) return;
+  const dbShifts = itemsData.filter(i => i.category === SHIFT_CATEGORY_KEY);
+  if (dbShifts.length === 0) {
+    const seedPayload = DEFAULT_SHIFTS.map(s => ({
+      item_name: `${s.name}||${s.hours}`,
+      category: SHIFT_CATEGORY_KEY,
+      is_critical: false
+    }));
+    const { data, error } = await db.from('master_items').insert(seedPayload).select();
+    if (!error && Array.isArray(data) && data.length > 0) {
+      itemsData = itemsData.concat(data);
+    }
+  }
+}
+
+function rebuildShiftsFromItems() {
+  const dbShifts = itemsData.filter(i => i.category === SHIFT_CATEGORY_KEY);
+  if (dbShifts.length > 0) {
+    shiftsData = dbShifts.map(r => {
+      const parts = String(r.item_name || '').split('||');
+      return {
+        id: r.id,
+        name: (parts[0] || '').trim(),
+        hours: (parts[1] || '').trim(),
+        isLocal: false
+      };
+    });
+    localStorage.setItem('ck_shifts', JSON.stringify(shiftsData));
+  }
+  populateShiftDropdown();
+  renderMasterShifts();
+}
+
+function populateShiftDropdown() {
+  const sel = document.getElementById('inspect-shift');
+  if (!sel) return;
+  const prevVal = sel.value;
+  sel.innerHTML = shiftsData.map(s => {
+    const label = s.hours ? `${s.name} (${s.hours})` : s.name;
+    return `<option value="${s.name}">${label}</option>`;
+  }).join('');
+  if (prevVal) {
+    if (!Array.from(sel.options).some(o => o.value === prevVal)) {
+      const opt = document.createElement('option');
+      opt.value = prevVal;
+      opt.textContent = prevVal;
+      sel.prepend(opt);
+    }
+    sel.value = prevVal;
+  }
+}
+
+function renderMasterShifts() {
+  const list = document.getElementById('master-shift-list');
+  if (!list) return;
+  if (!shiftsData || shiftsData.length === 0) {
+    list.innerHTML = '<p class="py-3 text-xs text-slate-400 text-center">Belum ada daftar shift. Tambahkan di atas.</p>';
+    return;
+  }
+  list.innerHTML = shiftsData.map(s => `
+    <div class="py-3 flex items-center justify-between gap-2">
+      <div>
+        <p class="text-xs font-extrabold text-slate-900">${s.name}</p>
+        <p class="text-[11px] text-slate-500">${s.hours || 'Jam kerja fleksibel'}</p>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button type="button" onclick="editShift('${s.id}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-[11px] font-bold">Edit</button>
+        <button type="button" onclick="deleteShift('${s.id}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-[11px] font-bold">Hapus</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function editShift(id) {
+  if (!isManagerRole()) return;
+  const s = shiftsData.find(item => String(item.id) === String(id));
+  if (!s) return;
+  document.getElementById('edit-shift-id').value = s.id;
+  document.getElementById('shift-name').value = s.name;
+  document.getElementById('shift-hours').value = s.hours || '';
+  document.getElementById('btn-save-shift').textContent = 'Perbarui Shift';
+  document.getElementById('shift-name').focus();
+}
+
+async function deleteShift(id) {
+  if (!isManagerRole()) return;
+  if (shiftsData.length <= 1) return alert('Minimal harus ada 1 shift kerja yang terdaftar.');
+  if (!confirm('Hapus shift kerja ini?')) return;
+
+  const target = shiftsData.find(item => String(item.id) === String(id));
+  if (target && !target.isLocal && navigator.onLine) {
+    const { error } = await db.from('master_items').delete().eq('id', target.id);
+    if (error) return alert('Gagal menghapus shift: ' + error.message);
+  }
+  shiftsData = shiftsData.filter(item => String(item.id) !== String(id));
+  localStorage.setItem('ck_shifts', JSON.stringify(shiftsData));
+  await loadAllData();
+}
+
+document.getElementById('form-add-shift')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!isManagerRole()) return;
+  const id = document.getElementById('edit-shift-id').value;
+  const name = document.getElementById('shift-name').value.trim();
+  const hours = document.getElementById('shift-hours').value.trim();
+  if (!name) return;
+
+  const btn = document.getElementById('btn-save-shift');
+  btn.disabled = true;
+  btn.textContent = 'Menyimpan...';
+
+  const encodedName = `${name}||${hours}`;
+  const existing = shiftsData.find(item => String(item.id) === String(id));
+
+  if (navigator.onLine) {
+    if (existing && !existing.isLocal) {
+      const { error } = await db.from('master_items').update({ item_name: encodedName }).eq('id', existing.id);
+      if (error) {
+        btn.disabled = false;
+        btn.textContent = '+ Simpan Shift';
+        return alert('Gagal memperbarui shift: ' + error.message);
+      }
+    } else {
+      const { error } = await db.from('master_items').insert([{
+        item_name: encodedName,
+        category: SHIFT_CATEGORY_KEY,
+        is_critical: false
+      }]);
+      if (error) {
+        btn.disabled = false;
+        btn.textContent = '+ Simpan Shift';
+        return alert('Gagal menyimpan shift: ' + error.message);
+      }
+    }
+  } else {
+    if (existing) {
+      shiftsData = shiftsData.map(item => String(item.id) === String(id) ? { ...item, name, hours } : item);
+    } else {
+      shiftsData.push({ id: 'loc-' + Date.now(), name, hours, isLocal: true });
+    }
+    localStorage.setItem('ck_shifts', JSON.stringify(shiftsData));
+  }
+
+  e.target.reset();
+  document.getElementById('edit-shift-id').value = '';
+  btn.disabled = false;
+  btn.textContent = '+ Simpan Shift';
+  await loadAllData();
+});
 
 function isManagerRole() {
   return currentUser && (currentUser.role || '').toLowerCase() === 'manajemen';
@@ -740,7 +899,7 @@ function handleIncomingNewReport(report) {
 }
 
 function testNotificationAlert() {
-  const sample = inspectionsData[0] || { id: null, unit_name: 'Kamar 101 - Anggrek', inspector_name: currentUser ? currentUser.full_name : 'Petugas', shift: 'Siang', readiness_score: 100, final_status: 'kotor', notes: '[Tanggapan Pemeriksa: Menunggu Approval Manajemen]' };
+  const sample = inspectionsData[0] || { id: null, unit_name: 'Kamar 101 - Anggrek', inspector_name: currentUser ? currentUser.full_name : 'Petugas', shift: 'Shift Siang', readiness_score: 100, final_status: 'kotor', notes: '[Tanggapan Pemeriksa: Menunggu Approval Manajemen]' };
   playNotificationChime();
   if (navigator.vibrate) navigator.vibrate([180, 80, 180]);
   showInAppBanner(sample);
@@ -857,7 +1016,7 @@ function renderPublicReportView(r) {
       </div>
       <div class="grid grid-cols-2 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs">
         <div><span class="text-[10px] text-slate-400 font-bold block">PETUGAS PEMERIKSA</span><span class="font-extrabold text-slate-800">${r.inspector_name}</span></div>
-        <div><span class="text-[10px] text-slate-400 font-bold block">SHIFT KERJA</span><span class="font-extrabold text-slate-800">Shift ${r.shift}</span></div>
+        <div><span class="text-[10px] text-slate-400 font-bold block">SHIFT KERJA</span><span class="font-extrabold text-slate-800">${r.shift}</span></div>
         ${meta.executor ? `<div class="col-span-2 pt-1 border-t border-slate-200/70"><span class="text-[10px] text-indigo-600 font-bold block">PETUGAS PELAKSANA</span><span class="font-extrabold text-slate-800">${meta.executor}</span></div>` : ''}
       </div>
       ${meta.feedbackStatus ? `<div class="${isApproved ? 'bg-emerald-50/80 border-emerald-200' : 'bg-amber-50/80 border-amber-200'} border rounded-2xl p-3 space-y-1"><span class="text-[10px] font-extrabold uppercase ${isApproved ? 'text-emerald-800' : 'text-amber-800'} block">Status Approval & Tanggapan Pemeriksa</span><p class="text-xs font-extrabold text-slate-800">${meta.feedbackStatus}</p>${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">Bagian Ditandai Perbaikan: ${meta.feedbackDetail}</p>` : ''}</div>` : ''}
@@ -1069,16 +1228,19 @@ function clearPrefillFormState() {
 function resetFormForFreshCheck() {
   clearPrefillFormState();
   populateOfficerDropdown();
+  populateShiftDropdown();
 }
 
 function populateFormWithReport(latestRep) {
   if (!latestRep) {
     clearPrefillFormState();
     populateOfficerDropdown();
+    populateShiftDropdown();
     return;
   }
 
-  if (document.querySelectorAll('.inspect-chk').length === 0 && itemsData.length > 0) {
+  const realChecklistItems = itemsData.filter(i => i.category !== SHIFT_CATEGORY_KEY);
+  if (document.querySelectorAll('.inspect-chk').length === 0 && realChecklistItems.length > 0) {
     renderInspectForm();
   }
 
@@ -1094,8 +1256,17 @@ function populateFormWithReport(latestRep) {
     if (matchedUnit) unitSel.value = matchedUnit.id;
   }
 
+  populateShiftDropdown();
   const shiftEl = document.getElementById('inspect-shift');
-  if (shiftEl && latestRep.shift) shiftEl.value = latestRep.shift;
+  if (shiftEl && latestRep.shift) {
+    if (!Array.from(shiftEl.options).some(o => o.value === latestRep.shift)) {
+      const opt = document.createElement('option');
+      opt.value = latestRep.shift;
+      opt.textContent = latestRep.shift;
+      shiftEl.prepend(opt);
+    }
+    shiftEl.value = latestRep.shift;
+  }
 
   const execSel = document.getElementById('inspect-executor-select');
   const executorName = meta.executor || latestRep.inspector_name;
@@ -1180,6 +1351,7 @@ function loadExistingInspectionToForm(unitId) {
 
   clearPrefillFormState();
   populateOfficerDropdown();
+  populateShiftDropdown();
 }
 
 function openReportInForm(reportId) {
@@ -1187,6 +1359,7 @@ function openReportInForm(reportId) {
   if (!rep) return;
   switchTab('inspect', false, true);
   populateOfficerDropdown();
+  populateShiftDropdown();
   populateFormWithReport(rep);
 }
 
@@ -1226,6 +1399,8 @@ async function enterApp() {
   document.getElementById('user-greeting').textContent = 'Halo, ' + currentUser.full_name;
   configureNavigationByRole();
   populateOfficerDropdown();
+  populateShiftDropdown();
+  renderMasterShifts();
   updateNotificationPermissionUI();
 
   const badge = document.getElementById('user-role-badge');
@@ -1290,6 +1465,7 @@ function switchTab(tabName, fromPopState = false, skipAutoPrefill = false) {
   }
   if (tabName === 'inspect') {
     populateOfficerDropdown();
+    populateShiftDropdown();
     startTimer();
     if (!skipAutoPrefill) {
       if (activeReviewReportId) {
@@ -1300,6 +1476,9 @@ function switchTab(tabName, fromPopState = false, skipAutoPrefill = false) {
         if (curUnitId) loadExistingInspectionToForm(curUnitId);
       }
     }
+  }
+  if (tabName === 'master') {
+    renderMasterShifts();
   }
   if (tabName === 'analytics') renderAnalytics();
 }
@@ -1316,6 +1495,8 @@ async function loadAllData() {
   inspectionsData = insRes.data || [];
   usersData = usrRes.data || [];
 
+  await ensureDefaultShiftsInDb();
+  rebuildShiftsFromItems();
   populateOfficerDropdown();
   initExportPeriodInputs();
   renderDashboard();
@@ -1449,8 +1630,9 @@ function renderInspectForm() {
     document.getElementById('inspect-unit').value = prevSelectedUnit;
   }
   const box = document.getElementById('checklist-container');
-  if (itemsData.length === 0) { box.innerHTML = '<p class="text-xs text-slate-400">Belum ada item kelengkapan. Tambahkan di Pengaturan.</p>'; return; }
-  box.innerHTML = itemsData.map(item => `
+  const realChecklistItems = itemsData.filter(item => item.category !== SHIFT_CATEGORY_KEY);
+  if (realChecklistItems.length === 0) { box.innerHTML = '<p class="text-xs text-slate-400">Belum ada item kelengkapan. Tambahkan di Pengaturan.</p>'; return; }
+  box.innerHTML = realChecklistItems.map(item => `
     <label class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer active:scale-[0.99] transition">
       <div>
         <span class="text-xs font-bold text-slate-800">${item.item_name}</span>
@@ -1664,8 +1846,9 @@ async function processInspectionSubmit(alsoSendWa = false) {
     activeReviewReportId = null;
     document.getElementById('prefill-review-banner')?.classList.add('hidden');
     document.getElementById('inspection-form').reset();
-    document.getElementById('inspect-shift').value = selectedShift;
     populateOfficerDropdown();
+    populateShiftDropdown();
+    document.getElementById('inspect-shift').value = selectedShift;
     resetPhotoBoxes();
     playNotificationChime();
     await loadAllData();
@@ -1845,7 +2028,8 @@ function editUnit(id) {
 async function deleteUnit(id) { if (isManagerRole() && confirm('Hapus unit kamar ini?')) { await db.from('master_units').delete().eq('id', id); loadAllData(); } }
 
 function renderMasterItems() {
-  document.getElementById('master-item-list').innerHTML = itemsData.map(i => `
+  const realChecklistItems = itemsData.filter(i => i.category !== SHIFT_CATEGORY_KEY);
+  document.getElementById('master-item-list').innerHTML = realChecklistItems.map(i => `
     <div class="py-3 flex items-center justify-between gap-2">
       <div>
         <p class="text-xs font-extrabold text-slate-900">${i.item_name} ${i.is_critical ? '<span class="text-rose-600">*Wajib</span>' : ''}</p>
@@ -1937,7 +2121,7 @@ function renderAnalytics() {
         <div class="flex items-start justify-between gap-2">
           <div>
             <h4 class="text-xs font-extrabold text-slate-900">${r.unit_name}</h4>
-            <p class="text-[11px] text-slate-500">Pemeriksa: <strong>${r.inspector_name}</strong> • Shift ${r.shift}</p>
+            <p class="text-[11px] text-slate-500">Pemeriksa: <strong>${r.inspector_name}</strong> • ${r.shift}</p>
             ${meta.executor ? `<p class="text-[11px] text-indigo-700 font-semibold">Pelaksana: <strong>${meta.executor}</strong></p>` : ''}
             <p class="text-[10px] text-slate-400 mt-0.5">${waktuStr}</p>
           </div>
@@ -2014,6 +2198,6 @@ function exportPdf() {
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=5.6').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=5.7').catch(() => {});
   });
 }
