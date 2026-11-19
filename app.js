@@ -970,23 +970,27 @@ function populateOfficerDropdown() {
   }
 
   if (sel) {
-    sel.innerHTML = managerOnly.map(u => `<option value="${u.full_name}">${u.full_name} (MANAJEMEN)</option>`).join('');
-    if (isManagerRole() && currentUser?.full_name) sel.value = currentUser.full_name;
+    const prevManager = sel.value;
+    sel.innerHTML = managerOnly.map(u => `<option value="${u.full_name}">${u.full_name}</option>`).join('');
+    if (prevManager && managerOnly.some(u => u.full_name === prevManager)) sel.value = prevManager;
+    else if (isManagerRole() && currentUser?.full_name) sel.value = currentUser.full_name;
     else sel.value = managerOnly[0].full_name;
   }
 
   if (execSel) {
     if (isPetugasRole() && currentUser) {
-      execSel.innerHTML = `<option value="${currentUser.full_name}">${currentUser.full_name} (PETUGAS)</option>`;
+      execSel.innerHTML = `<option value="${currentUser.full_name}">${currentUser.full_name}</option>`;
       execSel.value = currentUser.full_name;
       execSel.disabled = true;
-      if (execBadge) execBadge.textContent = '🔒 Terkunci Sesuai Akun Login';
+      if (execBadge) execBadge.textContent = '🔒 Terkunci';
     } else {
+      const prevExec = execSel.value;
       const petugasOnly = list.filter(u => (u.role || '').toLowerCase() === 'petugas');
       const finalPetugasList = petugasOnly.length > 0 ? petugasOnly : [{ full_name: 'Petugas Kebersihan', role: 'petugas' }];
-      execSel.innerHTML = finalPetugasList.map(u => `<option value="${u.full_name}">${u.full_name} (PETUGAS)</option>`).join('');
+      execSel.innerHTML = finalPetugasList.map(u => `<option value="${u.full_name}">${u.full_name}</option>`).join('');
+      if (prevExec && finalPetugasList.some(u => u.full_name === prevExec)) execSel.value = prevExec;
       execSel.disabled = false;
-      if (execBadge) execBadge.textContent = 'Daftar Petugas';
+      if (execBadge) execBadge.textContent = '';
     }
   }
 
@@ -994,19 +998,11 @@ function populateOfficerDropdown() {
     optApproved.disabled = isPetugasRole();
     optApproved.hidden = isPetugasRole();
   }
-  if (fbSel) {
+  if (fbSel && !activeReviewReportId) {
     fbSel.value = isManagerRole() ? 'Sesuai Standar (Approved)' : 'Menunggu Approval Manajemen';
   }
 }
 
-function setAutoShift() {
-  const shiftSel = document.getElementById('inspect-shift');
-  if (!shiftSel) return;
-  const hour = new Date().getHours();
-  shiftSel.value = (hour >= 7 && hour < 14) ? 'Pagi' : (hour >= 14 && hour < 21) ? 'Siang' : 'Malam';
-}
-
-/* FUNGSI BARU: PILIH KAMERA ATAU ALBUM TERPISAH + ANIMASI */
 function triggerPhotoPicker(type, source) {
   const inputId = source === 'camera' ? `input-camera-${type}` : `input-album-${type}`;
   const el = document.getElementById(inputId);
@@ -1032,7 +1028,7 @@ function updatePhotoBoxUI(type, dataUrl) {
     ph?.classList.add('hidden');
     btnClear?.classList.remove('hidden');
     if (box) {
-      box.classList.remove('border-dashed', 'border-slate-300', 'bg-slate-50/80');
+      box.classList.remove('border-dashed', 'border-slate-300', 'from-white', 'to-slate-50');
       box.classList.add('border-solid', 'border-emerald-400', 'bg-emerald-50/30');
     }
   } else {
@@ -1040,7 +1036,7 @@ function updatePhotoBoxUI(type, dataUrl) {
     ph?.classList.remove('hidden');
     btnClear?.classList.add('hidden');
     if (box) {
-      box.classList.add('border-dashed', 'border-slate-300', 'bg-slate-50/80');
+      box.classList.add('border-dashed', 'border-slate-300', 'from-white', 'to-slate-50');
       box.classList.remove('border-solid', 'border-emerald-400', 'bg-emerald-50/30');
     }
   }
@@ -1067,20 +1063,18 @@ function clearPrefillFormState() {
   const detailEl = document.getElementById('inspect-feedback-detail');
   if (detailEl) detailEl.value = '';
   const btnSubmit = document.getElementById('btn-submit-inspect');
-  if (btnSubmit) btnSubmit.textContent = 'Simpan Laporan Kesiapan';
+  if (btnSubmit) btnSubmit.textContent = 'Simpan Laporan';
 }
 
 function resetFormForFreshCheck() {
   clearPrefillFormState();
   populateOfficerDropdown();
-  setAutoShift();
 }
 
 function populateFormWithReport(latestRep) {
   if (!latestRep) {
     clearPrefillFormState();
     populateOfficerDropdown();
-    setAutoShift();
     return;
   }
 
@@ -1107,14 +1101,14 @@ function populateFormWithReport(latestRep) {
   const executorName = meta.executor || latestRep.inspector_name;
   if (execSel && executorName) {
     if (isPetugasRole() && currentUser) {
-      execSel.innerHTML = `<option value="${currentUser.full_name}">${currentUser.full_name} (PETUGAS)</option>`;
+      execSel.innerHTML = `<option value="${currentUser.full_name}">${currentUser.full_name}</option>`;
       execSel.value = currentUser.full_name;
       execSel.disabled = true;
     } else {
       if (!Array.from(execSel.options).some(o => o.value === executorName)) {
         const opt = document.createElement('option');
         opt.value = executorName;
-        opt.textContent = `${executorName} (PETUGAS)`;
+        opt.textContent = executorName;
         execSel.prepend(opt);
       }
       execSel.value = executorName;
@@ -1163,7 +1157,7 @@ function populateFormWithReport(latestRep) {
 
   const btnSubmit = document.getElementById('btn-submit-inspect');
   if (btnSubmit) {
-    btnSubmit.textContent = isManagerRole() ? 'Approve & Simpan Status Siap Pakai' : 'Perbarui & Ajukan Approval Manajemen';
+    btnSubmit.textContent = isManagerRole() ? 'Approve & Simpan' : 'Ajukan Approval';
   }
   lucide.createIcons();
 }
@@ -1186,7 +1180,6 @@ function loadExistingInspectionToForm(unitId) {
 
   clearPrefillFormState();
   populateOfficerDropdown();
-  setAutoShift();
 }
 
 function openReportInForm(reportId) {
@@ -1233,14 +1226,13 @@ async function enterApp() {
   document.getElementById('user-greeting').textContent = 'Halo, ' + currentUser.full_name;
   configureNavigationByRole();
   populateOfficerDropdown();
-  setAutoShift();
   updateNotificationPermissionUI();
 
   const badge = document.getElementById('user-role-badge');
   badge.textContent = currentUser.role.toUpperCase();
   badge.className = isManagerRole()
-    ? 'shrink-0 text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 tracking-wide'
-    : 'shrink-0 text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide';
+    ? 'shrink-0 text-[7.5px] font-extrabold uppercase px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 tracking-wide'
+    : 'shrink-0 text-[7.5px] font-extrabold uppercase px-1 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide';
 
   const userCard = document.getElementById('user-management-card');
   if (userCard) userCard.style.display = isManagerRole() ? 'block' : 'none';
@@ -1262,10 +1254,10 @@ function logout() { localStorage.removeItem('ck_user'); document.documentElement
 function updateNetworkStatus() {
   const el = document.getElementById('network-status');
   if (navigator.onLine) {
-    el.className = 'flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9.5px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap';
+    el.className = 'flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap';
     el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Online';
   } else {
-    el.className = 'flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9.5px] font-bold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap';
+    el.className = 'flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap';
     el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Offline';
   }
 }
@@ -1298,7 +1290,6 @@ function switchTab(tabName, fromPopState = false, skipAutoPrefill = false) {
   }
   if (tabName === 'inspect') {
     populateOfficerDropdown();
-    setAutoShift();
     startTimer();
     if (!skipAutoPrefill) {
       if (activeReviewReportId) {
@@ -1582,6 +1573,7 @@ async function processInspectionSubmit(alsoSendWa = false) {
   const unit = unitsData.find(u => u.id === unitId);
   if (!unit) return alert('Pilih unit kamar terlebih dahulu');
 
+  const selectedShift = document.getElementById('inspect-shift').value;
   const officerName = document.getElementById('inspect-officer-select')?.value || 'Supervisor Manajemen';
   const executorVal = isPetugasRole()
     ? currentUser.full_name
@@ -1617,7 +1609,7 @@ async function processInspectionSubmit(alsoSendWa = false) {
     unit_name: unit.unit_name,
     inspector_name: isApproved ? (currentUser.full_name || officerName) : officerName,
     inspector_role: currentUser.role,
-    shift: document.getElementById('inspect-shift').value,
+    shift: selectedShift,
     readiness_score: score,
     final_status: finalStatus,
     duration_seconds: secondsElapsed,
@@ -1666,14 +1658,14 @@ async function processInspectionSubmit(alsoSendWa = false) {
     }
   }
 
-  btn.disabled = false; btnWa.disabled = false; btn.textContent = 'Simpan Laporan Kesiapan';
+  btn.disabled = false; btnWa.disabled = false; btn.textContent = 'Simpan Laporan';
 
   if (savedOk) {
     activeReviewReportId = null;
     document.getElementById('prefill-review-banner')?.classList.add('hidden');
     document.getElementById('inspection-form').reset();
+    document.getElementById('inspect-shift').value = selectedShift;
     populateOfficerDropdown();
-    setAutoShift();
     resetPhotoBoxes();
     playNotificationChime();
     await loadAllData();
@@ -1697,6 +1689,17 @@ async function syncOfflineQueue() {
 
 function openQrScanner() {
   openModalWithHistory('modal-qr-scanner');
+  if (qrScannerInstance) {
+    qrScannerInstance.stop().catch(() => {}).finally(() => {
+      qrScannerInstance = null;
+      startQrCamera();
+    });
+  } else {
+    startQrCamera();
+  }
+}
+
+function startQrCamera() {
   qrScannerInstance = new Html5Qrcode("qr-reader");
   qrScannerInstance.start({ facingMode: "environment" }, { fps: 10, qrbox: 220 }, (decodedText) => {
     closeQrScanner();
@@ -1798,19 +1801,23 @@ document.getElementById('form-add-user').addEventListener('submit', async (e) =>
 });
 
 function renderMasterUnits() {
-  document.getElementById('master-unit-list').innerHTML = unitsData.map(u => `
+  document.getElementById('master-unit-list').innerHTML = unitsData.map(u => {
+    const safeCode = String(u.unit_code || '').replace(/'/g, "\\'");
+    const safeName = String(u.unit_name || '').replace(/'/g, "\\'");
+    return `
     <div class="py-3 flex items-center justify-between gap-2">
       <div>
         <p class="text-xs font-extrabold text-slate-900">${u.unit_code} — ${u.unit_name}</p>
         <p class="text-[11px] text-slate-500">${u.floor || ''} • Status: <strong class="uppercase">${getEffectiveUnitStatus(u)}</strong></p>
       </div>
       <div class="flex items-center gap-1.5">
-        <button onclick="showQrPrint('${u.unit_code}', '${u.unit_name}')" class="px-2.5 py-1.5 bg-teal-50 text-teal-700 rounded-lg text-[11px] font-bold">QR</button>
-        <button onclick="editUnit('${u.id}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold">Edit</button>
-        <button onclick="deleteUnit('${u.id}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>
+        <button type="button" onclick="showQrPrint('${safeCode}', '${safeName}')" class="px-2.5 py-1.5 bg-teal-50 text-teal-700 rounded-lg text-[11px] font-bold">QR</button>
+        <button type="button" onclick="editUnit('${u.id}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold">Edit</button>
+        <button type="button" onclick="deleteUnit('${u.id}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 document.getElementById('form-add-unit').addEventListener('submit', async (e) => {
