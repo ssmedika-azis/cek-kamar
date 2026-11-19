@@ -410,6 +410,7 @@ async function requestRevisionByManagement(unitId, unitName, reportId = null) {
     }).eq('id', unitId);
   }
 
+  clearBottomFormReviewBar();
   activeReviewReportId = null;
   document.getElementById('prefill-review-banner')?.classList.add('hidden');
   playNotificationChime();
@@ -461,6 +462,7 @@ async function approveReportById(reportId) {
     }).eq('id', targetUnitId);
   }
 
+  clearBottomFormReviewBar();
   activeReviewReportId = null;
   document.getElementById('prefill-review-banner')?.classList.add('hidden');
   playNotificationChime();
@@ -599,6 +601,7 @@ async function markIssueResolvedByOfficer(reportId) {
       }).eq('id', targetUnitId);
     }
 
+    clearBottomFormReviewBar();
     activeReviewReportId = null;
     document.getElementById('prefill-review-banner')?.classList.add('hidden');
     playNotificationChime();
@@ -1444,10 +1447,24 @@ function resetPhotoBoxes() {
   clearSinglePhoto('toilet');
 }
 
+function clearBottomFormReviewBar() {
+  document.getElementById('bottom-review-actions')?.remove();
+  const btnSubmit = document.getElementById('btn-submit-inspect');
+  const btnWa = document.getElementById('btn-submit-wa');
+  if (btnSubmit) {
+    btnSubmit.classList.remove('hidden');
+    btnSubmit.textContent = 'Simpan Laporan';
+  }
+  if (btnWa) {
+    btnWa.classList.remove('hidden');
+    if (btnWa.parentElement) btnWa.parentElement.classList.remove('hidden');
+  }
+}
+
 function clearPrefillFormState() {
   activeReviewReportId = null;
   document.getElementById('prefill-review-banner')?.classList.add('hidden');
-  document.getElementById('form-revision-action-wrap')?.remove();
+  clearBottomFormReviewBar();
   document.querySelectorAll('.inspect-chk').forEach(c => { c.checked = false; });
   updateScore();
   resetPhotoBoxes();
@@ -1455,8 +1472,6 @@ function clearPrefillFormState() {
   if (notesEl) notesEl.value = '';
   const detailEl = document.getElementById('inspect-feedback-detail');
   if (detailEl) detailEl.value = '';
-  const btnSubmit = document.getElementById('btn-submit-inspect');
-  if (btnSubmit) btnSubmit.textContent = 'Simpan Laporan';
 }
 
 function resetFormForFreshCheck() {
@@ -1552,45 +1567,53 @@ function populateFormWithReport(latestRep) {
   const reviewBanner = document.getElementById('prefill-review-banner');
   const reviewDesc = document.getElementById('prefill-review-desc');
   const btnDirectApprove = document.getElementById('btn-direct-approve-form');
+
+  if (btnDirectApprove) {
+    btnDirectApprove.classList.add('hidden');
+  }
+
   if (reviewBanner && reviewDesc) {
     const waktu = latestRep.created_at ? new Date(latestRep.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
     const extraComplaintHtml = isRev && meta.feedbackDetail
       ? `<span class="block mt-1 px-2 py-1 rounded-lg bg-rose-100 text-rose-800 font-extrabold">⚠️ Komplain Manajemen: ${meta.feedbackDetail}</span>`
       : '';
-    reviewDesc.innerHTML = `Diajukan oleh <strong>${executorName}</strong>${waktu ? ' (' + waktu + ')' : ''} • Skor <strong>${latestRep.readiness_score}%</strong>. Silakan periksa hasil checklist & foto di bawah.${extraComplaintHtml} <button type="button" onclick="resetFormForFreshCheck()" class="underline font-extrabold text-indigo-950 ml-1">Kosongkan Form</button>`;
+    reviewDesc.innerHTML = `Diajukan oleh <strong>${executorName}</strong>${waktu ? ' (' + waktu + ')' : ''} • Skor <strong>${latestRep.readiness_score}%</strong>. Silakan periksa hasil checklist & foto di bawah sebelum mengambil keputusan.${extraComplaintHtml} <button type="button" onclick="resetFormForFreshCheck()" class="underline font-extrabold text-indigo-950 ml-1">Kosongkan Form</button>`;
     reviewBanner.classList.remove('hidden');
-
-    if (btnDirectApprove) {
-      btnDirectApprove.classList.toggle('hidden', !isManagerRole());
-    }
-
-    document.getElementById('form-revision-action-wrap')?.remove();
-    const actionWrap = document.createElement('div');
-    actionWrap.id = 'form-revision-action-wrap';
-    actionWrap.className = 'mt-2 flex flex-wrap gap-2';
-
-    if (isManagerRole()) {
-      actionWrap.innerHTML = `
-        <button type="button" onclick="requestRevisionFromActiveForm()" class="flex-1 py-2 px-3 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-          <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Perlu Perbaikan (Kirim Komplain)
-        </button>
-      `;
-    } else if (isPetugasRole() && isRev) {
-      actionWrap.innerHTML = `
-        <button type="button" onclick="markIssueResolvedByOfficer('${latestRep.id}')" class="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-          <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Selesai Perbaikan & Minta Approve
-        </button>
-      `;
-    }
-    if (actionWrap.innerHTML.trim()) reviewBanner.appendChild(actionWrap);
   }
 
   const btnSubmit = document.getElementById('btn-submit-inspect');
-  if (btnSubmit) {
-    if (isManagerRole()) btnSubmit.textContent = 'Approve & Simpan';
-    else if (isRev) btnSubmit.textContent = 'Kirim Selesai Perbaikan';
-    else btnSubmit.textContent = 'Ajukan Approval';
+  const btnWa = document.getElementById('btn-submit-wa');
+
+  if (isManagerRole() && btnSubmit) {
+    const actionRow = btnSubmit.parentElement;
+    if (actionRow) actionRow.classList.add('hidden');
+
+    document.getElementById('bottom-review-actions')?.remove();
+    const bottomBox = document.createElement('div');
+    bottomBox.id = 'bottom-review-actions';
+    bottomBox.className = 'pt-2 space-y-2.5';
+    bottomBox.innerHTML = `
+      <button type="button" onclick="approveActiveFormReport()" class="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition">
+        <i data-lucide="check-circle-2" class="w-4 h-4"></i> APPROVE LAPORAN INI (JADIKAN SIAP PAKAI)
+      </button>
+      <div class="grid grid-cols-2 gap-2.5">
+        <button type="button" onclick="requestRevisionFromActiveForm()" class="py-3 px-3 bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
+          <i data-lucide="alert-triangle" class="w-4 h-4"></i> Perlu Diperbaiki
+        </button>
+        <button type="button" onclick="saveAndSendWhatsApp()" class="py-3 px-3 bg-teal-600 hover:bg-teal-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
+          <i data-lucide="send" class="w-4 h-4"></i> Simpan & WA
+        </button>
+      </div>
+    `;
+    actionRow?.parentElement?.appendChild(bottomBox);
+  } else {
+    clearBottomFormReviewBar();
+    if (btnSubmit) {
+      btnSubmit.textContent = isRev ? 'Kirim Selesai Perbaikan' : 'Ajukan Approval';
+    }
+    if (btnWa) btnWa.classList.remove('hidden');
   }
+
   lucide.createIcons();
 }
 
@@ -1874,7 +1897,7 @@ function renderDashboard() {
               </button>
             </div>
             <button type="button" onclick="requestRevisionByManagement('${u.id}', '${safeUnitName}', '${latestRep ? latestRep.id : ''}')" class="w-full py-1.5 px-2 bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 border border-rose-200 font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 transition">
-              <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Perlu Perbaikan (Komplain)
+              <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Perlu Diperbaiki (Komplain)
             </button>
           </div>
         ` : ''}
@@ -2150,12 +2173,12 @@ async function processInspectionSubmit(alsoSendWa = false) {
     }
   }
 
-  btn.disabled = false; btnWa.disabled = false; btn.textContent = 'Simpan Laporan';
+  btn.disabled = false; btnWa.disabled = false;
 
   if (savedOk) {
+    clearBottomFormReviewBar();
     activeReviewReportId = null;
     document.getElementById('prefill-review-banner')?.classList.add('hidden');
-    document.getElementById('form-revision-action-wrap')?.remove();
     document.getElementById('inspection-form').reset();
     populateOfficerDropdown();
     populateShiftDropdown();
@@ -2456,7 +2479,7 @@ function renderAnalytics() {
                 <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek & Approve
               </button>
               <button type="button" onclick="requestRevisionByManagement('${r.unit_id || ''}', '${safeUnitName}', '${r.id}')" class="py-2 px-2 bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
-                <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Perlu Perbaikan
+                <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Perlu Diperbaiki
               </button>
             </div>
           ` : ''}
