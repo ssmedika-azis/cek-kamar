@@ -31,7 +31,15 @@ const DEFAULT_SHIFTS = [
   { id: 'def-malam', name: 'Shift Malam', hours: '21:00 - 07:00', isLocal: true }
 ];
 
-let shiftsData = JSON.parse(localStorage.getItem('ck_shifts') || 'null') || [...DEFAULT_SHIFTS];
+function getInitialShifts() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('ck_shifts') || 'null');
+    if (Array.isArray(saved) && saved.length > 0) return saved;
+  } catch (e) {}
+  return [...DEFAULT_SHIFTS];
+}
+
+let shiftsData = getInitialShifts();
 let currentUser = JSON.parse(localStorage.getItem('ck_user') || 'null');
 let unitsData = [];
 let itemsData = [];
@@ -60,18 +68,20 @@ if (window.lucide) lucide.createIcons();
 
 async function ensureDefaultShiftsInDb() {
   if (!navigator.onLine) return;
-  const dbShifts = itemsData.filter(i => i.category === SHIFT_CATEGORY_KEY);
-  if (dbShifts.length === 0) {
-    const seedPayload = DEFAULT_SHIFTS.map(s => ({
-      item_name: `${s.name}||${s.hours}`,
-      category: SHIFT_CATEGORY_KEY,
-      is_critical: false
-    }));
-    const { data, error } = await db.from('master_items').insert(seedPayload).select();
-    if (!error && Array.isArray(data) && data.length > 0) {
-      itemsData = itemsData.concat(data);
+  try {
+    const dbShifts = itemsData.filter(i => i.category === SHIFT_CATEGORY_KEY);
+    if (dbShifts.length === 0) {
+      const seedPayload = DEFAULT_SHIFTS.map(s => ({
+        item_name: `${s.name}||${s.hours}`,
+        category: SHIFT_CATEGORY_KEY,
+        is_critical: false
+      }));
+      const { data, error } = await db.from('master_items').insert(seedPayload).select();
+      if (!error && Array.isArray(data) && data.length > 0) {
+        itemsData = itemsData.concat(data);
+      }
     }
-  }
+  } catch (e) {}
 }
 
 function rebuildShiftsFromItems() {
@@ -87,6 +97,8 @@ function rebuildShiftsFromItems() {
       };
     });
     localStorage.setItem('ck_shifts', JSON.stringify(shiftsData));
+  } else if (!Array.isArray(shiftsData) || shiftsData.length === 0) {
+    shiftsData = getInitialShifts();
   }
   populateShiftDropdown();
   renderMasterShifts();
@@ -114,9 +126,8 @@ function populateShiftDropdown() {
 function renderMasterShifts() {
   const list = document.getElementById('master-shift-list');
   if (!list) return;
-  if (!shiftsData || shiftsData.length === 0) {
-    list.innerHTML = '<p class="py-3 text-xs text-slate-400 text-center">Belum ada daftar shift. Tambahkan di atas.</p>';
-    return;
+  if (!Array.isArray(shiftsData) || shiftsData.length === 0) {
+    shiftsData = getInitialShifts();
   }
   list.innerHTML = shiftsData.map(s => `
     <div class="py-3 flex items-center justify-between gap-2">
@@ -149,13 +160,16 @@ async function deleteShift(id) {
   if (!confirm('Hapus shift kerja ini?')) return;
 
   const target = shiftsData.find(item => String(item.id) === String(id));
-  if (target && !target.isLocal && navigator.onLine) {
-    const { error } = await db.from('master_items').delete().eq('id', target.id);
-    if (error) return alert('Gagal menghapus shift: ' + error.message);
-  }
   shiftsData = shiftsData.filter(item => String(item.id) !== String(id));
   localStorage.setItem('ck_shifts', JSON.stringify(shiftsData));
-  await loadAllData();
+  populateShiftDropdown();
+  renderMasterShifts();
+
+  if (target && !target.isLocal && navigator.onLine) {
+    try {
+      await db.from('master_items').delete().eq('id', target.id);
+    } catch (e) {}
+  }
 }
 
 document.getElementById('form-add-shift')?.addEventListener('submit', async (e) => {
@@ -170,43 +184,42 @@ document.getElementById('form-add-shift')?.addEventListener('submit', async (e) 
   btn.disabled = true;
   btn.textContent = 'Menyimpan...';
 
-  const encodedName = `${name}||${hours}`;
   const existing = shiftsData.find(item => String(item.id) === String(id));
+  const localId = existing ? existing.id : ('loc-' + Date.now());
+
+  if (existing) {
+    shiftsData = shiftsData.map(item => String(item.id) === String(id) ? { ...item, name, hours } : item);
+  } else {
+    shiftsData.push({ id: localId, name, hours, isLocal: true });
+  }
+  localStorage.setItem('ck_shifts', JSON.stringify(shiftsData));
+  populateShiftDropdown();
+  renderMasterShifts();
 
   if (navigator.onLine) {
-    if (existing && !existing.isLocal) {
-      const { error } = await db.from('master_items').update({ item_name: encodedName }).eq('id', existing.id);
-      if (error) {
-        btn.disabled = false;
-        btn.textContent = '+ Simpan Shift';
-        return alert('Gagal memperbarui shift: ' + error.message);
+    try {
+      const encodedName = `${name}||${hours}`;
+      if (existing && !existing.isLocal) {
+        await db.from('master_items').update({ item_name: encodedName }).eq('id', existing.id);
+      } else {
+        const { data } = await db.from('master_items').insert([{
+          item_name: encodedName,
+          category: SHIFT_CATEGORY_KEY,
+          is_critical: false
+        }]).select();
+        if (Array.isArray(data) && data[0]) {
+          shiftsData = shiftsData.map(item => String(item.id) === String(localId) ? { ...item, id: data[0].id, isLocal: false } : item);
+          localStorage.setItem('ck_shifts', JSON.stringify(shiftsData));
+          renderMasterShifts();
+        }
       }
-    } else {
-      const { error } = await db.from('master_items').insert([{
-        item_name: encodedName,
-        category: SHIFT_CATEGORY_KEY,
-        is_critical: false
-      }]);
-      if (error) {
-        btn.disabled = false;
-        btn.textContent = '+ Simpan Shift';
-        return alert('Gagal menyimpan shift: ' + error.message);
-      }
-    }
-  } else {
-    if (existing) {
-      shiftsData = shiftsData.map(item => String(item.id) === String(id) ? { ...item, name, hours } : item);
-    } else {
-      shiftsData.push({ id: 'loc-' + Date.now(), name, hours, isLocal: true });
-    }
-    localStorage.setItem('ck_shifts', JSON.stringify(shiftsData));
+    } catch (err) {}
   }
 
   e.target.reset();
   document.getElementById('edit-shift-id').value = '';
   btn.disabled = false;
   btn.textContent = '+ Simpan Shift';
-  await loadAllData();
 });
 
 function isManagerRole() {
@@ -1072,6 +1085,8 @@ async function triggerPwaInstall() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  renderMasterShifts();
+  populateShiftDropdown();
   const params = new URLSearchParams(window.location.search);
   const reportCode = params.get('l') || params.get('laporan');
   if (reportCode) { loadPublicReport(reportCode); return; }
