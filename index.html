@@ -225,7 +225,7 @@
         </div>
         <div class="min-w-0">
           <p id="approval-alert-title" class="text-xs font-extrabold leading-tight">1 Form Menunggu Approval</p>
-          <p class="text-[10.5px] text-indigo-100 truncate">Belum di-approve — klik untuk cek & setujui Siap Pakai</p>
+          <p class="text-[10.5px] text-indigo-100 truncate">Klik untuk cek form isian petugas & approve</p>
         </div>
       </div>
       <button type="button" onclick="openNotificationDrawer()" class="shrink-0 px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-xl text-[11px] shadow-sm transition">
@@ -274,7 +274,7 @@
         <div id="dashboard-unit-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
       </section>
 
-      <!-- TAB 2: CEK KAMAR (TANPA TOMBOL KEMBALI) -->
+      <!-- TAB 2: CEK KAMAR -->
       <section id="tab-inspect" class="page-section hidden space-y-4">
         <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
           <div class="flex items-center justify-between gap-2">
@@ -291,15 +291,15 @@
           </div>
 
           <!-- BANNER DATA TERISI DARI PETUGAS + TOMBOL APPROVE LANGSUNG -->
-          <div id="prefill-review-banner" class="hidden p-3.5 bg-indigo-50 border-2 border-indigo-300 rounded-2xl space-y-2.5 shadow-sm">
+          <div id="prefill-review-banner" class="hidden p-3.5 bg-indigo-50 border-2 border-indigo-400 rounded-2xl space-y-2.5 shadow-sm">
             <div class="flex items-start gap-2.5">
               <i data-lucide="file-check-2" class="w-5 h-5 text-indigo-600 shrink-0 mt-0.5"></i>
               <div class="min-w-0 flex-1">
-                <p class="text-xs font-extrabold text-indigo-950">Data Form Isian Petugas Dimuat</p>
-                <p id="prefill-review-desc" class="text-[11px] text-indigo-800 mt-0.5">Periksa kelengkapan & foto di bawah, lalu klik Approve.</p>
+                <p class="text-xs font-extrabold text-indigo-950">Data Form Isian Petugas Ditampilkan</p>
+                <p id="prefill-review-desc" class="text-[11px] text-indigo-800 mt-0.5">Periksa kelengkapan & foto di bawah, lalu klik Approve agar kamar berstatus Siap Pakai.</p>
               </div>
             </div>
-            <button type="button" id="btn-direct-approve-form" onclick="approveActiveFormReport()" class="hidden w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition">
+            <button type="button" id="btn-direct-approve-form" onclick="approveActiveFormReport()" class="hidden w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition">
               <i data-lucide="check-circle-2" class="w-4 h-4"></i> Approve Laporan Ini (Jadikan Siap Pakai)
             </button>
           </div>
@@ -430,7 +430,7 @@
         </div>
       </section>
 
-      <!-- TAB 3: ANALITIK (TANPA TOMBOL KEMBALI) -->
+      <!-- TAB 3: ANALITIK -->
       <section id="tab-analytics" class="page-section hidden space-y-4">
         <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
           <div class="flex flex-wrap items-center justify-between gap-2">
@@ -527,7 +527,7 @@
         </div>
       </section>
 
-      <!-- TAB 4: PENGATURAN (KHUSUS MANAJEMEN, TANPA TOMBOL KEMBALI) -->
+      <!-- TAB 4: PENGATURAN -->
       <section id="tab-master" class="page-section hidden space-y-5">
         <div class="glass-card rounded-3xl p-5 shadow-sm space-y-3">
           <div class="flex items-center justify-between gap-2">
@@ -640,7 +640,7 @@
         </button>
         <div class="text-right min-w-0">
           <h3 class="text-xs font-extrabold text-slate-900 truncate">Notifikasi & Approval</h3>
-          <p class="text-[10px] text-slate-500 truncate">1 Form = 1 Approval Siap Pakai</p>
+          <p class="text-[10px] text-slate-500 truncate">Cek form isian lalu Approve</p>
         </div>
       </div>
       <div id="notif-drawer-list" class="overflow-y-auto space-y-2 pr-1 flex-1"></div>
@@ -753,7 +753,7 @@
         </button>
         <div class="text-right">
           <h3 class="text-xs font-extrabold text-slate-900">Tentang Aplikasi</h3>
-          <p onclick="handleSecretHistoryTap()" class="text-[10px] text-teal-600 font-bold select-none cursor-default">Versi 5.1 PWA • Strict Approval</p>
+          <p onclick="handleSecretHistoryTap()" class="text-[10px] text-teal-600 font-bold select-none cursor-default">Versi 5.2 PWA • Strict Approval</p>
         </div>
       </div>
 
@@ -762,7 +762,7 @@
         <p>Aplikasi PWA untuk memantau kesiapan, kebersihan, dan kelengkapan fasilitas kamar secara real-time di <strong>RS Khusus Bedah SS Medika</strong>.</p>
         <ul class="space-y-1 text-[11px] text-slate-600 pt-1">
           <li>• <strong>Wajib Approval Manajemen:</strong> Kamar tidak akan pernah berstatus <em>Siap Pakai</em> sebelum disetujui oleh Manajemen.</li>
-          <li>• <strong>Identitas Petugas Terpisah & Aman:</strong> Petugas hanya bisa memakai namanya sendiri sesuai akun login dan mengakses menu Cek Kamar & Analitik.</li>
+          <li>• <strong>Alur Jelas:</strong> Kamar <em>Kosong</em> hanya menampilkan tombol <em>Cek Sekarang</em>. Tombol <em>Cek & Approve</em> hanya muncul setelah petugas mengirim form inspeksi.</li>
         </ul>
       </div>
 
@@ -901,27 +901,31 @@
 
       const latestRep = getLatestInspectionForUnit(u.id);
       const checkedByStr = String(u.last_checked_by || '');
-      const hasApprovedStampOnUnit = checkedByStr.includes('Approved');
+      const hasApprovedStampOnUnit = checkedByStr.includes('Approved:');
 
-      // 1. Jika laporan terbaru untuk kamar ini BELUM di-approve Manajemen -> SELALU MENUNGGU APPROVAL (tidak boleh SIAP PAKAI)
+      // Jika kamar telah dikosongkan (Pasien Pulang / belum ada sesi baru)
+      if (!checkedByStr && u.status === 'kotor') {
+        return 'kosong';
+      }
+
+      // 1. Jika laporan terbaru untuk kamar ini BELUM di-approve Manajemen -> MENUNGGU APPROVAL (atau SEDANG DIBERSIHKAN)
       if (latestRep && !isInspectionOfficiallyApproved(latestRep)) {
         const meta = parseNotesMetadata(latestRep.notes);
         if (meta.feedbackStatus.includes('Sedang Dibersihkan')) return 'dibersihkan';
         return 'pending_approval';
       }
 
-      // 2. Jika laporan terbaru SUDAH di-approve Manajemen -> SIAP PAKAI (kecuali jika sudah dikosongkan setelah pasien pulang)
+      // 2. Jika laporan terbaru SUDAH di-approve Manajemen -> SIAP PAKAI
       if (latestRep && isInspectionOfficiallyApproved(latestRep)) {
-        if (!u.last_checked_by && u.status === 'kotor') return 'kosong';
         if (u.status === 'siap' || hasApprovedStampOnUnit) return 'siap';
       }
 
-      // 3. Jika belum ada riwayat laporan di daftar, hanya boleh SIAP PAKAI jika benar-benar punya stempel "Approved"
+      // 3. Jika belum ada riwayat laporan di daftar, hanya boleh SIAP PAKAI jika benar-benar punya stempel "Approved:"
       if (u.status === 'siap' && hasApprovedStampOnUnit) {
         return 'siap';
       }
 
-      // 4. Jika pernah diisi/dicek petugas tapi belum ada stempel Approved -> MENUNGGU APPROVAL
+      // 4. Jika pernah diisi/dicek petugas tapi belum ada stempel Approved: -> MENUNGGU APPROVAL
       if (checkedByStr && !hasApprovedStampOnUnit) {
         return 'pending_approval';
       }
@@ -1024,10 +1028,16 @@
         return renderDashboard();
       }
       const unit = unitsData.find(u => String(u.id) === String(unitId));
+      const eff = unit ? getEffectiveUnitStatus(unit) : 'kosong';
       let dbStatus = 'kotor';
       let checkedBy = null;
 
       if (newMode === 'siap') {
+        if (eff === 'kosong') {
+          alert('Kamar masih KOSONG. Silakan isi cek kamar terlebih dahulu sebelum di-approve.');
+          renderDashboard();
+          return quickInspect(unitId);
+        }
         const latestRep = getLatestInspectionForUnit(unitId);
         if (latestRep && !isInspectionOfficiallyApproved(latestRep)) {
           renderDashboard();
@@ -1448,7 +1458,7 @@
       document.getElementById('toast-banner-badge').textContent = isPending ? 'Butuh Approval Manajemen • Baru Saja' : 'Laporan Disetujui • Baru Saja';
       document.getElementById('toast-banner-title').textContent = `${report.unit_name} • ${statusLabel}`;
       document.getElementById('toast-banner-body').textContent = isPending
-        ? `Oleh ${actorName} • Segera approve agar Siap Pakai`
+        ? `Oleh ${actorName} • Klik untuk cek form & approve`
         : `Approved oleh ${report.inspector_name} • Skor ${report.readiness_score}%`;
       document.getElementById('toast-banner-time').textContent = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
       banner.classList.remove('hidden', 'banner-slide-in');
@@ -1462,9 +1472,15 @@
 
     function openLatestNotifFromBanner() {
       hideToastBanner();
-      if (isManagerRole()) openNotificationDrawer();
-      else if (latestNotifReport && latestNotifReport.id) openReportFullView(latestNotifReport.id);
-      else switchTab('analytics');
+      if (isManagerRole() && latestNotifReport && latestNotifReport.id && !isInspectionOfficiallyApproved(latestNotifReport)) {
+        openReportInForm(latestNotifReport.id);
+      } else if (isManagerRole()) {
+        openNotificationDrawer();
+      } else if (latestNotifReport && latestNotifReport.id) {
+        openReportFullView(latestNotifReport.id);
+      } else {
+        switchTab('analytics');
+      }
     }
 
     function openReportFullView(reportId) {
@@ -1495,7 +1511,7 @@
           ? `Approval Dibutuhkan: ${report.unit_name}`
           : `Kamar Siap Pakai: ${report.unit_name}`;
         const notifBody = isPending
-          ? `Petugas ${actorName} selesai cek (${report.readiness_score}%). Mohon segera di-approve Manajemen.`
+          ? `Petugas ${actorName} selesai cek (${report.readiness_score}%). Mohon cek form & approve.`
           : `Approved oleh ${report.inspector_name} (${report.readiness_score}%).`;
         triggerNativePhoneNotification(notifTitle, notifBody, report.id);
       }
@@ -1536,14 +1552,9 @@
                 </div>
               </div>
               ${canApproveHere ? `
-                <div class="grid grid-cols-2 gap-1.5">
-                  <button type="button" onclick="closeActiveModal('modal-notifications'); openReportInForm('${r.id}');" class="py-2 bg-white hover:bg-slate-100 text-indigo-700 border border-indigo-200 font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 transition">
-                    <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Cek Form
-                  </button>
-                  <button type="button" onclick="approveReportById('${r.id}')" class="py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
-                    <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Approve
-                  </button>
-                </div>
+                <button type="button" onclick="closeActiveModal('modal-notifications'); openReportInForm('${r.id}');" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
+                  <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek & Approve Form
+                </button>
               ` : ''}
             </div>
           `;
@@ -1909,7 +1920,8 @@
       const eff = getEffectiveUnitStatus(unit);
       const latestRep = getLatestInspectionForUnit(unitId);
 
-      if (latestRep && !isInspectionOfficiallyApproved(latestRep) && eff !== 'kosong') {
+      // Hanya muat data form jika status kamar bukan KOSONG dan ada laporan yang belum di-approve
+      if (eff !== 'kosong' && latestRep && !isInspectionOfficiallyApproved(latestRep)) {
         const meta = parseNotesMetadata(latestRep.notes);
         const ownerName = meta.executor || latestRep.inspector_name;
         if (isManagerRole() || (currentUser && ownerName === currentUser.full_name)) {
@@ -2060,9 +2072,7 @@
       const siap = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
       const kosongOrProses = unitsData.filter(u => ['kosong', 'dibersihkan', 'pending_approval'].includes(getEffectiveUnitStatus(u))).length;
       const maint = unitsData.filter(u => getEffectiveUnitStatus(u) === 'maintenance').length;
-      const unapprovedReportsCount = inspectionsData.filter(r => !isInspectionOfficiallyApproved(r)).length;
       const pendingUnitsCount = unitsData.filter(u => getEffectiveUnitStatus(u) === 'pending_approval').length;
-      const totalPendingBanner = Math.max(unapprovedReportsCount, pendingUnitsCount);
 
       document.getElementById('stat-siap').textContent = siap;
       document.getElementById('stat-kotor').textContent = kosongOrProses;
@@ -2070,8 +2080,8 @@
 
       const mgmtBanner = document.getElementById('management-approval-alert');
       if (mgmtBanner) {
-        if (isManagerRole() && totalPendingBanner > 0) {
-          document.getElementById('approval-alert-title').textContent = `${totalPendingBanner} Form Menunggu Approval`;
+        if (isManagerRole() && pendingUnitsCount > 0) {
+          document.getElementById('approval-alert-title').textContent = `${pendingUnitsCount} Kamar Menunggu Approval`;
           mgmtBanner.classList.remove('hidden');
         } else {
           mgmtBanner.classList.add('hidden');
@@ -2085,8 +2095,7 @@
       }
       grid.innerHTML = unitsData.map(u => {
         const eff = getEffectiveUnitStatus(u);
-        const latestRep = getLatestInspectionForUnit(u.id);
-        const hasPendingRep = latestRep && !isInspectionOfficiallyApproved(latestRep);
+        const isWaitingApproval = (eff === 'pending_approval' || eff === 'dibersihkan');
         const statusMap = {
           siap: { label: 'SIAP PAKAI', bg: 'bg-emerald-100 text-emerald-700', border: 'border-emerald-200' },
           pending_approval: { label: 'MENUNGGU APPROVAL', bg: 'bg-indigo-100 text-indigo-800', border: 'border-indigo-300' },
@@ -2096,6 +2105,23 @@
         };
         const st = statusMap[eff] || statusMap.kosong;
 
+        // Dropdown status kamar: opsi SIAP PAKAI hanya tampil bila sudah di-approve
+        const dropdownOptions = eff === 'siap'
+          ? `
+            <option value="siap" selected>SIAP PAKAI</option>
+            <option value="kosong">KOSONG</option>
+          `
+          : isWaitingApproval
+          ? `
+            <option value="pending_approval" ${eff === 'pending_approval' ? 'selected' : ''}>MENUNGGU APPROVAL</option>
+            <option value="dibersihkan" ${eff === 'dibersihkan' ? 'selected' : ''}>SEDANG DIBERSIHKAN</option>
+            <option value="kosong">KOSONG</option>
+          `
+          : `
+            <option value="kosong" selected>KOSONG</option>
+            <option value="dibersihkan">SEDANG DIBERSIHKAN</option>
+          `;
+
         return `
           <div class="glass-card rounded-2xl p-4 shadow-sm border ${st.border} flex flex-col justify-between space-y-3">
             <div class="flex items-start justify-between gap-2">
@@ -2104,22 +2130,19 @@
                 <h3 class="text-sm font-extrabold text-slate-900 truncate">${u.unit_name}</h3>
               </div>
               <select onchange="quickChangeUnitStatus('${u.id}', this.value)" ${!isManagerRole() ? 'disabled' : ''} class="shrink-0 text-[9px] font-extrabold px-2 py-1 rounded-full ${st.bg} outline-none cursor-pointer">
-                <option value="siap" ${eff === 'siap' ? 'selected' : ''}>${eff === 'siap' ? 'SIAP PAKAI' : 'APPROVE SIAP PAKAI'}</option>
-                <option value="pending_approval" ${eff === 'pending_approval' ? 'selected' : ''}>MENUNGGU APPROVAL</option>
-                <option value="dibersihkan" ${eff === 'dibersihkan' ? 'selected' : ''}>SEDANG DIBERSIHKAN</option>
-                <option value="kosong" ${eff === 'kosong' ? 'selected' : ''}>KOSONG</option>
+                ${dropdownOptions}
               </select>
             </div>
-            ${isManagerRole() ? `
-              <button type="button" onclick="quickInspect('${u.id}')" class="w-full py-2 ${hasPendingRep || eff === 'pending_approval' ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-teal-600 hover:bg-teal-700 text-white'} active:scale-95 font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-                <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Cek & Approve
+            ${(isManagerRole() && isWaitingApproval) ? `
+              <button type="button" onclick="quickInspect('${u.id}')" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
+                <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek & Approve Form
               </button>
             ` : ''}
             <div class="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-100">
-              <span class="text-[10px] text-slate-400 truncate">${eff === 'pending_approval' ? 'Belum di-approve Manajemen' : (eff === 'siap' ? u.last_checked_by : 'Belum dicek (Kosong)')}</span>
+              <span class="text-[10px] text-slate-400 truncate">${isWaitingApproval ? 'Belum di-approve Manajemen' : (eff === 'siap' ? u.last_checked_by : 'Belum dicek (Kosong)')}</span>
               <div class="flex items-center gap-1.5 shrink-0">
                 ${(eff === 'siap' && isManagerRole()) ? `<button type="button" onclick="confirmPatientCheckout('${u.id}', '${(u.unit_name || '').replace(/'/g, "\\'")}')" title="Konfirmasi Pasien Pulang / Kosongkan" class="px-2 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-lg text-[10px] font-bold">Pasien Pulang</button>` : ''}
-                <button type="button" onclick="quickInspect('${u.id}')" class="px-3 py-1 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-[11px] font-bold">Cek Sekarang</button>
+                ${!isWaitingApproval ? `<button type="button" onclick="quickInspect('${u.id}')" class="px-3 py-1 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-[11px] font-bold">Cek Sekarang</button>` : ''}
               </div>
             </div>
           </div>
@@ -2646,14 +2669,9 @@
                 </button>
               ` : ''}
               ${(isPendingApproval && isManagerRole() && r.id) ? `
-                <div class="grid grid-cols-2 gap-1.5">
-                  <button type="button" onclick="openReportInForm('${r.id}')" class="py-2 px-2 bg-white hover:bg-slate-100 text-indigo-700 border border-indigo-300 font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 transition">
-                    <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Cek Form
-                  </button>
-                  <button type="button" onclick="approveReportById('${r.id}')" class="py-2 px-2 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
-                    <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Approve
-                  </button>
-                </div>
+                <button type="button" onclick="openReportInForm('${r.id}')" class="w-full py-2 px-2 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
+                  <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek & Approve Form
+                </button>
               ` : ''}
             </div>
             ${meta.cleanNotes ? `<p class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg">Catatan: ${meta.cleanNotes}</p>` : ''}
