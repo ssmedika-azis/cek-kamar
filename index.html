@@ -34,13 +34,48 @@
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f1f5f9; -webkit-tap-highlight-color: transparent; }
     .glass-card { background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(12px); border: 1px solid rgba(226, 232, 240, 0.9); }
-    .nav-btn-active { color: #0f766e !important; background-color: #ccfbf1; font-weight: 800; box-shadow: inset 0 0 0 1px #99f6e4; }
-    .nav-btn-active i, .nav-btn-active svg { color: #0d9488; stroke-width: 2.5px; }
+
+    /* Animasi Navigasi Bawah */
+    .nav-btn {
+      position: relative;
+      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+    }
+    .nav-btn:active { transform: scale(0.91); }
+    .nav-btn i, .nav-btn svg {
+      transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .nav-btn-active {
+      color: #0f766e !important;
+      background-color: #ccfbf1;
+      font-weight: 800;
+      box-shadow: inset 0 0 0 1px #99f6e4, 0 4px 10px -2px rgba(13, 148, 136, 0.18);
+      transform: translateY(-2px);
+    }
+    .nav-btn-active i, .nav-btn-active svg {
+      color: #0d9488;
+      stroke-width: 2.5px;
+      transform: scale(1.14) translateY(-1px);
+    }
+
+    /* Animasi Perpindahan Halaman & Foto */
+    @keyframes tabFadeSlide {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .page-animate { animation: tabFadeSlide 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+    @keyframes photoPopIn {
+      from { opacity: 0; transform: scale(0.92); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .photo-pop { animation: photoPopIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+
     html.has-session #login-screen { display: none !important; }
     html.has-session #main-app { display: block !important; }
     html.public-mode #login-screen,
     html.public-mode #main-app { display: none !important; }
     html.public-mode #public-report-screen { display: block !important; }
+
     @keyframes slideDownBanner {
       from { opacity: 0; transform: translate(-50%, -24px); }
       to { opacity: 1; transform: translate(-50%, 0); }
@@ -147,41 +182,39 @@
       </div>
     </div>
 
-    <!-- TOP HEADER (DIRAPIKAN AGAR TIDAK MENUMPUK) -->
-    <header class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200/80 px-3.5 py-2.5">
-      <div class="max-w-3xl mx-auto flex items-center justify-between gap-2">
-        <!-- Kiri: Logo + Judul + Versi + Role -->
+    <!-- TOP HEADER (PROPORSIONAL & JUDUL TAMPIL PENUH) -->
+    <header class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200/80 px-3 py-2">
+      <div class="max-w-3xl mx-auto flex items-center justify-between gap-1.5">
         <div class="flex items-center gap-2 min-w-0 flex-1">
-          <img src="192x192.png" alt="Logo" class="w-9 h-9 rounded-xl shadow-sm shrink-0" />
+          <img src="192x192.png" alt="Logo" class="w-8 h-8 rounded-xl shadow-sm shrink-0" />
           <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-1.5">
-              <h1 class="text-[13px] font-extrabold text-slate-900 leading-tight truncate">Cek Kesiapan Kamar</h1>
-              <span class="shrink-0 text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">v5.6</span>
+            <div class="flex items-center gap-1">
+              <h1 class="text-[12.5px] font-extrabold text-slate-900 leading-tight whitespace-nowrap">Cek Kesiapan Kamar</h1>
+              <span class="shrink-0 text-[8.5px] font-extrabold px-1 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200">v5.6</span>
             </div>
-            <div class="flex items-center gap-1.5 mt-0.5 min-w-0">
-              <span id="user-role-badge" class="shrink-0 text-[8.5px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide">ROLE</span>
-              <p id="user-greeting" class="text-[10.5px] font-semibold text-slate-500 truncate">Halo, Petugas</p>
+            <div class="flex items-center gap-1 mt-0.5 min-w-0">
+              <span id="user-role-badge" class="shrink-0 text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide">ROLE</span>
+              <p id="user-greeting" class="text-[10px] font-semibold text-slate-500 truncate">Halo, Petugas</p>
             </div>
           </div>
         </div>
 
-        <!-- Kanan: Lonceng, Refresh, Online, Info, Logout -->
-        <div class="flex items-center gap-1 shrink-0">
-          <button type="button" onclick="openNotificationDrawer()" title="Notifikasi Laporan Masuk" class="relative p-1.5 text-slate-600 hover:text-teal-600 hover:bg-slate-100 rounded-lg transition">
+        <div class="flex items-center gap-0.5 shrink-0">
+          <button type="button" onclick="openNotificationDrawer()" title="Notifikasi Laporan Masuk" class="relative p-1.5 text-slate-600 hover:text-teal-600 hover:bg-slate-100 rounded-lg active:scale-90 transition">
             <i id="notif-bell-icon" data-lucide="bell" class="w-4 h-4"></i>
             <span id="notif-unread-badge" class="hidden absolute top-0.5 right-0.5 min-w-[14px] h-[14px] px-1 bg-rose-600 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center shadow">1</span>
           </button>
-          <button type="button" onclick="forceRefreshApp()" title="Perbarui Versi Aplikasi" class="p-1.5 text-slate-600 hover:text-teal-600 hover:bg-slate-100 rounded-lg transition">
+          <button type="button" onclick="forceRefreshApp()" title="Perbarui Versi Aplikasi" class="p-1.5 text-slate-600 hover:text-teal-600 hover:bg-slate-100 rounded-lg active:scale-90 transition">
             <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
           </button>
-          <div id="network-status" class="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+          <div id="network-status" class="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9.5px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Online
           </div>
-          <button type="button" onclick="openModalWithHistory('modal-about')" title="Tentang & Undang Tim" class="p-1.5 text-slate-500 hover:text-teal-600 hover:bg-slate-100 rounded-lg transition">
-            <i data-lucide="info" class="w-4 h-4"></i>
+          <button type="button" onclick="openModalWithHistory('modal-about')" title="Tentang & Undang Tim" class="p-1.5 text-slate-500 hover:text-teal-600 hover:bg-slate-100 rounded-lg active:scale-90 transition">
+            <i data-lucide="info" class="w-3.5 h-3.5"></i>
           </button>
-          <button type="button" onclick="logout()" title="Keluar" class="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition">
-            <i data-lucide="log-out" class="w-4 h-4"></i>
+          <button type="button" onclick="logout()" title="Keluar" class="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg active:scale-90 transition">
+            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
           </button>
         </div>
       </div>
@@ -214,7 +247,7 @@
               <p class="text-[11px] text-indigo-700 truncate">Periksa hasil cek petugas lalu Approve agar kamar berstatus Siap Pakai.</p>
             </div>
           </div>
-          <button type="button" onclick="openFirstPendingApproval()" class="shrink-0 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-[11px] shadow-sm">
+          <button type="button" onclick="openFirstPendingApproval()" class="shrink-0 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-[11px] shadow-sm active:scale-95 transition">
             Cek Form
           </button>
         </div>
@@ -236,7 +269,7 @@
 
         <div class="flex items-center justify-between">
           <h2 class="text-sm font-extrabold text-slate-900">Status Unit Kamar</h2>
-          <button onclick="openQrScanner()" class="flex items-center gap-1.5 bg-teal-600 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm active:scale-95">
+          <button onclick="openQrScanner()" class="flex items-center gap-1.5 bg-teal-600 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm active:scale-95 transition">
             <i data-lucide="qr-code" class="w-4 h-4"></i> Scan QR Pintu
           </button>
         </div>
@@ -257,7 +290,6 @@
             <span id="readiness-badge" class="px-3 py-1 rounded-full text-xs font-extrabold bg-slate-100 text-slate-600">Skor: 0%</span>
           </div>
 
-          <!-- BANNER REVIEW FORM PETUGAS UNTUK MANAJEMEN -->
           <div id="prefill-review-banner" class="hidden bg-indigo-50 border border-indigo-200 rounded-xl p-3 space-y-2.5">
             <div class="flex items-start gap-2.5">
               <i data-lucide="file-check-2" class="w-4 h-4 text-indigo-600 shrink-0 mt-0.5"></i>
@@ -266,7 +298,7 @@
                 <p id="prefill-review-desc" class="text-indigo-800 mt-0.5">Checklist, foto, dan catatan dari petugas telah dimuat di bawah.</p>
               </div>
             </div>
-            <button type="button" id="btn-direct-approve-form" onclick="approveActiveFormReport()" class="hidden w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
+            <button type="button" id="btn-direct-approve-form" onclick="approveActiveFormReport()" class="hidden w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
               <i data-lucide="check-circle-2" class="w-4 h-4"></i> APPROVE LAPORAN INI (JADIKAN SIAP PAKAI)
             </button>
           </div>
@@ -306,31 +338,73 @@
               <div id="checklist-container" class="space-y-2"></div>
             </div>
 
-            <!-- DOKUMENTASI FOTO -->
+            <!-- DOKUMENTASI FOTO: KAMERA & ALBUM TERPISAH + ANIMASI -->
             <div class="space-y-2">
               <div class="flex items-center justify-between">
-                <label class="block text-xs font-bold text-slate-600">Dokumentasi Foto (Kamera / Galeri)</label>
+                <label class="block text-xs font-bold text-slate-600">Dokumentasi Foto</label>
                 <span class="text-[10px] font-semibold text-teal-600">Otomatis Watermark</span>
               </div>
-              <div class="grid grid-cols-2 gap-3">
-                <div id="box-upload-room" class="relative flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-2xl bg-slate-50 text-center space-y-1.5 overflow-hidden">
-                  <div id="placeholder-room" class="flex flex-col items-center space-y-1 pointer-events-none">
-                    <i data-lucide="image-plus" class="w-6 h-6 text-teal-600"></i>
-                    <span class="text-[11px] font-extrabold text-slate-700">1. Foto Area Kamar</span>
-                    <span class="text-[9.5px] text-slate-400">Pilih Kamera atau Galeri</span>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <!-- 1. FOTO AREA KAMAR -->
+                <div id="box-upload-room" class="p-3 border-2 border-dashed border-slate-300 rounded-2xl bg-slate-50/80 space-y-2.5 transition-all duration-300">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                      <i data-lucide="bed-double" class="w-3.5 h-3.5 text-teal-600"></i> 1. Area Kamar
+                    </span>
+                    <button type="button" id="btn-clear-room" onclick="clearSinglePhoto('room')" class="hidden text-[10px] font-bold text-rose-600 hover:underline flex items-center gap-0.5 active:scale-90 transition">
+                      <i data-lucide="trash-2" class="w-3 h-3"></i> Hapus
+                    </button>
                   </div>
-                  <img id="preview-room" class="hidden w-full h-24 object-cover rounded-xl shadow-sm" />
-                  <input type="file" id="input-photo-room" accept="image/*" onchange="handlePhoto(event, 'room')" class="absolute inset-0 opacity-0 cursor-pointer" />
+
+                  <div id="preview-wrap-room" class="hidden relative overflow-hidden rounded-xl border border-emerald-200 shadow-sm">
+                    <img id="preview-room" onclick="zoomPhoto(this.src)" class="w-full h-32 object-cover cursor-pointer photo-pop" />
+                  </div>
+
+                  <div id="placeholder-room" class="py-3 text-center text-[10.5px] text-slate-400 font-medium">
+                    Belum ada foto area kamar
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-2">
+                    <button type="button" onclick="triggerPhotoPicker('room', 'camera')" class="py-2 px-2.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-sm transition-transform">
+                      <i data-lucide="camera" class="w-3.5 h-3.5"></i> Kamera
+                    </button>
+                    <button type="button" onclick="triggerPhotoPicker('room', 'album')" class="py-2 px-2.5 bg-white hover:bg-slate-100 active:scale-95 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-sm transition-transform">
+                      <i data-lucide="images" class="w-3.5 h-3.5 text-indigo-600"></i> Album
+                    </button>
+                  </div>
+                  <input type="file" id="input-camera-room" accept="image/*" capture="environment" onchange="handlePhoto(event, 'room')" class="hidden" />
+                  <input type="file" id="input-album-room" accept="image/*" onchange="handlePhoto(event, 'room')" class="hidden" />
                 </div>
 
-                <div id="box-upload-toilet" class="relative flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-2xl bg-slate-50 text-center space-y-1.5 overflow-hidden">
-                  <div id="placeholder-toilet" class="flex flex-col items-center space-y-1 pointer-events-none">
-                    <i data-lucide="image-plus" class="w-6 h-6 text-teal-600"></i>
-                    <span class="text-[11px] font-extrabold text-slate-700">2. Foto Kamar Mandi</span>
-                    <span class="text-[9.5px] text-slate-400">Pilih Kamera atau Galeri</span>
+                <!-- 2. FOTO KAMAR MANDI -->
+                <div id="box-upload-toilet" class="p-3 border-2 border-dashed border-slate-300 rounded-2xl bg-slate-50/80 space-y-2.5 transition-all duration-300">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                      <i data-lucide="bath" class="w-3.5 h-3.5 text-teal-600"></i> 2. Kamar Mandi
+                    </span>
+                    <button type="button" id="btn-clear-toilet" onclick="clearSinglePhoto('toilet')" class="hidden text-[10px] font-bold text-rose-600 hover:underline flex items-center gap-0.5 active:scale-90 transition">
+                      <i data-lucide="trash-2" class="w-3 h-3"></i> Hapus
+                    </button>
                   </div>
-                  <img id="preview-toilet" class="hidden w-full h-24 object-cover rounded-xl shadow-sm" />
-                  <input type="file" id="input-photo-toilet" accept="image/*" onchange="handlePhoto(event, 'toilet')" class="absolute inset-0 opacity-0 cursor-pointer" />
+
+                  <div id="preview-wrap-toilet" class="hidden relative overflow-hidden rounded-xl border border-emerald-200 shadow-sm">
+                    <img id="preview-toilet" onclick="zoomPhoto(this.src)" class="w-full h-32 object-cover cursor-pointer photo-pop" />
+                  </div>
+
+                  <div id="placeholder-toilet" class="py-3 text-center text-[10.5px] text-slate-400 font-medium">
+                    Belum ada foto kamar mandi
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-2">
+                    <button type="button" onclick="triggerPhotoPicker('toilet', 'camera')" class="py-2 px-2.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-sm transition-transform">
+                      <i data-lucide="camera" class="w-3.5 h-3.5"></i> Kamera
+                    </button>
+                    <button type="button" onclick="triggerPhotoPicker('toilet', 'album')" class="py-2 px-2.5 bg-white hover:bg-slate-100 active:scale-95 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-sm transition-transform">
+                      <i data-lucide="images" class="w-3.5 h-3.5 text-indigo-600"></i> Album
+                    </button>
+                  </div>
+                  <input type="file" id="input-camera-toilet" accept="image/*" capture="environment" onchange="handlePhoto(event, 'toilet')" class="hidden" />
+                  <input type="file" id="input-album-toilet" accept="image/*" onchange="handlePhoto(event, 'toilet')" class="hidden" />
                 </div>
               </div>
             </div>
@@ -358,10 +432,10 @@
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-              <button type="submit" id="btn-submit-inspect" class="w-full py-3.5 bg-teal-600 hover:bg-teal-700 active:scale-[0.99] text-white font-bold rounded-xl shadow-lg shadow-teal-600/20 text-xs sm:text-sm transition">
+              <button type="submit" id="btn-submit-inspect" class="w-full py-3.5 bg-teal-600 hover:bg-teal-700 active:scale-[0.98] text-white font-bold rounded-xl shadow-lg shadow-teal-600/20 text-xs sm:text-sm transition">
                 Simpan Laporan Kesiapan
               </button>
-              <button type="button" id="btn-submit-wa" onclick="saveAndSendWhatsApp()" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20 text-xs sm:text-sm flex items-center justify-center gap-2 transition">
+              <button type="button" id="btn-submit-wa" onclick="saveAndSendWhatsApp()" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20 text-xs sm:text-sm flex items-center justify-center gap-2 transition">
                 <i data-lucide="send" class="w-4 h-4"></i> Simpan & Kirim ke WA
               </button>
             </div>
@@ -369,7 +443,7 @@
         </div>
       </section>
 
-      <!-- TAB 3: ANALITIK & EXPORT -->
+      <!-- TAB 3: ANALITIK & EXPORT (DIRAPIKAN) -->
       <section id="tab-analytics" class="page-section hidden space-y-4">
         <div class="glass-card rounded-2xl p-4 shadow-sm space-y-3">
           <div class="flex items-center justify-between gap-2">
@@ -428,37 +502,44 @@
           </label>
 
           <div class="grid grid-cols-2 gap-2 pt-1">
-            <button onclick="exportPdf()" class="py-2.5 px-3 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-sm">
+            <button onclick="exportPdf()" class="py-2.5 px-3 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition">
               <i data-lucide="file-text" class="w-4 h-4"></i> Download PDF
             </button>
-            <button onclick="exportCsv()" class="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-sm">
+            <button onclick="exportCsv()" class="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition">
               <i data-lucide="sheet" class="w-4 h-4"></i> Download Excel
             </button>
           </div>
         </div>
 
+        <!-- GRAFIK & RINGKASAN RAPI -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div class="glass-card rounded-2xl p-4 shadow-sm">
-            <h3 class="text-xs font-bold text-slate-500 mb-2">Proporsi Status Kamar</h3>
-            <canvas id="chart-status" height="170"></canvas>
+          <div class="glass-card rounded-2xl p-4 shadow-sm flex flex-col items-center">
+            <h3 class="text-xs font-extrabold text-slate-700 self-start mb-2">Proporsi Status Kamar</h3>
+            <div class="w-full max-w-[230px] h-[175px] flex items-center justify-center">
+              <canvas id="chart-status"></canvas>
+            </div>
           </div>
-          <div class="glass-card rounded-2xl p-4 shadow-sm flex flex-col justify-center space-y-3">
-            <div>
-              <p class="text-[11px] font-bold text-slate-400">Total Inspeksi (Sesuai Filter)</p>
-              <p id="analytic-total" class="text-2xl font-extrabold text-slate-900">0 Laporan</p>
-            </div>
-            <div>
-              <p class="text-[11px] font-bold text-slate-400">Rata-rata Skor Kesiapan</p>
-              <p id="analytic-avg-score" class="text-2xl font-extrabold text-teal-600">0%</p>
-            </div>
-            <div>
-              <p class="text-[11px] font-bold text-slate-400">Rata-rata Waktu Cek</p>
-              <p id="analytic-avg-time" class="text-lg font-extrabold text-slate-700">0 Detik</p>
+
+          <div class="glass-card rounded-2xl p-4 shadow-sm flex flex-col justify-center">
+            <h3 class="text-xs font-extrabold text-slate-700 mb-3">Ringkasan Kinerja</h3>
+            <div class="grid grid-cols-3 sm:grid-cols-1 gap-2">
+              <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-100 text-center sm:text-left sm:flex sm:items-center sm:justify-between">
+                <p class="text-[10px] font-bold text-slate-500">Total Inspeksi</p>
+                <p id="analytic-total" class="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5 sm:mt-0">0 Laporan</p>
+              </div>
+              <div class="bg-teal-50/70 rounded-xl p-2.5 border border-teal-100 text-center sm:text-left sm:flex sm:items-center sm:justify-between">
+                <p class="text-[10px] font-bold text-teal-700">Rata-rata Skor</p>
+                <p id="analytic-avg-score" class="text-sm sm:text-base font-extrabold text-teal-600 mt-0.5 sm:mt-0">0%</p>
+              </div>
+              <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-100 text-center sm:text-left sm:flex sm:items-center sm:justify-between">
+                <p class="text-[10px] font-bold text-slate-500">Rata-rata Waktu</p>
+                <p id="analytic-avg-time" class="text-sm sm:text-base font-extrabold text-slate-700 mt-0.5 sm:mt-0">0 Detik</p>
+              </div>
             </div>
           </div>
         </div>
 
-        <div class="flex items-center justify-between pt-2 select-none">
+        <div class="flex items-center justify-between pt-1 select-none">
           <h3 onclick="handleSecretHistoryTap()" class="text-sm font-extrabold text-slate-900 cursor-pointer">Riwayat Inspeksi</h3>
           <span id="creator-mode-badge" class="hidden text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">Mode Pembuat Aktif</span>
         </div>
@@ -533,22 +614,22 @@
       </section>
     </main>
 
-    <!-- BOTTOM NAVIGATION BAR -->
+    <!-- BOTTOM NAVIGATION BAR DENGAN ANIMASI -->
     <nav class="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200 px-2 py-2 shadow-[0_-4px_16px_rgba(0,0,0,0.04)]">
       <div id="bottom-nav-grid" class="max-w-3xl mx-auto grid grid-cols-4 gap-1.5">
-        <button id="nav-item-dashboard" onclick="switchTab('dashboard')" data-tab="dashboard" class="nav-btn nav-btn-active flex flex-col items-center py-2 rounded-xl text-slate-500 transition">
+        <button id="nav-item-dashboard" onclick="switchTab('dashboard')" data-tab="dashboard" class="nav-btn nav-btn-active flex flex-col items-center py-2 rounded-xl text-slate-500">
           <i data-lucide="layout-grid" class="w-5 h-5"></i>
           <span class="text-[10.5px] font-bold mt-1">Dasbor</span>
         </button>
-        <button id="nav-item-inspect" onclick="switchTab('inspect')" data-tab="inspect" class="nav-btn flex flex-col items-center py-2 rounded-xl text-slate-500 transition">
+        <button id="nav-item-inspect" onclick="switchTab('inspect')" data-tab="inspect" class="nav-btn flex flex-col items-center py-2 rounded-xl text-slate-500">
           <i data-lucide="clipboard-check" class="w-5 h-5"></i>
           <span class="text-[10.5px] font-bold mt-1">Cek Kamar</span>
         </button>
-        <button id="nav-item-analytics" onclick="switchTab('analytics')" data-tab="analytics" class="nav-btn flex flex-col items-center py-2 rounded-xl text-slate-500 transition">
+        <button id="nav-item-analytics" onclick="switchTab('analytics')" data-tab="analytics" class="nav-btn flex flex-col items-center py-2 rounded-xl text-slate-500">
           <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
           <span class="text-[10.5px] font-bold mt-1">Analitik</span>
         </button>
-        <button id="nav-item-master" onclick="switchTab('master')" data-tab="master" class="nav-btn flex flex-col items-center py-2 rounded-xl text-slate-500 transition">
+        <button id="nav-item-master" onclick="switchTab('master')" data-tab="master" class="nav-btn flex flex-col items-center py-2 rounded-xl text-slate-500">
           <i data-lucide="sliders" class="w-5 h-5"></i>
           <span class="text-[10.5px] font-bold mt-1">Pengaturan</span>
         </button>
