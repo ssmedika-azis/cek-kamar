@@ -288,6 +288,7 @@
           </div>
 
           <form id="inspection-form" class="space-y-4">
+            <!-- 1. PETUGAS PEMERIKSA (OTOMATIS) -->
             <div class="bg-teal-50/80 border border-teal-200/80 rounded-2xl p-3 space-y-1.5">
               <div class="flex items-center justify-between">
                 <label for="inspect-officer-select" class="text-[10px] font-bold uppercase tracking-wider text-teal-700 flex items-center gap-1.5">
@@ -298,6 +299,7 @@
               <select id="inspect-officer-select" required class="w-full p-2.5 bg-white border border-teal-200 rounded-xl text-xs font-extrabold text-slate-900 outline-none focus:border-teal-500"></select>
             </div>
 
+            <!-- 2. PILIH KAMAR & SHIFT KERJA -->
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="block text-xs font-bold text-slate-600 mb-1">Pilih Kamar</label>
@@ -311,6 +313,33 @@
                   <option value="Malam">Shift Malam</option>
                 </select>
               </div>
+            </div>
+
+            <!-- 3. NAMA PETUGAS PELAKSANA (OTOMATIS DARI AKUN TERDAFTAR) -->
+            <div class="bg-indigo-50/60 border border-indigo-200/80 rounded-2xl p-3 space-y-1.5">
+              <div class="flex items-center justify-between">
+                <label for="inspect-executor-select" class="text-[10px] font-bold uppercase tracking-wider text-indigo-700 flex items-center gap-1.5">
+                  <i data-lucide="users" class="w-3.5 h-3.5"></i> Petugas Pelaksana Kebersihan
+                </label>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-indigo-700 border border-indigo-200">Otomatis</span>
+              </div>
+              <select id="inspect-executor-select" class="w-full p-2.5 bg-white border border-indigo-200 rounded-xl text-xs font-extrabold text-slate-900 outline-none focus:border-indigo-500"></select>
+            </div>
+
+            <!-- 4. TANGGAPAN PEMERIKSA & BAGIAN YANG PERLU DIPERBAIKI -->
+            <div class="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-3 space-y-2">
+              <div class="flex items-center justify-between">
+                <label for="inspect-feedback-status" class="text-[10px] font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
+                  <i data-lucide="message-square-warning" class="w-3.5 h-3.5"></i> Tanggapan Pemeriksa Hasil Kerja
+                </label>
+                <span class="text-[10px] font-bold text-amber-700">Evaluasi</span>
+              </div>
+              <select id="inspect-feedback-status" onchange="handleFeedbackStatusChange()" class="w-full p-2.5 bg-white border border-amber-200 rounded-xl text-xs font-extrabold text-slate-800 outline-none focus:border-amber-500">
+                <option value="Sesuai Standar (Baik)">✅ Hasil Kerja Sesuai Standar (Baik)</option>
+                <option value="Perlu Perbaikan Ringan">⚠️ Perlu Perbaikan Ringan (Tandai Bagian)</option>
+                <option value="Wajib Diperbaiki Segera">🚨 Wajib Diperbaiki Segera (Belum Layak)</option>
+              </select>
+              <input type="text" id="inspect-feedback-detail" placeholder="Tulis bagian yang ditandai untuk diperbaiki (mis: Lantai kamar mandi masih basah / bau)..." class="w-full p-2.5 bg-white border border-amber-200 rounded-xl text-xs font-medium text-slate-800 outline-none focus:border-amber-500" />
             </div>
 
             <div class="space-y-2">
@@ -377,7 +406,7 @@
 
             <div>
               <label class="block text-xs font-bold text-slate-600 mb-1">Catatan Tambahan</label>
-              <textarea id="inspect-notes" rows="2" placeholder="Catatan kendala / kerusakan jika ada..." class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none"></textarea>
+              <textarea id="inspect-notes" rows="2" placeholder="Catatan kendala / kerusakan fasilitas jika ada..." class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none"></textarea>
             </div>
 
             <div class="space-y-2.5 pt-1">
@@ -430,12 +459,10 @@
               </select>
             </div>
 
-            <!-- Input Tanggal (Harian) -->
             <div id="wrap-filter-day" class="hidden">
               <input type="date" id="export-filter-day" onchange="renderAnalytics()" class="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500" />
             </div>
 
-            <!-- Input Rentang Tanggal (Dari - Sampai) -->
             <div id="wrap-filter-range" class="hidden grid grid-cols-2 gap-2">
               <div>
                 <span class="block text-[9.5px] font-bold text-slate-500 mb-0.5">Dari Tanggal</span>
@@ -447,12 +474,10 @@
               </div>
             </div>
 
-            <!-- Input Bulan (Bulanan) -->
             <div id="wrap-filter-month" class="hidden">
               <input type="month" id="export-filter-month" onchange="renderAnalytics()" class="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500" />
             </div>
 
-            <!-- Input Tahun (Tahunan) -->
             <div id="wrap-filter-year" class="hidden">
               <select id="export-filter-year" onchange="renderAnalytics()" class="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500"></select>
             </div>
@@ -523,7 +548,7 @@
         <div id="user-management-card" class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
           <div>
             <h2 class="text-base font-extrabold text-slate-900">Kelola Akun Manajemen & Petugas</h2>
-            <p class="text-xs text-slate-500">Tambah, edit nama/password, atau hapus akun staf</p>
+            <p class="text-xs text-slate-500">Tambah, edit nama/password, atau hapus akun staf (otomatis muncul di form inspeksi)</p>
           </div>
 
           <form id="form-add-user" class="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
@@ -755,7 +780,7 @@
           </div>
           <div>
             <h3 class="text-sm font-extrabold text-slate-900">Tentang Aplikasi</h3>
-            <p onclick="handleSecretHistoryTap()" class="text-[11px] text-teal-600 font-bold select-none cursor-default">Versi 3.7 PWA • Live Notifikasi</p>
+            <p onclick="handleSecretHistoryTap()" class="text-[11px] text-teal-600 font-bold select-none cursor-default">Versi 3.8 PWA • Live Notifikasi</p>
           </div>
         </div>
         <button onclick="document.getElementById('modal-about').classList.add('hidden')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
@@ -767,9 +792,9 @@
         <p class="font-bold text-slate-900">Sistem Monitoring Kesiapan Kamar Rawat Inap</p>
         <p>Aplikasi PWA (Progressive Web App) untuk memantau kesiapan, kebersihan, dan kelengkapan fasilitas kamar secara real-time di lingkungan <strong>RS Khusus Bedah SS Medika</strong>.</p>
         <ul class="space-y-1 text-[11px] text-slate-600 pt-1">
+          <li>• <strong>Evaluasi Pelaksana & Tanggapan Pemeriksa:</strong> Pemilihan nama pelaksana terdaftar & catatan perbaikan hasil kerja.</li>
           <li>• <strong>Notifikasi HP Real-Time:</strong> Muncul bunyi & pemberitahuan setiap ada laporan masuk.</li>
           <li>• <strong>Ekspor Periode & Kamar:</strong> Filter laporan harian, rentang tanggal, bulanan, tahunan, & lampiran foto PDF.</li>
-          <li>• <strong>Laporan WhatsApp Mode Penuh:</strong> Penerima pesan dapat membuka laporan lengkap beserta foto & unduh PDF.</li>
         </ul>
       </div>
 
@@ -824,6 +849,67 @@
 
     lucide.createIcons();
 
+    // --- HELPER PARSING PETUGAS PELAKSANA & TANGGAPAN PEMERIKSA TANPA UBAH SCHEMA DB ---
+    function parseNotesMetadata(rawNotes) {
+      const text = rawNotes || '';
+      const lines = text.split('\n');
+      let executor = '';
+      let feedbackStatus = '';
+      let feedbackDetail = '';
+      const cleanLines = [];
+
+      lines.forEach(line => {
+        if (line.startsWith('[Pelaksana: ') && line.endsWith(']')) {
+          executor = line.slice(12, -1).trim();
+        } else if (line.startsWith('[Tanggapan Pemeriksa: ') && line.endsWith(']')) {
+          const inner = line.slice(22, -1).trim();
+          const splitIdx = inner.indexOf(' — Bagian Perbaikan: ');
+          if (splitIdx !== -1) {
+            feedbackStatus = inner.slice(0, splitIdx).trim();
+            feedbackDetail = inner.slice(splitIdx + 21).trim();
+          } else {
+            feedbackStatus = inner;
+          }
+        } else {
+          cleanLines.push(line);
+        }
+      });
+
+      return {
+        executor,
+        feedbackStatus,
+        feedbackDetail,
+        cleanNotes: cleanLines.join('\n').trim()
+      };
+    }
+
+    function composeNotesWithMetadata(executorName, feedbackStatus, feedbackDetail, extraNotes) {
+      const parts = [];
+      if (executorName && executorName !== '__same__') {
+        parts.push(`[Pelaksana: ${executorName}]`);
+      }
+      if (feedbackStatus) {
+        if (feedbackDetail) {
+          parts.push(`[Tanggapan Pemeriksa: ${feedbackStatus} — Bagian Perbaikan: ${feedbackDetail}]`);
+        } else {
+          parts.push(`[Tanggapan Pemeriksa: ${feedbackStatus}]`);
+        }
+      }
+      if (extraNotes) {
+        parts.push(extraNotes);
+      }
+      return parts.join('\n');
+    }
+
+    function handleFeedbackStatusChange() {
+      const st = document.getElementById('inspect-feedback-status')?.value || '';
+      const detailInput = document.getElementById('inspect-feedback-detail');
+      if (!detailInput) return;
+      if (st.includes('Perlu Perbaikan') || st.includes('Wajib Diperbaiki')) {
+        detailInput.focus();
+      }
+    }
+
     // --- FITUR TERSEMBUNYI PEMBUAT APLIKASI (5x TAP + PIN) ---
     function handleSecretHistoryTap() {
       secretTapCount++;
@@ -861,7 +947,6 @@
         return;
       }
 
-      // Hapus seketika dari array lokal & antrean offline jika ada
       inspectionsData = inspectionsData.filter(item => String(item.id) !== String(id));
       if (lastKnownReportId === id) {
         lastKnownReportId = inspectionsData[0]?.id || null;
@@ -869,7 +954,6 @@
         else localStorage.removeItem('ck_last_seen_id');
       }
 
-      // Sinkronkan status kamar di master_units ke laporan terbaru yang tersisa
       if (unitId) {
         const remainingForUnit = inspectionsData.filter(item => String(item.unit_id) === String(unitId));
         if (remainingForUnit.length > 0) {
@@ -1315,6 +1399,7 @@
       const container = document.getElementById('public-report-container');
       const isSiap = r.final_status === 'siap';
       const waktu = r.created_at ? new Date(r.created_at).toLocaleString('id-ID') : '-';
+      const meta = parseNotesMetadata(r.notes);
       const checklistHtml = Array.isArray(r.checklist_data) && r.checklist_data.length > 0
         ? r.checklist_data.map(c => `
             <div class="flex items-center justify-between py-2 px-3 rounded-xl ${c.checked ? 'bg-emerald-50/70 text-slate-800' : 'bg-rose-50/70 text-rose-800'}">
@@ -1349,7 +1434,21 @@
               <span class="text-[10px] text-slate-400 font-bold block">SHIFT KERJA</span>
               <span class="font-extrabold text-slate-800">Shift ${r.shift}</span>
             </div>
+            ${meta.executor ? `
+              <div class="col-span-2 pt-1 border-t border-slate-200/70">
+                <span class="text-[10px] text-indigo-600 font-bold block">PETUGAS PELAKSANA</span>
+                <span class="font-extrabold text-slate-800">${meta.executor}</span>
+              </div>
+            ` : ''}
           </div>
+
+          ${meta.feedbackStatus ? `
+            <div class="${meta.feedbackStatus.includes('Baik') ? 'bg-emerald-50/80 border-emerald-200' : 'bg-rose-50/80 border-rose-200'} border rounded-2xl p-3 space-y-1">
+              <span class="text-[10px] font-extrabold uppercase ${meta.feedbackStatus.includes('Baik') ? 'text-emerald-800' : 'text-rose-800'} block">Tanggapan Pemeriksa Hasil Kerja</span>
+              <p class="text-xs font-extrabold text-slate-800">${meta.feedbackStatus}</p>
+              ${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">Bagian Ditandai Perbaikan: ${meta.feedbackDetail}</p>` : ''}
+            </div>
+          ` : ''}
 
           ${(r.photo_room_url || r.photo_toilet_url) ? `
             <div class="space-y-2">
@@ -1376,10 +1475,10 @@
             <div class="space-y-1.5">${checklistHtml}</div>
           </div>
 
-          ${r.notes ? `
+          ${meta.cleanNotes ? `
             <div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-3">
               <span class="text-[10px] font-extrabold uppercase text-amber-800 block">Catatan Tambahan</span>
-              <p class="text-xs text-slate-700 mt-0.5">${r.notes}</p>
+              <p class="text-xs text-slate-700 mt-0.5">${meta.cleanNotes}</p>
             </div>
           ` : ''}
         </div>
@@ -1517,7 +1616,7 @@
 
     function populateOfficerDropdown() {
       const sel = document.getElementById('inspect-officer-select');
-      if (!sel) return;
+      const execSel = document.getElementById('inspect-executor-select');
 
       const list = [...usersData];
       if (currentUser && !list.some(u => u.full_name === currentUser.full_name)) {
@@ -1527,13 +1626,37 @@
         });
       }
 
-      sel.innerHTML = list.map(u => {
-        const labelRole = u.role ? ` (${u.role.toUpperCase()})` : '';
-        return `<option value="${u.full_name}">${u.full_name}${labelRole}</option>`;
-      }).join('');
+      if (sel) {
+        sel.innerHTML = list.map(u => {
+          const labelRole = u.role ? ` (${u.role.toUpperCase()})` : '';
+          return `<option value="${u.full_name}">${u.full_name}${labelRole}</option>`;
+        }).join('');
 
-      if (currentUser && currentUser.full_name) {
-        sel.value = currentUser.full_name;
+        if (currentUser && currentUser.full_name) {
+          sel.value = currentUser.full_name;
+        }
+      }
+
+      if (execSel) {
+        const petugasOnly = list.filter(u => (u.role || '').toLowerCase() === 'petugas');
+        const orderedList = petugasOnly.length > 0
+          ? [...petugasOnly, ...list.filter(u => (u.role || '').toLowerCase() !== 'petugas')]
+          : list;
+
+        const optionsHtml = [
+          `<option value="__same__">Sesuai Pemeriksa (${currentUser ? currentUser.full_name : 'Otomatis'})</option>`,
+          ...orderedList.map(u => {
+            const labelRole = u.role ? ` (${u.role.toUpperCase()})` : '';
+            return `<option value="${u.full_name}">${u.full_name}${labelRole}</option>`;
+          })
+        ];
+        execSel.innerHTML = optionsHtml.join('');
+
+        if (currentUser && (currentUser.role || '').toLowerCase() === 'petugas') {
+          execSel.value = currentUser.full_name;
+        } else if (petugasOnly.length > 0) {
+          execSel.value = petugasOnly[0].full_name;
+        }
       }
     }
 
@@ -1786,6 +1909,7 @@
         ? new Date(data.created_at).toLocaleString('id-ID')
         : new Date().toLocaleString('id-ID');
       const statusText = data.final_status === 'siap' ? 'SIAP PAKAI ✅' : 'PERLU CEK ⚠️';
+      const meta = parseNotesMetadata(data.notes);
 
       const lines = [
         '*LAPORAN CEK KESIAPAN KAMAR*',
@@ -1793,11 +1917,24 @@
         '--------------------------------',
         `• *Kamar:* ${data.unit_name}`,
         `• *Shift:* ${data.shift}`,
-        `• *Petugas:* ${data.inspector_name}`,
-        `• *Skor Kesiapan:* ${data.readiness_score}%`,
-        `• *Status:* ${statusText}`,
-        `• *Waktu:* ${waktu}`
+        `• *Pemeriksa:* ${data.inspector_name}`
       ];
+
+      if (meta.executor) {
+        lines.push(`• *Pelaksana:* ${meta.executor}`);
+      }
+
+      lines.push(`• *Skor Kesiapan:* ${data.readiness_score}%`);
+      lines.push(`• *Status:* ${statusText}`);
+      lines.push(`• *Waktu:* ${waktu}`);
+
+      if (meta.feedbackStatus) {
+        lines.push('--------------------------------');
+        lines.push(`• *Tanggapan Pemeriksa:* ${meta.feedbackStatus}`);
+        if (meta.feedbackDetail) {
+          lines.push(`• *Bagian Perbaikan:* ${meta.feedbackDetail}`);
+        }
+      }
 
       if (includeChecklist && Array.isArray(data.checklist_data) && data.checklist_data.length > 0) {
         lines.push('--------------------------------');
@@ -1807,9 +1944,9 @@
         });
       }
 
-      if (data.notes) {
+      if (meta.cleanNotes) {
         lines.push('--------------------------------');
-        lines.push(`• *Catatan:* ${data.notes}`);
+        lines.push(`• *Catatan:* ${meta.cleanNotes}`);
       }
 
       if (includeFullLink && data.id) {
@@ -1893,16 +2030,24 @@
       if (!unit) return alert('Pilih unit kamar terlebih dahulu');
 
       const officerName = document.getElementById('inspect-officer-select')?.value || currentUser.full_name;
+      const executorVal = document.getElementById('inspect-executor-select')?.value || '__same__';
+      const feedbackStatus = document.getElementById('inspect-feedback-status')?.value || '';
+      const feedbackDetail = document.getElementById('inspect-feedback-detail')?.value.trim() || '';
+      const rawExtraNotes = document.getElementById('inspect-notes').value.trim();
+
       const chks = Array.from(document.querySelectorAll('.inspect-chk'));
       const checkedCount = chks.filter(c => c.checked).length;
       const score = chks.length ? Math.round((checkedCount / chks.length) * 100) : 100;
       const missingCritical = chks.some(c => c.dataset.critical === 'true' && !c.checked);
-      const finalStatus = (score === 100 && !missingCritical) ? 'siap' : 'kotor';
+      const needsRework = feedbackStatus.includes('Wajib Diperbaiki');
+      const finalStatus = (score === 100 && !missingCritical && !needsRework) ? 'siap' : 'kotor';
 
       const checklistData = chks.map(c => ({
         item: c.dataset.name,
         checked: c.checked
       }));
+
+      const combinedNotes = composeNotesWithMetadata(executorVal, feedbackStatus, feedbackDetail, rawExtraNotes);
 
       const payload = {
         unit_id: unit.id,
@@ -1914,7 +2059,7 @@
         final_status: finalStatus,
         duration_seconds: secondsElapsed,
         checklist_data: checklistData,
-        notes: document.getElementById('inspect-notes').value.trim(),
+        notes: combinedNotes,
         photo_room_url: watermarkedPhotos.room,
         photo_toilet_url: watermarkedPhotos.toilet
       };
@@ -2291,19 +2436,27 @@
         const waktuStr = r.created_at
           ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
           : '-';
+        const meta = parseNotesMetadata(r.notes);
         return `
           <div class="glass-card rounded-2xl p-4 shadow-sm space-y-2.5">
             <div class="flex items-start justify-between gap-2">
               <div>
                 <h4 class="text-xs font-extrabold text-slate-900">${r.unit_name}</h4>
-                <p class="text-[11px] text-slate-500">Petugas: <strong>${r.inspector_name}</strong> • Shift ${r.shift}</p>
+                <p class="text-[11px] text-slate-500">Pemeriksa: <strong>${r.inspector_name}</strong> • Shift ${r.shift}</p>
+                ${meta.executor ? `<p class="text-[11px] text-indigo-700 font-semibold">Pelaksana: <strong>${meta.executor}</strong></p>` : ''}
                 <p class="text-[10px] text-slate-400 mt-0.5">${waktuStr}</p>
               </div>
               <span class="shrink-0 text-[10px] font-extrabold px-2.5 py-1 rounded-full ${r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
                 ${r.final_status.toUpperCase()} (${r.readiness_score}%)
               </span>
             </div>
-            ${r.notes ? `<p class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg">Catatan: ${r.notes}</p>` : ''}
+            ${meta.feedbackStatus ? `
+              <div class="text-[11px] px-2.5 py-2 rounded-xl border ${meta.feedbackStatus.includes('Baik') ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' : 'bg-rose-50/80 border-rose-200 text-rose-900'}">
+                <p class="font-extrabold">Tanggapan Pemeriksa: ${meta.feedbackStatus}</p>
+                ${meta.feedbackDetail ? `<p class="text-[10.5px] mt-0.5">Bagian Perbaikan: <strong>${meta.feedbackDetail}</strong></p>` : ''}
+              </div>
+            ` : ''}
+            ${meta.cleanNotes ? `<p class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg">Catatan: ${meta.cleanNotes}</p>` : ''}
             <div class="grid grid-cols-2 gap-2">
               ${r.photo_room_url ? `<img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />` : ''}
               ${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />` : ''}
@@ -2328,12 +2481,13 @@
         return;
       }
 
-      const headers = ['No,Waktu,Unit Kamar,Petugas,Shift,Skor (%),Status,Durasi (Detik),Rincian Checklist,Catatan'];
+      const headers = ['No,Waktu,Unit Kamar,Pemeriksa,Pelaksana,Shift,Skor (%),Status,Tanggapan Pemeriksa,Bagian Perbaikan,Durasi (Detik),Rincian Checklist,Catatan'];
       const rows = filteredRows.map((r, idx) => {
+        const meta = parseNotesMetadata(r.notes);
         const checklistStr = Array.isArray(r.checklist_data)
           ? r.checklist_data.map(c => `${c.item}: ${c.checked ? 'OK' : 'BELUM'}`).join(' | ')
           : '';
-        return `${idx + 1},"${new Date(r.created_at).toLocaleString('id-ID')}","${r.unit_name}","${r.inspector_name}","${r.shift}",${r.readiness_score},"${r.final_status.toUpperCase()}",${r.duration_seconds || 0},"${checklistStr.replace(/"/g, '""')}","${(r.notes || '').replace(/"/g, '""')}"`;
+        return `${idx + 1},"${new Date(r.created_at).toLocaleString('id-ID')}","${r.unit_name}","${r.inspector_name}","${meta.executor || r.inspector_name}","${r.shift}",${r.readiness_score},"${r.final_status.toUpperCase()}","${(meta.feedbackStatus || '-').replace(/"/g, '""')}","${(meta.feedbackDetail || '-').replace(/"/g, '""')}",${r.duration_seconds || 0},"${checklistStr.replace(/"/g, '""')}","${(meta.cleanNotes || '').replace(/"/g, '""')}"`;
       });
       const blob = new Blob(['\uFEFF' + headers.concat(rows).join('\n')], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
@@ -2357,26 +2511,32 @@
       const printWin = window.open('', '_blank');
       if (!printWin) return alert('Izinkan pop-up browser untuk mengekspor PDF.');
 
-      const rowsHtml = filteredRows.map((r, i) => `
-        <tr>
-          <td>${i + 1}</td>
-          <td>${new Date(r.created_at).toLocaleString('id-ID')}</td>
-          <td>${r.unit_name}</td>
-          <td>${r.inspector_name}</td>
-          <td>${r.shift}</td>
-          <td>${r.readiness_score}%</td>
-          <td>${r.final_status.toUpperCase()}</td>
-          <td>${r.notes || '-'}</td>
-          ${includePhotos ? `
-            <td>
-              <div style="display:flex;gap:4px;">
-                ${r.photo_room_url ? `<img src="${r.photo_room_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}
-                ${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}
-              </div>
-            </td>
-          ` : ''}
-        </tr>
-      `).join('');
+      const rowsHtml = filteredRows.map((r, i) => {
+        const meta = parseNotesMetadata(r.notes);
+        const feedbackFull = [meta.feedbackStatus, meta.feedbackDetail ? `Perbaikan: ${meta.feedbackDetail}` : ''].filter(Boolean).join(' • ') || '-';
+        return `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${new Date(r.created_at).toLocaleString('id-ID')}</td>
+            <td>${r.unit_name}</td>
+            <td>${r.inspector_name}</td>
+            <td>${meta.executor || r.inspector_name}</td>
+            <td>${r.shift}</td>
+            <td>${r.readiness_score}%</td>
+            <td>${r.final_status.toUpperCase()}</td>
+            <td>${feedbackFull}</td>
+            <td>${meta.cleanNotes || '-'}</td>
+            ${includePhotos ? `
+              <td>
+                <div style="display:flex;gap:4px;">
+                  ${r.photo_room_url ? `<img src="${r.photo_room_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}
+                  ${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}
+                </div>
+              </td>
+            ` : ''}
+          </tr>
+        `;
+      }).join('');
 
       printWin.document.write(`
         <!DOCTYPE html>
@@ -2396,8 +2556,8 @@
             h2 { margin: 0 0 4px; color: #0d9488; font-size: 18px; }
             p { margin: 0 0 14px; font-size: 12px; color: #64748b; }
             .summary { display: flex; gap: 16px; margin-bottom: 14px; font-size: 12px; background: #f1f5f9; padding: 10px 14px; border-radius: 8px; }
-            table { width: 100%; border-collapse: collapse; font-size: 11px; }
-            th, td { border: 1px solid #cbd5e1; padding: 7px; text-align: left; vertical-align: middle; }
+            table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+            th, td { border: 1px solid #cbd5e1; padding: 6px; text-align: left; vertical-align: middle; }
             th { background-color: #f1f5f9; font-weight: bold; }
             @media print {
               .no-print { display: none !important; }
@@ -2424,10 +2584,12 @@
                   <th>No</th>
                   <th>Waktu</th>
                   <th>Unit Kamar</th>
-                  <th>Petugas</th>
+                  <th>Pemeriksa</th>
+                  <th>Pelaksana</th>
                   <th>Shift</th>
                   <th>Skor</th>
                   <th>Status</th>
+                  <th>Tanggapan Pemeriksa</th>
                   <th>Catatan</th>
                   ${includePhotos ? '<th>Foto</th>' : ''}
                 </tr>
