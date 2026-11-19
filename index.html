@@ -325,23 +325,15 @@
               <select id="inspect-executor-select" required class="w-full px-3 py-2.5 rounded-xl bg-white border border-teal-200 text-xs font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-700"></select>
             </div>
 
-            <!-- 3. POSISI KETIGA: UNIT KAMAR & SHIFT KERJA (BISA DIPILIH & DIEDIT BEBAS) -->
+            <!-- 3. POSISI KETIGA: UNIT KAMAR & SHIFT KERJA (TERDAFTAR DARI PENGATURAN) -->
             <div class="grid grid-cols-2 gap-2.5 bg-slate-50/90 p-3 rounded-2xl border border-slate-200/80">
               <div class="min-w-0">
                 <label class="block text-[11px] font-bold text-slate-600 mb-1">3. Unit Kamar</label>
                 <select id="inspect-unit" onchange="handleInspectUnitChange()" required class="w-full px-2.5 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-800"></select>
               </div>
               <div class="min-w-0">
-                <div class="flex items-center justify-between gap-1 mb-1">
-                  <label class="block text-[11px] font-bold text-slate-600">Shift Kerja</label>
-                  <span class="text-[9px] font-semibold text-teal-600">Bisa diedit</span>
-                </div>
-                <input type="text" id="inspect-shift" list="shift-presets" value="Pagi" required placeholder="Pilih / ketik shift..." class="w-full px-2.5 py-2.5 rounded-xl bg-white border border-slate-200 focus:border-teal-600 focus:outline-none text-xs font-bold text-slate-800" />
-                <datalist id="shift-presets">
-                  <option value="Pagi">Shift Pagi (07:00 - 14:00)</option>
-                  <option value="Siang">Shift Siang (14:00 - 21:00)</option>
-                  <option value="Malam">Shift Malam (21:00 - 07:00)</option>
-                </datalist>
+                <label class="block text-[11px] font-bold text-slate-600 mb-1">Shift Kerja</label>
+                <select id="inspect-shift" required class="w-full px-2.5 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-800"></select>
               </div>
             </div>
 
@@ -603,6 +595,21 @@
             </div>
           </form>
           <div id="master-user-list" class="divide-y divide-slate-100 pt-1"></div>
+        </div>
+
+        <!-- KELOLA SHIFT KERJA -->
+        <div class="glass-card rounded-2xl p-4 shadow-sm space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-extrabold text-slate-900">Kelola Shift Kerja</h2>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-teal-50 text-teal-700">Otomatis di Form</span>
+          </div>
+          <form id="form-add-shift" class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <input type="hidden" id="edit-shift-id" />
+            <input type="text" id="shift-name" placeholder="Nama Shift (mis. Shift Pagi)" required class="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs" />
+            <input type="text" id="shift-hours" placeholder="Jam Kerja (mis. 07:00 - 14:00)" class="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs" />
+            <button type="submit" id="btn-save-shift" class="py-2.5 bg-teal-600 text-white text-xs font-bold rounded-xl">+ Simpan Shift</button>
+          </form>
+          <div id="master-shift-list" class="divide-y divide-slate-100"></div>
         </div>
 
         <div class="glass-card rounded-2xl p-4 shadow-sm space-y-3">
