@@ -258,13 +258,22 @@
             <div class="px-2.5 py-1.5 bg-slate-100 rounded-xl text-xs font-mono font-bold text-slate-700 shrink-0" id="timer-display">00:00</div>
           </div>
 
+          <!-- INFO DATA TERISI DARI PETUGAS (UNTUK APPROVAL) -->
+          <div id="prefill-review-banner" class="hidden p-3 bg-indigo-50 border border-indigo-200 rounded-2xl flex items-start gap-2.5">
+            <i data-lucide="file-check-2" class="w-4 h-4 text-indigo-600 shrink-0 mt-0.5"></i>
+            <div class="min-w-0 flex-1">
+              <p class="text-xs font-extrabold text-indigo-900">Data Isian Petugas Berhasil Dimuat</p>
+              <p id="prefill-review-desc" class="text-[11px] text-indigo-700 mt-0.5">Silakan periksa kelengkapan & foto di bawah, lalu simpan untuk Approve Siap Pakai.</p>
+            </div>
+          </div>
+
           <form id="inspection-form" class="space-y-4">
             <div class="bg-teal-50/80 border border-teal-200/80 rounded-2xl p-3 space-y-1.5">
               <div class="flex items-center justify-between">
                 <label for="inspect-officer-select" class="text-[10px] font-bold uppercase tracking-wider text-teal-700 flex items-center gap-1.5">
                   <i data-lucide="user-check" class="w-3.5 h-3.5"></i> Petugas Pemeriksa (Otomatis)
                 </label>
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-teal-700 border border-teal-200">✓ Terdaftar</span>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-teal-700 border border-teal-200">✓ Manajemen / SPV</span>
               </div>
               <select id="inspect-officer-select" required class="w-full p-2.5 bg-white border border-teal-200 rounded-xl text-xs font-extrabold text-slate-900 outline-none focus:border-teal-500"></select>
             </div>
@@ -272,7 +281,7 @@
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="block text-xs font-bold text-slate-600 mb-1">Pilih Kamar</label>
-                <select id="inspect-unit" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none"></select>
+                <select id="inspect-unit" required onchange="handleInspectUnitChange()" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none"></select>
               </div>
               <div>
                 <label class="block text-xs font-bold text-slate-600 mb-1">Shift Kerja</label>
@@ -331,7 +340,7 @@
                     </div>
                     <span class="text-[11px] font-extrabold text-teal-800">Area Kamar</span>
                   </div>
-                  <img id="preview-room" class="hidden w-full h-24 object-cover rounded-xl shadow-sm photo-pop" />
+                  <img id="preview-room" onclick="zoomPhoto(this.src)" class="hidden w-full h-24 object-cover rounded-xl shadow-sm photo-pop cursor-pointer" />
                   <div class="grid grid-cols-2 gap-1.5 pt-1">
                     <button type="button" onclick="document.getElementById('input-camera-room').click()" class="py-1.5 px-1.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 shadow-sm transition">
                       <i data-lucide="camera" class="w-3 h-3"></i> Kamera
@@ -354,7 +363,7 @@
                     </div>
                     <span class="text-[11px] font-extrabold text-indigo-800">Kamar Mandi</span>
                   </div>
-                  <img id="preview-toilet" class="hidden w-full h-24 object-cover rounded-xl shadow-sm photo-pop" />
+                  <img id="preview-toilet" onclick="zoomPhoto(this.src)" class="hidden w-full h-24 object-cover rounded-xl shadow-sm photo-pop cursor-pointer" />
                   <div class="grid grid-cols-2 gap-1.5 pt-1">
                     <button type="button" onclick="document.getElementById('input-camera-toilet').click()" class="py-1.5 px-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 shadow-sm transition">
                       <i data-lucide="camera" class="w-3 h-3"></i> Kamera
@@ -714,7 +723,7 @@
         </button>
         <div class="text-right">
           <h3 class="text-xs font-extrabold text-slate-900">Tentang Aplikasi</h3>
-          <p onclick="handleSecretHistoryTap()" class="text-[10px] text-teal-600 font-bold select-none cursor-default">Versi 4.3 PWA • Strict Approval</p>
+          <p onclick="handleSecretHistoryTap()" class="text-[10px] text-teal-600 font-bold select-none cursor-default">Versi 4.4 PWA • Prefill Review</p>
         </div>
       </div>
 
@@ -722,8 +731,8 @@
         <p class="font-bold text-slate-900">Sistem Monitoring Kesiapan Kamar Rawat Inap</p>
         <p>Aplikasi PWA untuk memantau kesiapan, kebersihan, dan kelengkapan fasilitas kamar secara real-time di <strong>RS Khusus Bedah SS Medika</strong>.</p>
         <ul class="space-y-1 text-[11px] text-slate-600 pt-1">
-          <li>• <strong>Wajib Approval Pemeriksa/Manajemen:</strong> Sebelum di-approve resmi, status kamar tidak akan menjadi Siap Pakai melainkan <em>Menunggu Approval</em>.</li>
-          <li>• <strong>Tombol Kembali Menyala:</strong> Ditempatkan jelas di setiap halaman agar pengguna mudah kembali tanpa keluar dari aplikasi.</li>
+          <li>• <strong>Auto-Isi Form Approval:</strong> Menekan <em>Cek Sekarang</em> pada kamar berstatus <em>Menunggu Approval</em> langsung memuat data checklist & foto yang telah diisi petugas.</li>
+          <li>• <strong>Pemeriksa Khusus Manajemen/SPV:</strong> Daftar pemeriksa otomatis difilter hanya akun Manajemen/Supervisor agar terhindar dari kesalahan input.</li>
         </ul>
       </div>
 
@@ -785,6 +794,7 @@
     let activeWaPayload = null;
     let currentPublicReport = null;
     let activeTabName = 'dashboard';
+    let activeReviewReportId = null;
 
     let realtimeChannel = null;
     let pollingInterval = null;
@@ -813,7 +823,7 @@
       window.location.reload(true);
     }
 
-    // --- NAVIGASI BACK HP (MENCEGAH APLIKASI PWA LANGSUNG KELUAR) ---
+    // --- NAVIGASI BACK HP ---
     function openModalWithHistory(modalId) {
       const el = document.getElementById(modalId);
       if (!el) return;
@@ -841,7 +851,7 @@
       }
     });
 
-    // --- SIKLUS STATUS KAMAR (STRICT APPROVAL) ---
+    // --- SIKLUS STATUS KAMAR ---
     function getLatestInspectionForUnit(unitId) {
       return inspectionsData.find(r => String(r.unit_id) === String(unitId)) || null;
     }
@@ -858,7 +868,6 @@
 
       const latestRep = getLatestInspectionForUnit(u.id);
 
-      // Jika di master_units status 'siap' tapi BELUM pernah di-approve resmi oleh Manajemen/Pemeriksa -> tahan di MENUNGGU APPROVAL
       if (u.status === 'siap') {
         if (String(u.last_checked_by).includes('Approved')) return 'siap';
         if (latestRep && isInspectionOfficiallyApproved(latestRep)) return 'siap';
@@ -962,7 +971,6 @@
       await loadAllData();
     }
 
-    // --- PENYELESAIAN MASALAH / REVISI OLEH PETUGAS -> KIRIM NOTIFIKASI APPROVAL KE MANAJEMEN ---
     async function markIssueResolvedByOfficer(reportId) {
       const report = inspectionsData.find(r => String(r.id) === String(reportId));
       if (!report) return;
@@ -1630,28 +1638,51 @@
       }
     });
 
+    // --- FILTER PEMERIKSA KHUSUS MANAJEMEN & SUPERVISOR SAJA ---
     function populateOfficerDropdown() {
       const sel = document.getElementById('inspect-officer-select');
       const execSel = document.getElementById('inspect-executor-select');
       const fbSel = document.getElementById('inspect-feedback-status');
       const list = [...usersData];
-      if (currentUser && !list.some(u => u.full_name === currentUser.full_name)) {
-        list.unshift({ full_name: currentUser.full_name, role: currentUser.role || 'petugas' });
+
+      // Petugas Pemeriksa HANYA Manajemen / Supervisor
+      let managerOnly = list.filter(u => {
+        const role = (u.role || '').toLowerCase();
+        const name = (u.full_name || '').toLowerCase();
+        return role === 'manajemen' || name.includes('supervisor') || name.includes('manajemen');
+      });
+
+      if (currentUser && isManagerRole() && !managerOnly.some(u => u.full_name === currentUser.full_name)) {
+        managerOnly.unshift({ full_name: currentUser.full_name, role: 'manajemen' });
       }
+      if (managerOnly.length === 0) {
+        managerOnly = [{ full_name: 'Supervisor Manajemen', role: 'manajemen' }];
+      }
+
       if (sel) {
-        sel.innerHTML = list.map(u => `<option value="${u.full_name}">${u.full_name}${u.role ? ` (${u.role.toUpperCase()})` : ''}</option>`).join('');
-        if (currentUser?.full_name) sel.value = currentUser.full_name;
+        sel.innerHTML = managerOnly.map(u => `<option value="${u.full_name}">${u.full_name} (MANAJEMEN)</option>`).join('');
+        if (isManagerRole() && currentUser?.full_name) {
+          sel.value = currentUser.full_name;
+        } else {
+          sel.value = managerOnly[0].full_name;
+        }
       }
+
       if (execSel) {
-        const petugasOnly = list.filter(u => (u.role || '').toLowerCase() === 'petugas');
-        const orderedList = petugasOnly.length > 0 ? [...petugasOnly, ...list.filter(u => (u.role || '').toLowerCase() !== 'petugas')] : list;
-        execSel.innerHTML = [
-          `<option value="__same__">Sesuai Pemeriksa (${currentUser ? currentUser.full_name : 'Otomatis'})</option>`,
-          ...orderedList.map(u => `<option value="${u.full_name}">${u.full_name}${u.role ? ` (${u.role.toUpperCase()})` : ''}</option>`)
-        ].join('');
-        if (currentUser && (currentUser.role || '').toLowerCase() === 'petugas') execSel.value = currentUser.full_name;
-        else if (petugasOnly.length > 0) execSel.value = petugasOnly[0].full_name;
+        const allStaff = [...list];
+        if (currentUser && !allStaff.some(u => u.full_name === currentUser.full_name)) {
+          allStaff.unshift({ full_name: currentUser.full_name, role: currentUser.role || 'petugas' });
+        }
+        const petugasOnly = allStaff.filter(u => (u.role || '').toLowerCase() === 'petugas');
+        const orderedList = petugasOnly.length > 0 ? [...petugasOnly, ...allStaff.filter(u => (u.role || '').toLowerCase() !== 'petugas')] : allStaff;
+        execSel.innerHTML = orderedList.map(u => `<option value="${u.full_name}">${u.full_name}${u.role ? ` (${u.role.toUpperCase()})` : ''}</option>`).join('');
+        if (currentUser && (currentUser.role || '').toLowerCase() === 'petugas') {
+          execSel.value = currentUser.full_name;
+        } else if (petugasOnly.length > 0) {
+          execSel.value = petugasOnly[0].full_name;
+        }
       }
+
       if (fbSel) {
         fbSel.value = isManagerRole() ? 'Sesuai Standar (Approved)' : 'Menunggu Approval Manajemen';
       }
@@ -1662,6 +1693,126 @@
       if (!shiftSel) return;
       const hour = new Date().getHours();
       shiftSel.value = (hour >= 7 && hour < 14) ? 'Pagi' : (hour >= 14 && hour < 21) ? 'Siang' : 'Malam';
+    }
+
+    // --- AUTO-ISI DATA FORM JIKA KAMAR SEDANG MENUNGGU APPROVAL / DALAM PROSES ---
+    function clearPrefillFormState() {
+      activeReviewReportId = null;
+      document.getElementById('prefill-review-banner')?.classList.add('hidden');
+      document.querySelectorAll('.inspect-chk').forEach(c => { c.checked = false; });
+      updateScore();
+      watermarkedPhotos = { room: null, toilet: null };
+      resetPhotoBoxes();
+      const notesEl = document.getElementById('inspect-notes');
+      if (notesEl) notesEl.value = '';
+      const detailEl = document.getElementById('inspect-feedback-detail');
+      if (detailEl) detailEl.value = '';
+      const btnSubmit = document.getElementById('btn-submit-inspect');
+      if (btnSubmit) btnSubmit.textContent = 'Simpan Laporan Kesiapan';
+    }
+
+    function loadExistingInspectionToForm(unitId) {
+      const unit = unitsData.find(u => String(u.id) === String(unitId));
+      if (!unit) { clearPrefillFormState(); return; }
+
+      const eff = getEffectiveUnitStatus(unit);
+      const latestRep = getLatestInspectionForUnit(unitId);
+
+      // Hanya muat data isian petugas jika kamar sedang MENUNGGU APPROVAL atau SEDANG DIBERSIHKAN
+      if (!latestRep || (eff !== 'pending_approval' && eff !== 'dibersihkan')) {
+        clearPrefillFormState();
+        populateOfficerDropdown();
+        setAutoShift();
+        return;
+      }
+
+      activeReviewReportId = latestRep.id;
+      const meta = parseNotesMetadata(latestRep.notes);
+
+      // 1. Shift & Pelaksana Kebersihan dari laporan petugas
+      const shiftEl = document.getElementById('inspect-shift');
+      if (shiftEl && latestRep.shift) shiftEl.value = latestRep.shift;
+
+      const execSel = document.getElementById('inspect-executor-select');
+      const executorName = meta.executor || latestRep.inspector_name;
+      if (execSel && executorName) {
+        if (!Array.from(execSel.options).some(o => o.value === executorName)) {
+          const opt = document.createElement('option');
+          opt.value = executorName;
+          opt.textContent = `${executorName} (PETUGAS)`;
+          execSel.prepend(opt);
+        }
+        execSel.value = executorName;
+      }
+
+      // 2. Status Tanggapan Pemeriksa
+      const fbSel = document.getElementById('inspect-feedback-status');
+      if (fbSel) {
+        if (isManagerRole()) {
+          fbSel.value = 'Sesuai Standar (Approved)';
+        } else if (meta.feedbackStatus) {
+          const matchedOpt = Array.from(fbSel.options).find(o => meta.feedbackStatus.includes(o.value) || o.value.includes(meta.feedbackStatus));
+          if (matchedOpt) fbSel.value = matchedOpt.value;
+        }
+      }
+
+      const detailEl = document.getElementById('inspect-feedback-detail');
+      if (detailEl) detailEl.value = meta.feedbackDetail || '';
+
+      const notesEl = document.getElementById('inspect-notes');
+      if (notesEl) notesEl.value = meta.cleanNotes || '';
+
+      // 3. Centang seluruh checklist sesuai data yang diisi petugas
+      const savedChecklist = Array.isArray(latestRep.checklist_data) ? latestRep.checklist_data : [];
+      document.querySelectorAll('.inspect-chk').forEach(chk => {
+        const foundItem = savedChecklist.find(c => c.item === chk.dataset.name);
+        chk.checked = foundItem ? Boolean(foundItem.checked) : false;
+      });
+      updateScore();
+
+      // 4. Muat Foto Area Kamar & Kamar Mandi yang sudah diunggah petugas
+      watermarkedPhotos = {
+        room: latestRep.photo_room_url || null,
+        toilet: latestRep.photo_toilet_url || null
+      };
+      ['room', 'toilet'].forEach(type => {
+        const url = watermarkedPhotos[type];
+        const prev = document.getElementById('preview-' + type);
+        const ph = document.getElementById('placeholder-' + type);
+        const box = document.getElementById('box-upload-' + type);
+        if (url && prev) {
+          prev.src = url;
+          prev.classList.remove('hidden');
+          ph?.classList.add('hidden');
+          box?.classList.remove('border-dashed');
+          box?.classList.add('border-solid', 'border-emerald-400', 'bg-emerald-50/30');
+        } else {
+          prev?.classList.add('hidden');
+          ph?.classList.remove('hidden');
+          box?.classList.add('border-dashed');
+          box?.classList.remove('border-solid', 'border-emerald-400', 'bg-emerald-50/30');
+        }
+      });
+
+      // 5. Tampilkan banner informasi & ubah teks tombol simpan jika Manajemen
+      const reviewBanner = document.getElementById('prefill-review-banner');
+      const reviewDesc = document.getElementById('prefill-review-desc');
+      if (reviewBanner && reviewDesc) {
+        const waktu = latestRep.created_at ? new Date(latestRep.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '';
+        reviewDesc.textContent = `Diisi oleh ${executorName} (${waktu ? 'pukul ' + waktu + ' • ' : ''}Skor ${latestRep.readiness_score}%). Periksa lalu simpan untuk Approve.`;
+        reviewBanner.classList.remove('hidden');
+      }
+
+      const btnSubmit = document.getElementById('btn-submit-inspect');
+      if (btnSubmit) {
+        btnSubmit.textContent = isManagerRole() ? 'Approve & Simpan Status Siap Pakai' : 'Perbarui & Ajukan Approval Manajemen';
+      }
+      lucide.createIcons();
+    }
+
+    function handleInspectUnitChange() {
+      const unitId = document.getElementById('inspect-unit')?.value;
+      if (unitId) loadExistingInspectionToForm(unitId);
     }
 
     async function enterApp() {
@@ -1716,7 +1867,13 @@
       if (!fromPopState && tabName !== 'dashboard') {
         try { window.history.pushState({ tab: tabName }, ''); } catch (e) {}
       }
-      if (tabName === 'inspect') { populateOfficerDropdown(); setAutoShift(); startTimer(); }
+      if (tabName === 'inspect') {
+        populateOfficerDropdown();
+        setAutoShift();
+        startTimer();
+        const curUnitId = document.getElementById('inspect-unit')?.value;
+        if (curUnitId) loadExistingInspectionToForm(curUnitId);
+      }
       if (tabName === 'analytics') renderAnalytics();
     }
 
@@ -1811,7 +1968,14 @@
       lucide.createIcons();
     }
 
-    function quickInspect(unitId) { switchTab('inspect'); document.getElementById('inspect-unit').value = unitId; }
+    function quickInspect(unitId) {
+      switchTab('inspect');
+      const unitSel = document.getElementById('inspect-unit');
+      if (unitSel) {
+        unitSel.value = unitId;
+        loadExistingInspectionToForm(unitId);
+      }
+    }
 
     function startTimer() {
       clearInterval(timerInterval);
@@ -1823,7 +1987,11 @@
     }
 
     function renderInspectForm() {
+      const prevSelectedUnit = document.getElementById('inspect-unit')?.value;
       document.getElementById('inspect-unit').innerHTML = unitsData.map(u => `<option value="${u.id}">${u.unit_code} - ${u.unit_name}</option>`).join('');
+      if (prevSelectedUnit && unitsData.some(u => String(u.id) === String(prevSelectedUnit))) {
+        document.getElementById('inspect-unit').value = prevSelectedUnit;
+      }
       const box = document.getElementById('checklist-container');
       if (itemsData.length === 0) { box.innerHTML = '<p class="text-xs text-slate-400">Belum ada item kelengkapan. Tambahkan di Pengaturan.</p>'; return; }
       box.innerHTML = itemsData.map(item => `
@@ -1862,7 +2030,7 @@
           ctx.fillRect(0, canvas.height - 32, canvas.width, 32);
           ctx.fillStyle = '#fff';
           ctx.font = 'bold 12px sans-serif';
-          const officerName = document.getElementById('inspect-officer-select')?.value || currentUser.full_name;
+          const officerName = document.getElementById('inspect-executor-select')?.value || currentUser.full_name;
           ctx.fillText(`${new Date().toLocaleString('id-ID')} • ${officerName}`, 10, canvas.height - 12);
           watermarkedPhotos[type] = canvas.toDataURL('image/jpeg', 0.75);
 
@@ -1964,8 +2132,8 @@
       const unit = unitsData.find(u => u.id === unitId);
       if (!unit) return alert('Pilih unit kamar terlebih dahulu');
 
-      const officerName = document.getElementById('inspect-officer-select')?.value || currentUser.full_name;
-      const executorVal = document.getElementById('inspect-executor-select')?.value || '__same__';
+      const officerName = document.getElementById('inspect-officer-select')?.value || 'Supervisor Manajemen';
+      const executorVal = document.getElementById('inspect-executor-select')?.value || currentUser.full_name;
       let feedbackStatus = document.getElementById('inspect-feedback-status')?.value || '';
       const feedbackDetail = document.getElementById('inspect-feedback-detail')?.value.trim() || '';
       const rawExtraNotes = document.getElementById('inspect-notes').value.trim();
@@ -1975,13 +2143,10 @@
       const score = chks.length ? Math.round((checkedCount / chks.length) * 100) : 100;
       const missingCritical = chks.some(c => c.dataset.critical === 'true' && !c.checked);
 
-      const selectedOfficerObj = usersData.find(u => u.full_name === officerName);
-      const officerIsManager = isManagerRole() || (selectedOfficerObj && (selectedOfficerObj.role || '').toLowerCase() === 'manajemen');
-
       let isApproved = false;
-      if (officerIsManager && feedbackStatus.includes('Approved') && score === 100 && !missingCritical) {
+      if (isManagerRole() && feedbackStatus.includes('Approved') && score === 100 && !missingCritical) {
         isApproved = true;
-        feedbackStatus = `Sesuai Standar (Approved oleh ${officerName})`;
+        feedbackStatus = `Sesuai Standar (Approved oleh ${currentUser.full_name || officerName})`;
       } else {
         isApproved = false;
         if (feedbackStatus.includes('Approved') || feedbackStatus.includes('Sesuai Standar')) {
@@ -1990,12 +2155,14 @@
       }
 
       const finalStatus = isApproved ? 'siap' : 'kotor';
-      const unitCheckedByLabel = isApproved ? `Approved: ${officerName}` : `${officerName} (Menunggu Approval)`;
+      const unitCheckedByLabel = isApproved
+        ? `Approved: ${currentUser.full_name || officerName}`
+        : `${executorVal} (Menunggu Approval)`;
 
       const payload = {
         unit_id: unit.id,
         unit_name: unit.unit_name,
-        inspector_name: officerName,
+        inspector_name: isApproved ? (currentUser.full_name || officerName) : officerName,
         inspector_role: currentUser.role,
         shift: document.getElementById('inspect-shift').value,
         readiness_score: score,
@@ -2020,22 +2187,38 @@
         localStorage.setItem('ck_offline_queue', JSON.stringify(q));
         savedOk = true;
       } else {
-        const { data: insertedRows, error } = await db.from('room_inspections').insert([payload]).select();
-        if (error) alert('Gagal menyimpan laporan: ' + error.message);
-        else {
-          if (insertedRows?.[0]) {
-            savedRecord = insertedRows[0];
-            lastKnownReportId = savedRecord.id;
-            localStorage.setItem('ck_last_seen_id', savedRecord.id);
+        // Jika sedang me-review laporan yang menunggu approval, perbarui laporan tersebut agar riwayat tidak ganda
+        if (activeReviewReportId) {
+          const { data: updatedRows, error } = await db.from('room_inspections')
+            .update({ ...payload, created_at: new Date().toISOString() })
+            .eq('id', activeReviewReportId)
+            .select();
+          if (error) alert('Gagal memperbarui laporan: ' + error.message);
+          else {
+            if (updatedRows?.[0]) savedRecord = updatedRows[0];
+            await db.from('master_units').update({ status: finalStatus, last_checked_at: new Date().toISOString(), last_checked_by: unitCheckedByLabel }).eq('id', unit.id);
+            savedOk = true;
           }
-          await db.from('master_units').update({ status: finalStatus, last_checked_at: new Date().toISOString(), last_checked_by: unitCheckedByLabel }).eq('id', unit.id);
-          savedOk = true;
+        } else {
+          const { data: insertedRows, error } = await db.from('room_inspections').insert([payload]).select();
+          if (error) alert('Gagal menyimpan laporan: ' + error.message);
+          else {
+            if (insertedRows?.[0]) {
+              savedRecord = insertedRows[0];
+              lastKnownReportId = savedRecord.id;
+              localStorage.setItem('ck_last_seen_id', savedRecord.id);
+            }
+            await db.from('master_units').update({ status: finalStatus, last_checked_at: new Date().toISOString(), last_checked_by: unitCheckedByLabel }).eq('id', unit.id);
+            savedOk = true;
+          }
         }
       }
 
       btn.disabled = false; btnWa.disabled = false; btn.textContent = 'Simpan Laporan Kesiapan';
 
       if (savedOk) {
+        activeReviewReportId = null;
+        document.getElementById('prefill-review-banner')?.classList.add('hidden');
         document.getElementById('inspection-form').reset();
         populateOfficerDropdown();
         setAutoShift();
@@ -2043,10 +2226,10 @@
         resetPhotoBoxes();
         playNotificationChime();
         await loadAllData();
-        switchTab('analytics');
+        switchTab('dashboard');
         if (alsoSendWa) openWaShareModal(savedRecord);
         else if (!isApproved) alert('Laporan tersimpan! Notifikasi telah dikirim ke bagian Manajemen agar segera di-approve menjadi SIAP PAKAI.');
-        else alert('Laporan kesiapan kamar berhasil disimpan dan berstatus SIAP PAKAI!');
+        else alert('Approved! Laporan kesiapan kamar berhasil disimpan dan berstatus SIAP PAKAI.');
       }
     }
 
