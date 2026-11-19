@@ -2,24 +2,19 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Cek Kesiapan Kamar - SS Medika</title>
-  <link rel="manifest" href="manifest.json" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Cek Kesiapan Kamar — RS Khusus Bedah SS Medika</title>
   <meta name="theme-color" content="#0d9488" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="Cek Kamar" />
-
-  <link rel="icon" type="image/png" sizes="192x192" href="./192x192.png" />
-  <link rel="icon" type="image/png" sizes="512x512" href="./512x512.png" />
-  <link rel="apple-touch-icon" href="./192x192.png" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="192x192.png" />
+  <link rel="apple-touch-icon" href="192x192.png" />
 
   <script>
-    (function() {
+    (function () {
       try {
         var params = new URLSearchParams(window.location.search);
         if (params.get('l') || params.get('laporan')) {
-          document.documentElement.classList.add('is-public-report');
+          document.documentElement.classList.add('public-mode');
         } else if (localStorage.getItem('ck_user')) {
           document.documentElement.classList.add('has-session');
         }
@@ -30,724 +25,695 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-    html, body { max-width: 100%; overflow-x: hidden; overscroll-behavior-x: none; }
     body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f1f5f9; -webkit-tap-highlight-color: transparent; }
-    .safe-top { padding-top: max(0.75rem, env(safe-area-inset-top)); }
-    .safe-bottom { padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); }
+    .glass-card { background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(12px); border: 1px solid rgba(226, 232, 240, 0.9); }
+    .nav-btn-active { color: #0f766e !important; background-color: #ccfbf1; font-weight: 800; box-shadow: inset 0 0 0 1px #99f6e4; }
+    .nav-btn-active i, .nav-btn-active svg { color: #0d9488; stroke-width: 2.5px; }
     html.has-session #login-screen { display: none !important; }
     html.has-session #main-app { display: block !important; }
-    html.is-public-report #login-screen, html.is-public-report #main-app { display: none !important; }
-    html.is-public-report #public-report-screen { display: block !important; }
-    .glass-card { background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(10px); border: 1px solid rgba(226, 232, 240, 0.8); }
-    @keyframes floatCam { 0%, 100% { transform: translateY(0px) scale(1); } 50% { transform: translateY(-4px) scale(1.06); } }
-    @keyframes popIn { 0% { transform: scale(0.92); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
-    @keyframes slideDownBanner { 0% { transform: translateY(-120%); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
-    @keyframes bellRing { 0%, 100% { transform: rotate(0deg); } 20% { transform: rotate(18deg); } 40% { transform: rotate(-16deg); } 60% { transform: rotate(12deg); } 80% { transform: rotate(-8deg); } }
-    @keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55); } 50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); } }
-    .upload-box { transition: all 0.28s cubic-bezier(0.34, 1.56, 0.64, 1); }
-    .upload-icon-anim { animation: floatCam 2.4s ease-in-out infinite; }
-    .photo-pop { animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-    .banner-slide-in { animation: slideDownBanner 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
-    .bell-animate { animation: bellRing 0.8s ease-in-out; }
-    .btn-back-glow { animation: pulseGlow 2s infinite; }
-    .nav-btn { transition: all 0.2s ease; border-radius: 1rem; margin: 0 3px; }
-    .nav-btn-active { background: #0d9488; color: #ffffff !important; font-weight: 800; box-shadow: 0 4px 12px rgba(13, 148, 136, 0.35); }
+    html.public-mode #login-screen,
+    html.public-mode #main-app { display: none !important; }
+    html.public-mode #public-report-screen { display: block !important; }
+    @keyframes slideDownBanner {
+      from { opacity: 0; transform: translate(-50%, -24px); }
+      to { opacity: 1; transform: translate(-50%, 0); }
+    }
+    .banner-slide-in { animation: slideDownBanner 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    @keyframes bellShake {
+      0%, 100% { transform: rotate(0deg); }
+      20% { transform: rotate(16deg); }
+      40% { transform: rotate(-14deg); }
+      60% { transform: rotate(10deg); }
+      80% { transform: rotate(-8deg); }
+    }
+    .bell-animate { animation: bellShake 0.7s ease-in-out; }
   </style>
 </head>
-<body class="text-slate-800 pb-24 w-full">
+<body class="text-slate-800 antialiased pb-24">
 
-  <div id="live-toast-banner" class="hidden fixed top-3 left-3 right-3 z-[60] max-w-md mx-auto">
-    <div onclick="openLatestNotifFromBanner()" class="bg-slate-900/95 backdrop-blur-md text-white rounded-2xl p-3.5 shadow-2xl border border-amber-400/60 flex items-center gap-3 cursor-pointer">
-      <div class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/50 flex items-center justify-center shrink-0">
-        <i data-lucide="bell-ring" class="w-5 h-5 text-amber-400"></i>
-      </div>
-      <div class="min-w-0 flex-1">
-        <div class="flex items-center justify-between gap-2">
-          <span id="toast-banner-badge" class="text-[10px] font-extrabold uppercase tracking-wider text-amber-400">Butuh Approval • Baru Saja</span>
-          <span id="toast-banner-time" class="text-[10px] text-slate-400">Baru saja</span>
-        </div>
-        <p id="toast-banner-title" class="text-xs font-extrabold text-white truncate mt-0.5">Kamar • MENUNGGU APPROVAL</p>
-        <p id="toast-banner-body" class="text-[11px] text-slate-300 truncate">Oleh Petugas • Klik untuk cek form & approve</p>
-      </div>
-      <button type="button" onclick="event.stopPropagation(); hideToastBanner();" class="p-1.5 bg-white/10 rounded-lg text-slate-300 hover:text-white shrink-0">
-        <i data-lucide="x" class="w-4 h-4"></i>
-      </button>
-    </div>
-  </div>
-
-  <div id="public-report-screen" class="hidden min-h-screen w-full bg-slate-100 pb-14">
-    <header class="sticky top-0 z-30 bg-teal-700 text-white px-3.5 pb-3.5 safe-top shadow-md">
+  <!-- PUBLIC REPORT VIEWER -->
+  <div id="public-report-screen" class="hidden min-h-screen bg-slate-100 pb-12">
+    <header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 px-4 py-3">
       <div class="max-w-2xl mx-auto flex items-center justify-between gap-2">
-        <div class="flex items-center gap-2 min-w-0 flex-1">
-          <button type="button" onclick="exitPublicReportMode()" class="btn-back-glow px-3 py-2 bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-extrabold rounded-xl text-xs shrink-0 flex items-center gap-1.5 shadow-lg transition">
-            <i data-lucide="arrow-left" class="w-4 h-4 stroke-[2.75]"></i> Kembali
-          </button>
-          <div class="min-w-0 flex-1">
-            <h1 class="text-sm font-extrabold leading-tight truncate">Laporan Kesiapan Kamar</h1>
-            <p class="text-[11px] text-teal-100 truncate">RS Khusus Bedah SS Medika</p>
+        <div class="flex items-center gap-2.5 min-w-0">
+          <img src="192x192.png" alt="Logo" class="w-9 h-9 rounded-xl shadow-sm shrink-0" />
+          <div class="min-w-0">
+            <h1 class="text-sm font-extrabold text-slate-900 truncate">Laporan Kesiapan Kamar</h1>
+            <p class="text-[11px] text-teal-700 font-semibold truncate">RS Khusus Bedah SS Medika</p>
           </div>
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
-          <button type="button" onclick="sharePublicReportWa()" class="px-2.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold rounded-xl text-xs flex items-center gap-1 shadow-sm transition">
+          <button type="button" onclick="sharePublicReportWa()" class="px-2.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl flex items-center gap-1 shadow-sm">
             <i data-lucide="send" class="w-3.5 h-3.5"></i> WA
           </button>
-          <button type="button" onclick="downloadPublicReportPdf()" id="btn-public-pdf" class="px-2.5 py-2 bg-white text-teal-800 hover:bg-teal-50 font-extrabold rounded-xl text-xs flex items-center gap-1 shadow-sm transition">
+          <button type="button" onclick="downloadPublicReportPdf()" id="btn-public-pdf" class="px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl flex items-center gap-1 shadow-sm">
             <i data-lucide="download" class="w-3.5 h-3.5"></i> PDF
+          </button>
+          <button type="button" onclick="exitPublicReportMode()" class="px-2.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl">
+            Aplikasi
           </button>
         </div>
       </div>
     </header>
-    <div id="public-report-container" class="max-w-2xl mx-auto p-4 space-y-4">
+    <main id="public-report-container" class="max-w-2xl mx-auto p-4 space-y-4">
       <div class="bg-white rounded-3xl p-8 text-center shadow-sm space-y-2">
-        <p class="text-xs font-bold text-slate-500">Memuat data laporan kesiapan kamar...</p>
+        <p class="text-sm font-bold text-slate-700">Memuat dokumen laporan...</p>
       </div>
-    </div>
-    <div class="max-w-2xl mx-auto px-4 pt-2">
-      <button type="button" onclick="exitPublicReportMode()" class="btn-back-glow w-full py-3.5 bg-amber-400 hover:bg-amber-300 active:scale-[0.99] text-slate-950 font-extrabold rounded-2xl text-sm flex items-center justify-center gap-2 shadow-lg transition">
-        <i data-lucide="arrow-left" class="w-5 h-5 stroke-[2.75]"></i> Kembali ke Menu Sebelumnya
-      </button>
-    </div>
+    </main>
   </div>
 
-  <div id="login-screen" class="min-h-screen w-full flex items-center justify-center p-4 bg-gradient-to-br from-teal-700 via-teal-600 to-emerald-600">
-    <div class="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl space-y-5">
+  <!-- LOGIN SCREEN -->
+  <div id="login-screen" class="min-h-screen flex flex-col justify-center items-center p-5 bg-gradient-to-br from-teal-700 via-teal-800 to-slate-900">
+    <div class="w-full max-w-md bg-white rounded-3xl shadow-2xl p-7 space-y-6">
       <div class="text-center space-y-2">
-        <div class="w-16 h-16 bg-teal-50 rounded-2xl flex items-center justify-center mx-auto border border-teal-100 overflow-hidden">
-          <img src="./192x192.png" alt="Logo SS Medika" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" class="w-12 h-12 object-contain" />
-          <i data-lucide="hospital" class="w-8 h-8 text-teal-600 hidden"></i>
-        </div>
-        <h1 class="text-xl font-extrabold text-slate-900">Cek Kesiapan Kamar</h1>
-        <p class="text-xs text-slate-500 font-medium">RS Khusus Bedah SS Medika • v5.4</p>
+        <img src="192x192.png" alt="Logo Aplikasi" class="w-20 h-20 mx-auto rounded-2xl shadow-md border border-slate-100" />
+        <h1 class="text-xl font-extrabold text-slate-900 tracking-tight">Cek Kesiapan Kamar <span class="text-xs font-bold text-teal-600">v5.6</span></h1>
+        <p class="text-xs font-semibold text-teal-700 bg-teal-50 inline-block px-3 py-1 rounded-full">RS Khusus Bedah SS Medika</p>
       </div>
-      <div id="login-error" class="hidden p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl text-center"></div>
-      <form id="login-form" class="space-y-3.5">
+
+      <form id="login-form" class="space-y-4">
         <div>
-          <label class="block text-xs font-bold text-slate-600 mb-1">Username</label>
-          <input type="text" id="login-username" required placeholder="Masukkan username" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:border-teal-500" />
+          <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Username / ID Petugas</label>
+          <input type="text" id="login-username" required placeholder="Masukkan username" class="w-full px-4 py-3.5 rounded-xl bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white focus:outline-none text-sm font-medium" />
         </div>
         <div>
-          <label class="block text-xs font-bold text-slate-600 mb-1">Password</label>
-          <input type="password" id="login-password" required placeholder="Masukkan password" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:border-teal-500" />
+          <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Password</label>
+          <input type="password" id="login-password" required placeholder="••••••••" class="w-full px-4 py-3.5 rounded-xl bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white focus:outline-none text-sm font-medium" />
         </div>
-        <button type="submit" id="btn-login" class="w-full py-3.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-sm shadow-lg shadow-teal-600/25 transition">
-          Masuk Aplikasi
+        <div id="login-error" class="hidden text-xs font-semibold text-rose-600 bg-rose-50 p-3 rounded-xl border border-rose-200"></div>
+        <button type="submit" id="btn-login" class="w-full py-3.5 bg-teal-600 hover:bg-teal-700 active:scale-[0.99] text-white font-bold rounded-xl shadow-lg shadow-teal-600/30 transition flex items-center justify-center gap-2 text-sm">
+          <span>Masuk Aplikasi</span>
         </button>
       </form>
-      <button type="button" id="btn-install-login" onclick="triggerPwaInstall()" class="hidden w-full py-2.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition">
-        <i data-lucide="download" class="w-4 h-4"></i> Install Aplikasi ke HP
+
+      <button type="button" id="btn-install-login" onclick="triggerPwaInstall()" class="hidden w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition">
+        <i data-lucide="smartphone" class="w-4 h-4 text-teal-400"></i> Install Aplikasi di Layar Utama HP
       </button>
+
+      <div class="pt-3 border-t border-slate-100 text-center space-y-1">
+        <p class="text-[11px] font-semibold text-slate-500">RS Khusus Bedah SS Medika</p>
+        <p class="text-[10px] text-slate-400">Dikembangkan oleh <span class="font-bold text-slate-600">Azis Munandar</span></p>
+      </div>
     </div>
   </div>
 
-  <div id="main-app" class="hidden w-full max-w-2xl mx-auto overflow-x-hidden">
-    <header class="sticky top-0 z-30 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 px-3.5 pb-2.5 safe-top shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
-      <div class="flex items-center justify-between gap-2 w-full">
-        <div class="flex items-center gap-2 min-w-0 flex-1">
-          <div class="w-9 h-9 shrink-0 bg-teal-600 rounded-xl flex items-center justify-center text-white shadow-sm overflow-hidden">
-            <img src="./192x192.png" alt="Icon" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" class="w-full h-full object-cover" />
-            <i data-lucide="clipboard-check" class="w-5 h-5 hidden"></i>
+  <!-- MAIN APPLICATION -->
+  <div id="main-app" class="hidden">
+
+    <!-- LIVE TOAST BANNER -->
+    <div id="live-toast-banner" onclick="openLatestNotifFromBanner()" class="hidden fixed top-3 left-1/2 -translate-x-1/2 z-50 w-[94%] max-w-md bg-slate-900 text-white rounded-2xl shadow-2xl border border-teal-500/40 p-3.5 cursor-pointer">
+      <div class="flex items-start gap-3">
+        <div class="w-9 h-9 rounded-xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center shrink-0 text-teal-300 mt-0.5">
+          <i data-lucide="bell-ring" class="w-4 h-4"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-2">
+            <span id="toast-banner-badge" class="text-[10px] font-extrabold uppercase tracking-wider text-teal-400">Laporan Baru Masuk</span>
+            <span id="toast-banner-time" class="text-[10px] text-slate-400">Baru saja</span>
           </div>
+          <p id="toast-banner-title" class="text-xs font-extrabold text-white truncate mt-0.5">Kamar 101 - Siap Pakai</p>
+          <p id="toast-banner-body" class="text-[11px] text-slate-300 truncate">Oleh Petugas • Klik untuk cek form & approve</p>
+        </div>
+        <button type="button" onclick="event.stopPropagation(); hideToastBanner();" class="p-1 text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- TOP HEADER (DIRAPIKAN AGAR TIDAK MENUMPUK) -->
+    <header class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200/80 px-3.5 py-2.5">
+      <div class="max-w-3xl mx-auto flex items-center justify-between gap-2">
+        <!-- Kiri: Logo + Judul + Versi + Role -->
+        <div class="flex items-center gap-2 min-w-0 flex-1">
+          <img src="192x192.png" alt="Logo" class="w-9 h-9 rounded-xl shadow-sm shrink-0" />
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-1.5">
-              <h1 class="text-[13px] font-extrabold text-slate-900 leading-tight whitespace-nowrap">Cek Kesiapan Kamar</h1>
-              <span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">v5.4</span>
+              <h1 class="text-[13px] font-extrabold text-slate-900 leading-tight truncate">Cek Kesiapan Kamar</h1>
+              <span class="shrink-0 text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">v5.6</span>
             </div>
             <div class="flex items-center gap-1.5 mt-0.5 min-w-0">
-              <span id="user-role-badge" class="shrink-0 text-[8.5px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide">PETUGAS</span>
-              <p id="user-greeting" class="text-[10.5px] text-slate-500 font-medium truncate">Halo, Petugas</p>
+              <span id="user-role-badge" class="shrink-0 text-[8.5px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide">ROLE</span>
+              <p id="user-greeting" class="text-[10.5px] font-semibold text-slate-500 truncate">Halo, Petugas</p>
             </div>
           </div>
         </div>
+
+        <!-- Kanan: Lonceng, Refresh, Online, Info, Logout -->
         <div class="flex items-center gap-1 shrink-0">
-          <button type="button" id="btn-header-bell" onclick="openNotificationDrawer()" title="Notifikasi & Approval" class="relative p-1.5 text-slate-600 hover:text-teal-600 hover:bg-teal-50 rounded-xl transition">
+          <button type="button" onclick="openNotificationDrawer()" title="Notifikasi Laporan Masuk" class="relative p-1.5 text-slate-600 hover:text-teal-600 hover:bg-slate-100 rounded-lg transition">
             <i id="notif-bell-icon" data-lucide="bell" class="w-4 h-4"></i>
-            <span id="notif-unread-badge" class="hidden absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-rose-600 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center shadow-sm">0</span>
+            <span id="notif-unread-badge" class="hidden absolute top-0.5 right-0.5 min-w-[14px] h-[14px] px-1 bg-rose-600 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center shadow">1</span>
           </button>
-          <button type="button" onclick="forceRefreshApp()" title="Perbarui Versi Aplikasi" class="p-1.5 text-slate-500 hover:text-teal-600 hover:bg-teal-50 rounded-xl transition">
-            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          <button type="button" onclick="forceRefreshApp()" title="Perbarui Versi Aplikasi" class="p-1.5 text-slate-600 hover:text-teal-600 hover:bg-slate-100 rounded-lg transition">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
           </button>
-          <span id="network-status" class="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+          <div id="network-status" class="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Online
-          </span>
-          <button onclick="openModalWithHistory('modal-about')" title="Tentang Aplikasi" class="p-1.5 text-slate-500 hover:text-teal-600 hover:bg-teal-50 rounded-xl transition">
+          </div>
+          <button type="button" onclick="openModalWithHistory('modal-about')" title="Tentang & Undang Tim" class="p-1.5 text-slate-500 hover:text-teal-600 hover:bg-slate-100 rounded-lg transition">
             <i data-lucide="info" class="w-4 h-4"></i>
           </button>
-          <button onclick="logout()" title="Keluar" class="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition">
+          <button type="button" onclick="logout()" title="Keluar" class="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition">
             <i data-lucide="log-out" class="w-4 h-4"></i>
           </button>
         </div>
       </div>
     </header>
 
-    <div id="management-approval-alert" class="hidden mx-4 mt-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-3.5 shadow-lg flex items-center justify-between gap-2.5">
-      <div class="flex items-center gap-2.5 min-w-0">
-        <div class="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-          <i data-lucide="shield-alert" class="w-5 h-5 text-amber-300"></i>
+    <!-- NOTIFICATION PERMISSION BAR -->
+    <div id="notif-permission-bar" class="hidden bg-teal-900 text-white px-4 py-2.5 text-xs">
+      <div class="max-w-3xl mx-auto flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <i data-lucide="bell-ring" class="w-4 h-4 text-teal-300 shrink-0"></i>
+          <span>Aktifkan notifikasi HP agar laporan kesiapan kamar langsung berbunyi!</span>
         </div>
-        <div class="min-w-0">
-          <p id="approval-alert-title" class="text-xs font-extrabold leading-tight">1 Laporan Menunggu Approval</p>
-          <p class="text-[10.5px] text-indigo-100 truncate">Klik untuk buka form terisi & approve</p>
-        </div>
+        <button type="button" onclick="requestNativeNotificationPermission()" class="shrink-0 px-3 py-1.5 bg-teal-500 hover:bg-teal-400 text-slate-950 font-extrabold rounded-lg text-[11px]">
+          Aktifkan
+        </button>
       </div>
-      <button type="button" onclick="openFirstPendingApproval()" class="shrink-0 px-3 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-xl text-[11px] shadow-sm transition">
-        Cek & Approve
-      </button>
     </div>
 
-    <div id="notif-permission-bar" class="hidden mx-4 mt-3 bg-gradient-to-r from-teal-600 to-emerald-600 text-white rounded-2xl p-3 shadow-md flex items-center justify-between gap-2.5">
-      <div class="flex items-center gap-2.5 min-w-0">
-        <div class="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-          <i data-lucide="bell-ring" class="w-4 h-4 text-white"></i>
-        </div>
-        <div class="min-w-0">
-          <p class="text-xs font-extrabold leading-tight">Aktifkan Notifikasi HP</p>
-          <p class="text-[10.5px] text-teal-100 truncate">Dapatkan bunyi & popup saat laporan masuk</p>
-        </div>
-      </div>
-      <button type="button" onclick="requestNativeNotificationPermission()" class="shrink-0 px-3 py-1.5 bg-white text-teal-800 hover:bg-teal-50 font-extrabold rounded-xl text-[11px] shadow-sm transition">
-        Aktifkan
-      </button>
-    </div>
+    <main class="max-w-3xl mx-auto p-4 space-y-5">
 
-    <main class="p-4 space-y-5 w-full">
-      <section id="tab-dashboard" class="page-section space-y-4">
-        <div class="grid grid-cols-3 gap-2.5">
-          <div class="glass-card rounded-2xl p-3.5 text-center shadow-sm">
-            <p class="text-[11px] font-bold text-slate-500">Siap Pakai</p>
-            <p id="stat-siap" class="text-2xl font-extrabold text-emerald-600 mt-0.5">0</p>
+      <!-- TAB 1: DASHBOARD -->
+      <section id="tab-dashboard" class="page-section space-y-5">
+        <div id="management-approval-alert" class="hidden bg-indigo-50 border border-indigo-200 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-sm">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+              <i data-lucide="clipboard-check" class="w-4 h-4"></i>
+            </div>
+            <div class="min-w-0">
+              <p id="approval-alert-title" class="text-xs font-extrabold text-indigo-950 truncate">Laporan Menunggu Approval</p>
+              <p class="text-[11px] text-indigo-700 truncate">Periksa hasil cek petugas lalu Approve agar kamar berstatus Siap Pakai.</p>
+            </div>
           </div>
-          <div class="glass-card rounded-2xl p-3.5 text-center shadow-sm">
-            <p class="text-[11px] font-bold text-slate-500">Kosong / Proses</p>
-            <p id="stat-kotor" class="text-2xl font-extrabold text-amber-500 mt-0.5">0</p>
-          </div>
-          <div class="glass-card rounded-2xl p-3.5 text-center shadow-sm">
-            <p class="text-[11px] font-bold text-slate-500">Maintenance</p>
-            <p id="stat-maint" class="text-2xl font-extrabold text-rose-600 mt-0.5">0</p>
-          </div>
-        </div>
-        <div class="flex items-center justify-between">
-          <h2 class="text-sm font-extrabold text-slate-800">Status Unit Kamar</h2>
-          <button onclick="openQrScanner()" class="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 text-white text-xs font-bold rounded-xl shadow-sm">
-            <i data-lucide="qr-code" class="w-3.5 h-3.5"></i> Scan QR Pintu
+          <button type="button" onclick="openFirstPendingApproval()" class="shrink-0 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-[11px] shadow-sm">
+            Cek Form
           </button>
         </div>
-        <div id="dashboard-unit-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+
+        <div class="grid grid-cols-3 gap-2.5">
+          <div class="glass-card p-3.5 rounded-2xl shadow-sm text-center">
+            <p class="text-[11px] font-bold text-slate-500">Siap Pakai</p>
+            <p id="stat-siap" class="text-2xl font-extrabold text-emerald-600 mt-1">0</p>
+          </div>
+          <div class="glass-card p-3.5 rounded-2xl shadow-sm text-center">
+            <p class="text-[11px] font-bold text-slate-500">Kosong / Proses</p>
+            <p id="stat-kotor" class="text-2xl font-extrabold text-amber-500 mt-1">0</p>
+          </div>
+          <div class="glass-card p-3.5 rounded-2xl shadow-sm text-center">
+            <p class="text-[11px] font-bold text-slate-500">Maintenance</p>
+            <p id="stat-maint" class="text-2xl font-extrabold text-rose-600 mt-1">0</p>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-extrabold text-slate-900">Status Unit Kamar</h2>
+          <button onclick="openQrScanner()" class="flex items-center gap-1.5 bg-teal-600 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm active:scale-95">
+            <i data-lucide="qr-code" class="w-4 h-4"></i> Scan QR Pintu
+          </button>
+        </div>
+
+        <div id="dashboard-unit-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="col-span-full text-center py-8 text-xs text-slate-400">Memuat data kamar...</div>
+        </div>
       </section>
 
+      <!-- TAB 2: FORM CEK KAMAR -->
       <section id="tab-inspect" class="page-section hidden space-y-4">
-        <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
-          <div class="flex items-center justify-between gap-2">
+        <div class="glass-card rounded-2xl p-4 shadow-sm space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
-              <h2 class="text-sm font-extrabold text-slate-900">Form Inspeksi Kamar</h2>
-              <p class="text-[11px] text-slate-500">Checklist kelengkapan & kebersihan</p>
+              <h2 class="text-sm font-extrabold text-slate-900">Form Cek Kesiapan Kamar</h2>
+              <p class="text-[11px] text-slate-500">Durasi pengecekan: <span id="timer-display" class="font-bold text-teal-600">00:00</span></p>
             </div>
-            <div class="flex items-center gap-1.5 shrink-0">
-              <button type="button" onclick="openQrScanner()" class="px-2.5 py-1.5 bg-teal-600 text-white text-[11px] font-bold rounded-xl flex items-center gap-1 shadow-sm">
-                <i data-lucide="qr-code" class="w-3.5 h-3.5"></i> Scan QR
-              </button>
-              <div class="px-2.5 py-1.5 bg-slate-100 rounded-xl text-xs font-mono font-bold text-slate-700" id="timer-display">00:00</div>
-            </div>
+            <span id="readiness-badge" class="px-3 py-1 rounded-full text-xs font-extrabold bg-slate-100 text-slate-600">Skor: 0%</span>
           </div>
 
-          <div id="prefill-review-banner" class="hidden p-4 bg-indigo-50 border-2 border-indigo-500 rounded-2xl space-y-3 shadow-md">
+          <!-- BANNER REVIEW FORM PETUGAS UNTUK MANAJEMEN -->
+          <div id="prefill-review-banner" class="hidden bg-indigo-50 border border-indigo-200 rounded-xl p-3 space-y-2.5">
             <div class="flex items-start gap-2.5">
-              <i data-lucide="file-check-2" class="w-5 h-5 text-indigo-600 shrink-0 mt-0.5"></i>
-              <div class="min-w-0 flex-1">
-                <p class="text-xs font-extrabold text-indigo-950">Hasil Cek Petugas Berhasil Dimuat</p>
-                <p id="prefill-review-desc" class="text-[11px] text-indigo-800 mt-0.5">Checklist, foto, dan catatan di bawah adalah hasil pengisian petugas.</p>
+              <i data-lucide="file-check-2" class="w-4 h-4 text-indigo-600 shrink-0 mt-0.5"></i>
+              <div class="text-[11px] text-indigo-950 leading-relaxed flex-1">
+                <p class="font-extrabold">Hasil Pengisian Form Petugas</p>
+                <p id="prefill-review-desc" class="text-indigo-800 mt-0.5">Checklist, foto, dan catatan dari petugas telah dimuat di bawah.</p>
               </div>
             </div>
-            <button type="button" id="btn-direct-approve-form" onclick="approveActiveFormReport()" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition">
+            <button type="button" id="btn-direct-approve-form" onclick="approveActiveFormReport()" class="hidden w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
               <i data-lucide="check-circle-2" class="w-4 h-4"></i> APPROVE LAPORAN INI (JADIKAN SIAP PAKAI)
             </button>
           </div>
 
           <form id="inspection-form" class="space-y-4">
-            <div class="bg-teal-50/80 border border-teal-200/80 rounded-2xl p-3 space-y-1.5">
-              <div class="flex items-center justify-between">
-                <label for="inspect-officer-select" class="text-[10px] font-bold uppercase tracking-wider text-teal-700 flex items-center gap-1.5">
-                  <i data-lucide="user-check" class="w-3.5 h-3.5"></i> Petugas Pemeriksa (Approval)
-                </label>
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-teal-700 border border-teal-200">✓ Manajemen / SPV</span>
-              </div>
-              <select id="inspect-officer-select" required class="w-full p-2.5 bg-white border border-teal-200 rounded-xl text-xs font-extrabold text-slate-900 outline-none focus:border-teal-500"></select>
-            </div>
-
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-bold text-slate-600 mb-1">Pilih Kamar</label>
-                <select id="inspect-unit" required onchange="handleInspectUnitChange()" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none"></select>
+                <label class="block text-xs font-bold text-slate-600 mb-1">Pilih Unit Kamar</label>
+                <select id="inspect-unit" onchange="handleInspectUnitChange()" required class="w-full px-3.5 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm font-semibold"></select>
               </div>
               <div>
-                <label class="block text-xs font-bold text-slate-600 mb-1">Shift Kerja</label>
-                <select id="inspect-shift" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none">
-                  <option value="Pagi">Shift Pagi</option>
-                  <option value="Siang">Shift Siang</option>
-                  <option value="Malam">Shift Malam</option>
+                <label class="block text-xs font-bold text-slate-600 mb-1">Shift Kerja (Otomatis)</label>
+                <select id="inspect-shift" class="w-full px-3.5 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm font-semibold">
+                  <option value="Pagi">Shift Pagi (07:00 - 14:00)</option>
+                  <option value="Siang">Shift Siang (14:00 - 21:00)</option>
+                  <option value="Malam">Shift Malam (21:00 - 07:00)</option>
                 </select>
               </div>
             </div>
 
-            <div class="bg-indigo-50/60 border border-indigo-200/80 rounded-2xl p-3 space-y-1.5">
-              <div class="flex items-center justify-between">
-                <label for="inspect-executor-select" class="text-[10px] font-bold uppercase tracking-wider text-indigo-700 flex items-center gap-1.5">
-                  <i data-lucide="users" class="w-3.5 h-3.5"></i> Petugas Pelaksana Kebersihan
-                </label>
-                <span id="executor-lock-badge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-indigo-700 border border-indigo-200">Akun Petugas</span>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-teal-50/50 p-3.5 rounded-2xl border border-teal-100">
+              <div>
+                <label class="block text-xs font-bold text-teal-900 mb-1">Petugas Pemeriksa (Manajemen)</label>
+                <select id="inspect-officer-select" required class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-teal-200 text-sm font-semibold text-slate-800"></select>
               </div>
-              <select id="inspect-executor-select" class="w-full p-2.5 bg-white border border-indigo-200 rounded-xl text-xs font-extrabold text-slate-900 outline-none focus:border-indigo-500 disabled:bg-slate-100 disabled:text-slate-700 disabled:opacity-100"></select>
-            </div>
-
-            <div class="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-3 space-y-2">
-              <div class="flex items-center justify-between">
-                <label for="inspect-feedback-status" class="text-[10px] font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
-                  <i data-lucide="message-square-warning" class="w-3.5 h-3.5"></i> Tanggapan Pemeriksa Hasil Kerja
-                </label>
-                <span class="text-[10px] font-bold text-amber-700">Approval</span>
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block text-xs font-bold text-teal-900">Petugas Pelaksana</label>
+                  <span id="executor-lock-badge" class="text-[9.5px] font-bold text-teal-700"></span>
+                </div>
+                <select id="inspect-executor-select" required class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-teal-200 text-sm font-semibold text-slate-800 disabled:bg-slate-100 disabled:text-slate-700"></select>
               </div>
-              <select id="inspect-feedback-status" onchange="handleFeedbackStatusChange()" class="w-full p-2.5 bg-white border border-amber-200 rounded-xl text-xs font-extrabold text-slate-800 outline-none focus:border-amber-500">
-                <option value="Menunggu Approval Manajemen">⏳ Selesai Dibersihkan (Minta Approval Manajemen)</option>
-                <option id="opt-feedback-approved" value="Sesuai Standar (Approved)">✅ Hasil Kerja Sesuai Standar (Approve Siap Pakai)</option>
-                <option value="Sedang Dibersihkan / Proses">🧹 Sedang Dibersihkan / Dalam Proses</option>
-                <option value="Perlu Perbaikan Ringan">⚠️ Perlu Perbaikan Ringan (Tandai Bagian)</option>
-                <option value="Wajib Diperbaiki Segera">🚨 Wajib Diperbaiki Segera (Belum Layak)</option>
-              </select>
-              <input type="text" id="inspect-feedback-detail" placeholder="Tulis bagian yang ditandai untuk diperbaiki..." class="w-full p-2.5 bg-white border border-amber-200 rounded-xl text-xs font-medium text-slate-800 outline-none focus:border-amber-500" />
             </div>
 
             <div class="space-y-2">
-              <div class="flex items-center justify-between">
-                <label class="text-xs font-bold text-slate-700">Daftar Kelengkapan</label>
-                <span id="readiness-badge" class="text-xs font-extrabold text-teal-600">Skor: 0%</span>
-              </div>
+              <label class="block text-xs font-bold text-slate-600">Checklist Kelengkapan & Kebersihan</label>
               <div id="checklist-container" class="space-y-2"></div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-xs font-bold text-slate-600 mb-1.5">Foto Area Kamar</label>
-                <div id="box-upload-room" class="upload-box p-3 bg-gradient-to-b from-teal-50/70 to-slate-50 border-2 border-dashed border-teal-300 rounded-2xl text-center space-y-2">
-                  <input type="file" id="input-camera-room" accept="image/*" capture="environment" onchange="handlePhoto(event, 'room')" class="hidden" />
-                  <input type="file" id="input-gallery-room" accept="image/*" onchange="handlePhoto(event, 'room')" class="hidden" />
-                  <div id="placeholder-room" class="flex flex-col items-center space-y-1">
-                    <div class="w-9 h-9 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center upload-icon-anim shadow-sm">
-                      <i data-lucide="camera" class="w-4 h-4"></i>
-                    </div>
-                    <span class="text-[11px] font-extrabold text-teal-800">Area Kamar</span>
+            <!-- DOKUMENTASI FOTO -->
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <label class="block text-xs font-bold text-slate-600">Dokumentasi Foto (Kamera / Galeri)</label>
+                <span class="text-[10px] font-semibold text-teal-600">Otomatis Watermark</span>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div id="box-upload-room" class="relative flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-2xl bg-slate-50 text-center space-y-1.5 overflow-hidden">
+                  <div id="placeholder-room" class="flex flex-col items-center space-y-1 pointer-events-none">
+                    <i data-lucide="image-plus" class="w-6 h-6 text-teal-600"></i>
+                    <span class="text-[11px] font-extrabold text-slate-700">1. Foto Area Kamar</span>
+                    <span class="text-[9.5px] text-slate-400">Pilih Kamera atau Galeri</span>
                   </div>
-                  <img id="preview-room" onclick="zoomPhoto(this.src)" class="hidden w-full h-24 object-cover rounded-xl shadow-sm photo-pop cursor-pointer" />
-                  <div class="grid grid-cols-2 gap-1.5 pt-1">
-                    <button type="button" onclick="document.getElementById('input-camera-room').click()" class="py-1.5 px-1.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 shadow-sm transition">
-                      <i data-lucide="camera" class="w-3 h-3"></i> Kamera
-                    </button>
-                    <button type="button" onclick="document.getElementById('input-gallery-room').click()" class="py-1.5 px-1.5 bg-white hover:bg-teal-50 active:scale-95 text-teal-700 border border-teal-300 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition">
-                      <i data-lucide="image" class="w-3 h-3"></i> Galeri
-                    </button>
+                  <img id="preview-room" class="hidden w-full h-24 object-cover rounded-xl shadow-sm" />
+                  <input type="file" id="input-photo-room" accept="image/*" onchange="handlePhoto(event, 'room')" class="absolute inset-0 opacity-0 cursor-pointer" />
+                </div>
+
+                <div id="box-upload-toilet" class="relative flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-2xl bg-slate-50 text-center space-y-1.5 overflow-hidden">
+                  <div id="placeholder-toilet" class="flex flex-col items-center space-y-1 pointer-events-none">
+                    <i data-lucide="image-plus" class="w-6 h-6 text-teal-600"></i>
+                    <span class="text-[11px] font-extrabold text-slate-700">2. Foto Kamar Mandi</span>
+                    <span class="text-[9.5px] text-slate-400">Pilih Kamera atau Galeri</span>
                   </div>
+                  <img id="preview-toilet" class="hidden w-full h-24 object-cover rounded-xl shadow-sm" />
+                  <input type="file" id="input-photo-toilet" accept="image/*" onchange="handlePhoto(event, 'toilet')" class="absolute inset-0 opacity-0 cursor-pointer" />
                 </div>
               </div>
+            </div>
 
+            <!-- STATUS APPROVAL & TANGGAPAN PEMERIKSA -->
+            <div class="bg-amber-50/70 p-3.5 rounded-2xl border border-amber-200/80 space-y-3">
               <div>
-                <label class="block text-xs font-bold text-slate-600 mb-1.5">Foto Kamar Mandi</label>
-                <div id="box-upload-toilet" class="upload-box p-3 bg-gradient-to-b from-indigo-50/70 to-slate-50 border-2 border-dashed border-indigo-300 rounded-2xl text-center space-y-2">
-                  <input type="file" id="input-camera-toilet" accept="image/*" capture="environment" onchange="handlePhoto(event, 'toilet')" class="hidden" />
-                  <input type="file" id="input-gallery-toilet" accept="image/*" onchange="handlePhoto(event, 'toilet')" class="hidden" />
-                  <div id="placeholder-toilet" class="flex flex-col items-center space-y-1">
-                    <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center upload-icon-anim shadow-sm">
-                      <i data-lucide="camera" class="w-4 h-4"></i>
-                    </div>
-                    <span class="text-[11px] font-extrabold text-indigo-800">Kamar Mandi</span>
-                  </div>
-                  <img id="preview-toilet" onclick="zoomPhoto(this.src)" class="hidden w-full h-24 object-cover rounded-xl shadow-sm photo-pop cursor-pointer" />
-                  <div class="grid grid-cols-2 gap-1.5 pt-1">
-                    <button type="button" onclick="document.getElementById('input-camera-toilet').click()" class="py-1.5 px-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 shadow-sm transition">
-                      <i data-lucide="camera" class="w-3 h-3"></i> Kamera
-                    </button>
-                    <button type="button" onclick="document.getElementById('input-gallery-toilet').click()" class="py-1.5 px-1.5 bg-white hover:bg-indigo-50 active:scale-95 text-indigo-700 border border-indigo-300 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition">
-                      <i data-lucide="image" class="w-3 h-3"></i> Galeri
-                    </button>
-                  </div>
-                </div>
+                <label class="block text-xs font-extrabold text-amber-900 mb-1">Status Approval / Tanggapan Pemeriksa</label>
+                <select id="inspect-feedback-status" onchange="handleFeedbackStatusChange()" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800">
+                  <option id="opt-feedback-approved" value="Sesuai Standar (Approved)">✅ Sesuai Standar (Approved Manajemen — Siap Pakai)</option>
+                  <option value="Menunggu Approval Manajemen">⏳ Menunggu Approval Manajemen</option>
+                  <option value="Perlu Perbaikan Ringan">⚠️ Perlu Perbaikan Ringan</option>
+                  <option value="Wajib Diperbaiki Sebelum Dipakai">❌ Wajib Diperbaiki Sebelum Dipakai</option>
+                </select>
+              </div>
+              <div id="feedback-detail-wrapper">
+                <label class="block text-[11px] font-bold text-amber-900 mb-1">Bagian yang Ditandai untuk Diperbaiki</label>
+                <input type="text" id="inspect-feedback-detail" placeholder="Contoh: Wastafel kamar mandi kurang kering, ganti sarung bantal..." class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-amber-200 text-xs" />
               </div>
             </div>
 
             <div>
               <label class="block text-xs font-bold text-slate-600 mb-1">Catatan Tambahan</label>
-              <textarea id="inspect-notes" rows="2" placeholder="Catatan kendala / kerusakan fasilitas jika ada..." class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none"></textarea>
+              <textarea id="inspect-notes" rows="2" placeholder="Catatan umum lainnya (opsional)..." class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm"></textarea>
             </div>
 
-            <div class="space-y-2.5 pt-1">
-              <button type="submit" id="btn-submit-inspect" class="w-full py-3.5 bg-teal-600 hover:bg-teal-700 active:scale-[0.99] text-white font-bold rounded-xl text-sm shadow-lg shadow-teal-600/20 transition">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              <button type="submit" id="btn-submit-inspect" class="w-full py-3.5 bg-teal-600 hover:bg-teal-700 active:scale-[0.99] text-white font-bold rounded-xl shadow-lg shadow-teal-600/20 text-xs sm:text-sm transition">
                 Simpan Laporan Kesiapan
               </button>
-              <button type="button" id="btn-submit-wa" onclick="saveAndSendWhatsApp()" class="w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 active:scale-[0.99] text-white font-bold rounded-xl text-sm shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition">
-                <i data-lucide="send" class="w-4 h-4"></i> Simpan & Kirim ke WhatsApp
+              <button type="button" id="btn-submit-wa" onclick="saveAndSendWhatsApp()" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20 text-xs sm:text-sm flex items-center justify-center gap-2 transition">
+                <i data-lucide="send" class="w-4 h-4"></i> Simpan & Kirim ke WA
               </button>
             </div>
           </form>
         </div>
       </section>
 
+      <!-- TAB 3: ANALITIK & EXPORT -->
       <section id="tab-analytics" class="page-section hidden space-y-4">
-        <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 class="text-sm font-extrabold text-slate-900">Analitik & Riwayat</h2>
-              <p class="text-[11px] text-slate-500">Rekap laporan & status approval</p>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <button onclick="exportCsv()" class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1 shadow-sm">
-                <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> CSV
-              </button>
-              <button onclick="exportPdf()" class="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl flex items-center gap-1 shadow-sm">
-                <i data-lucide="file-text" class="w-3.5 h-3.5"></i> PDF
-              </button>
-            </div>
+        <div class="glass-card rounded-2xl p-4 shadow-sm space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="text-sm font-extrabold text-slate-900">Filter & Unduh Laporan Rekap</h2>
+            <span id="export-filter-count" class="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-200">0 Data</span>
           </div>
 
-          <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <span class="text-[11px] font-extrabold text-slate-700 flex items-center gap-1.5">
-                <i data-lucide="filter" class="w-3.5 h-3.5 text-teal-600"></i> Filter Data & Ekspor
-              </span>
-              <span id="export-filter-count" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800">0 Data Terpilih</span>
-            </div>
-            <div class="grid grid-cols-2 gap-2">
-              <select id="export-period-type" onchange="handleExportPeriodTypeChange()" class="p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500">
-                <option value="all">Semua Tanggal</option>
-                <option value="day">Per Hari (Tanggal)</option>
+          <div class="grid grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Periode Laporan</label>
+              <select id="export-period-type" onchange="handleExportPeriodTypeChange()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800">
+                <option value="all">Semua Data</option>
+                <option value="day">Harian (Per Tanggal)</option>
                 <option value="range">Rentang Tanggal</option>
-                <option value="month">Per Bulan</option>
-                <option value="year">Per Tahun</option>
+                <option value="month">Bulanan (Per Bulan)</option>
+                <option value="year">Tahunan (Per Tahun)</option>
               </select>
-              <select id="export-filter-unit" onchange="renderAnalytics()" class="p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500">
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Filter Unit Kamar</label>
+              <select id="export-filter-unit" onchange="renderAnalytics()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800">
                 <option value="all">Semua Kamar</option>
               </select>
             </div>
-            <div id="wrap-filter-day" class="hidden">
-              <input type="date" id="export-filter-day" onchange="renderAnalytics()" class="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500" />
-            </div>
-            <div id="wrap-filter-range" class="hidden grid grid-cols-2 gap-2">
-              <div>
-                <span class="block text-[9.5px] font-bold text-slate-500 mb-0.5">Dari Tanggal</span>
-                <input type="date" id="export-filter-start" onchange="renderAnalytics()" class="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500" />
-              </div>
-              <div>
-                <span class="block text-[9.5px] font-bold text-slate-500 mb-0.5">Sampai Tanggal</span>
-                <input type="date" id="export-filter-end" onchange="renderAnalytics()" class="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500" />
-              </div>
-            </div>
-            <div id="wrap-filter-month" class="hidden">
-              <input type="month" id="export-filter-month" onchange="renderAnalytics()" class="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500" />
-            </div>
-            <div id="wrap-filter-year" class="hidden">
-              <select id="export-filter-year" onchange="renderAnalytics()" class="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-teal-500"></select>
-            </div>
-            <label class="flex items-center gap-2 pt-0.5 cursor-pointer">
-              <input type="checkbox" id="export-pdf-include-photos" class="rounded text-rose-600" />
-              <span class="text-[11px] font-bold text-slate-600">Sertakan foto dokumentasi saat Ekspor PDF</span>
-            </label>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-              <h3 class="text-xs font-bold text-slate-600 mb-2">Proporsi Status Unit (Live)</h3>
-              <canvas id="chart-status" height="180"></canvas>
+          <div id="wrap-filter-day" class="hidden">
+            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Pilih Tanggal</label>
+            <input type="date" id="export-filter-day" onchange="renderAnalytics()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800" />
+          </div>
+
+          <div id="wrap-filter-range" class="hidden grid grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Dari Tanggal</label>
+              <input type="date" id="export-filter-start" onchange="renderAnalytics()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800" />
             </div>
-            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col justify-center space-y-2.5">
-              <div class="flex justify-between items-center bg-white p-3 rounded-xl">
-                <span class="text-xs text-slate-500 font-medium">Total Inspeksi</span>
-                <span id="analytic-total" class="text-sm font-extrabold text-slate-900">0 Laporan</span>
-              </div>
-              <div class="flex justify-between items-center bg-white p-3 rounded-xl">
-                <span class="text-xs text-slate-500 font-medium">Rata-Rata Skor</span>
-                <span id="analytic-avg-score" class="text-sm font-extrabold text-teal-600">0%</span>
-              </div>
-              <div class="flex justify-between items-center bg-white p-3 rounded-xl">
-                <span class="text-xs text-slate-500 font-medium">Rata-Rata Durasi</span>
-                <span id="analytic-avg-time" class="text-sm font-extrabold text-indigo-600">0 Detik</span>
-              </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Sampai Tanggal</label>
+              <input type="date" id="export-filter-end" onchange="renderAnalytics()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800" />
             </div>
           </div>
 
-          <div class="space-y-3">
-            <div class="flex items-center justify-between gap-2">
-              <h3 id="history-section-title" onclick="handleSecretHistoryTap()" class="text-sm font-extrabold text-slate-800 select-none cursor-default">
-                Riwayat Inspeksi & Kirim WhatsApp
-              </h3>
-              <span id="creator-mode-badge" class="hidden text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200">
-                Mode Pembuat Aktif
-              </span>
-            </div>
-            <div id="history-list" class="space-y-3"></div>
+          <div id="wrap-filter-month" class="hidden">
+            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Pilih Bulan & Tahun</label>
+            <input type="month" id="export-filter-month" onchange="renderAnalytics()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800" />
+          </div>
+
+          <div id="wrap-filter-year" class="hidden">
+            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Pilih Tahun</label>
+            <select id="export-filter-year" onchange="renderAnalytics()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800"></select>
+          </div>
+
+          <label class="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer pt-1">
+            <input type="checkbox" id="export-pdf-include-photos" class="w-4 h-4 rounded text-teal-600" />
+            <span>Sertakan foto dokumentasi dalam PDF</span>
+          </label>
+
+          <div class="grid grid-cols-2 gap-2 pt-1">
+            <button onclick="exportPdf()" class="py-2.5 px-3 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-sm">
+              <i data-lucide="file-text" class="w-4 h-4"></i> Download PDF
+            </button>
+            <button onclick="exportCsv()" class="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-sm">
+              <i data-lucide="sheet" class="w-4 h-4"></i> Download Excel
+            </button>
           </div>
         </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="glass-card rounded-2xl p-4 shadow-sm">
+            <h3 class="text-xs font-bold text-slate-500 mb-2">Proporsi Status Kamar</h3>
+            <canvas id="chart-status" height="170"></canvas>
+          </div>
+          <div class="glass-card rounded-2xl p-4 shadow-sm flex flex-col justify-center space-y-3">
+            <div>
+              <p class="text-[11px] font-bold text-slate-400">Total Inspeksi (Sesuai Filter)</p>
+              <p id="analytic-total" class="text-2xl font-extrabold text-slate-900">0 Laporan</p>
+            </div>
+            <div>
+              <p class="text-[11px] font-bold text-slate-400">Rata-rata Skor Kesiapan</p>
+              <p id="analytic-avg-score" class="text-2xl font-extrabold text-teal-600">0%</p>
+            </div>
+            <div>
+              <p class="text-[11px] font-bold text-slate-400">Rata-rata Waktu Cek</p>
+              <p id="analytic-avg-time" class="text-lg font-extrabold text-slate-700">0 Detik</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between pt-2 select-none">
+          <h3 onclick="handleSecretHistoryTap()" class="text-sm font-extrabold text-slate-900 cursor-pointer">Riwayat Inspeksi</h3>
+          <span id="creator-mode-badge" class="hidden text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">Mode Pembuat Aktif</span>
+        </div>
+        <div id="history-list" class="space-y-3"></div>
       </section>
 
+      <!-- TAB 4: PENGATURAN -->
       <section id="tab-master" class="page-section hidden space-y-5">
-        <div class="glass-card rounded-3xl p-5 shadow-sm space-y-3">
-          <div class="flex items-center justify-between gap-2">
+        <div class="glass-card rounded-2xl p-4 shadow-sm space-y-3">
+          <div class="flex items-center justify-between">
             <div>
-              <h2 class="text-sm font-extrabold text-slate-900">Notifikasi Laporan Masuk</h2>
-              <p class="text-[11px] text-slate-500">Bunyi & popup HP saat laporan masuk</p>
+              <h2 class="text-sm font-extrabold text-slate-900">Notifikasi Real-Time HP</h2>
+              <p id="notif-status-label" class="text-[11px] text-slate-500">Memeriksa izin notifikasi perangkat...</p>
             </div>
-            <button type="button" onclick="testNotificationAlert()" class="px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0">
-              <i data-lucide="volume-2" class="w-3.5 h-3.5"></i> Tes
-            </button>
-          </div>
-          <div class="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-100">
-            <span id="notif-status-label" class="text-xs font-bold text-slate-700">Status Izin Notifikasi HP: Mengecek...</span>
-            <button type="button" id="btn-enable-notif-settings" onclick="requestNativeNotificationPermission()" class="px-3 py-1.5 bg-teal-600 text-white rounded-xl text-xs font-bold">
-              Izinkan Notifikasi
-            </button>
+            <div class="flex gap-1.5">
+              <button type="button" id="btn-enable-notif-settings" onclick="requestNativeNotificationPermission()" class="px-3 py-2 bg-teal-600 text-white text-xs font-bold rounded-xl">Izinkan</button>
+              <button type="button" onclick="testNotificationAlert()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl">Tes Bunyi</button>
+            </div>
           </div>
         </div>
 
-        <div id="user-management-card" class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
-          <div>
-            <h2 class="text-base font-extrabold text-slate-900">Kelola Akun Manajemen & Petugas</h2>
-            <p class="text-xs text-slate-500">Tambah, edit nama/password, atau hapus akun staf</p>
+        <div id="user-management-card" class="glass-card rounded-2xl p-4 shadow-sm space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-extrabold text-slate-900">Kelola Akun Petugas & Manajemen</h2>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">Khusus Manajemen</span>
           </div>
-          <form id="form-add-user" class="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+          <form id="form-add-user" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input type="hidden" id="edit-user-id" />
-            <input type="text" id="new-user-fullname" required placeholder="Nama Lengkap" class="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium outline-none" />
-            <input type="text" id="new-user-username" required placeholder="Username login" class="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium outline-none" />
-            <input type="text" id="new-user-password" required placeholder="Password" class="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium outline-none" />
+            <input type="text" id="new-user-fullname" placeholder="Nama Lengkap" required class="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs" />
+            <input type="text" id="new-user-username" placeholder="Username Login" required class="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs" />
+            <input type="text" id="new-user-password" placeholder="Password" required class="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs" />
             <div class="flex gap-2">
-              <select id="new-user-role" class="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none">
-                <option value="petugas">Petugas</option>
-                <option value="manajemen">Manajemen</option>
+              <select id="new-user-role" class="flex-1 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold">
+                <option value="petugas">Role: Petugas</option>
+                <option value="manajemen">Role: Manajemen</option>
               </select>
-              <button type="submit" id="btn-save-user" class="flex-1 py-2.5 px-3 bg-teal-600 text-white font-bold rounded-xl text-xs">+ Akun</button>
+              <button type="submit" id="btn-save-user" class="px-4 py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl">+ Akun</button>
             </div>
           </form>
-          <div id="master-user-list" class="divide-y divide-slate-100"></div>
+          <div id="master-user-list" class="divide-y divide-slate-100 pt-1"></div>
         </div>
 
-        <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
-          <div>
-            <h2 class="text-base font-extrabold text-slate-900">Kelola Unit Kamar & QR Pintu</h2>
-            <p class="text-xs text-slate-500">Tambah kamar baru atau unduh stiker QR Code</p>
-          </div>
-          <form id="form-add-unit" class="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+        <div class="glass-card rounded-2xl p-4 shadow-sm space-y-3">
+          <h2 class="text-sm font-extrabold text-slate-900">Kelola Unit Kamar</h2>
+          <form id="form-add-unit" class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <input type="hidden" id="edit-unit-id" />
-            <input type="text" id="unit-code" required placeholder="Kode (mis: KMR-105)" class="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium outline-none" />
-            <input type="text" id="unit-name" required placeholder="Nama Kamar" class="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium outline-none" />
-            <input type="text" id="unit-floor" required placeholder="Lantai / Kelas" class="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium outline-none" />
-            <button type="submit" id="btn-save-unit" class="py-2.5 px-4 bg-teal-600 text-white font-bold rounded-xl text-xs">+ Simpan Unit</button>
+            <input type="text" id="unit-code" placeholder="Kode (mis. KMR-105)" required class="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs" />
+            <input type="text" id="unit-name" placeholder="Nama Kamar (mis. Kamar 105 - VIP)" required class="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs" />
+            <input type="text" id="unit-floor" placeholder="Lantai (mis. Lantai 1)" class="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs" />
+            <button type="submit" id="btn-save-unit" class="sm:col-span-3 py-2.5 bg-teal-600 text-white text-xs font-bold rounded-xl">+ Simpan Unit Kamar</button>
           </form>
           <div id="master-unit-list" class="divide-y divide-slate-100"></div>
         </div>
 
-        <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
-          <div>
-            <h2 class="text-base font-extrabold text-slate-900">Kelola Daftar Kelengkapan</h2>
-            <p class="text-xs text-slate-500">Atur item checklist kamar & toilet</p>
-          </div>
-          <form id="form-add-item" class="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+        <div class="glass-card rounded-2xl p-4 shadow-sm space-y-3">
+          <h2 class="text-sm font-extrabold text-slate-900">Kelola Item Kelengkapan & Kebersihan</h2>
+          <form id="form-add-item" class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <input type="hidden" id="edit-item-id" />
-            <input type="text" id="item-name" required placeholder="Nama Kelengkapan" class="sm:col-span-2 p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium outline-none" />
-            <select id="item-category" class="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none">
-              <option value="Kamar">Area Kamar</option>
-              <option value="Toilet">Kamar Mandi</option>
-              <option value="Medis">Fasilitas Medis</option>
+            <input type="text" id="item-name" placeholder="Nama Item (mis. Sprei Bersih)" required class="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs" />
+            <select id="item-category" class="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+              <option value="Kebersihan">Kebersihan</option>
+              <option value="Alat Medis">Alat Medis</option>
+              <option value="Fasilitas">Fasilitas</option>
             </select>
-            <div class="flex items-center gap-2">
-              <label class="flex items-center gap-1 text-xs font-bold text-slate-600">
-                <input type="checkbox" id="item-critical" class="rounded text-teal-600" /> Wajib
-              </label>
-              <button type="submit" id="btn-save-item" class="flex-1 py-2.5 px-3 bg-teal-600 text-white font-bold rounded-xl text-xs">+ Item</button>
-            </div>
+            <label class="flex items-center gap-2 text-xs font-semibold text-slate-600 px-2">
+              <input type="checkbox" id="item-critical" checked class="w-4 h-4 rounded text-teal-600" /> Item Wajib
+            </label>
+            <button type="submit" id="btn-save-item" class="sm:col-span-3 py-2.5 bg-slate-800 text-white text-xs font-bold rounded-xl">+ Simpan Item Checklist</button>
           </form>
           <div id="master-item-list" class="divide-y divide-slate-100"></div>
         </div>
       </section>
     </main>
 
-    <nav class="fixed bottom-0 left-0 right-0 z-30 w-full bg-white/95 backdrop-blur-md border-t border-slate-200 pt-2 safe-bottom shadow-[0_-4px_16px_rgba(15,23,42,0.06)]">
-      <div id="bottom-nav-grid" class="w-full max-w-2xl mx-auto grid grid-cols-4 items-center px-2">
-        <button id="nav-item-dashboard" onclick="switchTab('dashboard')" data-tab="dashboard" class="nav-btn flex flex-col items-center justify-center py-1.5 text-slate-500 min-w-0">
-          <i data-lucide="layout-grid" class="w-5 h-5 shrink-0"></i>
-          <span class="text-[10px] mt-0.5 truncate max-w-full">Dasbor</span>
+    <!-- BOTTOM NAVIGATION BAR -->
+    <nav class="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200 px-2 py-2 shadow-[0_-4px_16px_rgba(0,0,0,0.04)]">
+      <div id="bottom-nav-grid" class="max-w-3xl mx-auto grid grid-cols-4 gap-1.5">
+        <button id="nav-item-dashboard" onclick="switchTab('dashboard')" data-tab="dashboard" class="nav-btn nav-btn-active flex flex-col items-center py-2 rounded-xl text-slate-500 transition">
+          <i data-lucide="layout-grid" class="w-5 h-5"></i>
+          <span class="text-[10.5px] font-bold mt-1">Dasbor</span>
         </button>
-        <button id="nav-item-inspect" onclick="switchTab('inspect')" data-tab="inspect" class="nav-btn flex flex-col items-center justify-center py-1.5 text-slate-500 min-w-0">
-          <i data-lucide="clipboard-list" class="w-5 h-5 shrink-0"></i>
-          <span class="text-[10px] mt-0.5 truncate max-w-full">Cek Kamar</span>
+        <button id="nav-item-inspect" onclick="switchTab('inspect')" data-tab="inspect" class="nav-btn flex flex-col items-center py-2 rounded-xl text-slate-500 transition">
+          <i data-lucide="clipboard-check" class="w-5 h-5"></i>
+          <span class="text-[10.5px] font-bold mt-1">Cek Kamar</span>
         </button>
-        <button id="nav-item-analytics" onclick="switchTab('analytics')" data-tab="analytics" class="nav-btn flex flex-col items-center justify-center py-1.5 text-slate-500 min-w-0">
-          <i data-lucide="bar-chart-2" class="w-5 h-5 shrink-0"></i>
-          <span class="text-[10px] mt-0.5 truncate max-w-full">Analitik</span>
+        <button id="nav-item-analytics" onclick="switchTab('analytics')" data-tab="analytics" class="nav-btn flex flex-col items-center py-2 rounded-xl text-slate-500 transition">
+          <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+          <span class="text-[10.5px] font-bold mt-1">Analitik</span>
         </button>
-        <button id="nav-item-master" onclick="switchTab('master')" data-tab="master" class="nav-btn flex flex-col items-center justify-center py-1.5 text-slate-500 min-w-0">
-          <i data-lucide="sliders" class="w-5 h-5 shrink-0"></i>
-          <span class="text-[10px] mt-0.5 truncate max-w-full">Pengaturan</span>
+        <button id="nav-item-master" onclick="switchTab('master')" data-tab="master" class="nav-btn flex flex-col items-center py-2 rounded-xl text-slate-500 transition">
+          <i data-lucide="sliders" class="w-5 h-5"></i>
+          <span class="text-[10.5px] font-bold mt-1">Pengaturan</span>
         </button>
       </div>
     </nav>
   </div>
 
-  <div id="modal-notifications" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-3.5 shadow-2xl max-h-[85vh] flex flex-col">
-      <div class="flex items-center justify-between shrink-0 gap-2">
-        <button type="button" onclick="closeActiveModal('modal-notifications')" class="btn-back-glow px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-xl text-xs flex items-center gap-1 shadow-sm">
-          <i data-lucide="arrow-left" class="w-3.5 h-3.5 stroke-[2.75]"></i> Kembali
-        </button>
-        <div class="text-right min-w-0">
-          <h3 class="text-xs font-extrabold text-slate-900 truncate">Notifikasi & Approval</h3>
-          <p class="text-[10px] text-slate-500 truncate">Cek form isian lalu Approve</p>
-        </div>
+  <!-- MODAL ZOOM FOTO -->
+  <div id="modal-photo-zoom" onclick="closeActiveModal('modal-photo-zoom')" class="hidden fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
+    <img id="zoom-photo-img" src="" class="max-w-full max-h-[88vh] rounded-2xl shadow-2xl object-contain" />
+  </div>
+
+  <!-- MODAL SCANNER QR -->
+  <div id="modal-qr-scanner" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl w-full max-w-sm p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-extrabold">Scan QR Code Pintu Kamar</h3>
+        <button onclick="closeQrScanner()" class="p-1 text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
-      <div id="notif-drawer-list" class="overflow-y-auto space-y-2 pr-1 flex-1"></div>
-      <div class="flex gap-2 pt-1 shrink-0">
-        <button type="button" onclick="testNotificationAlert()" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">Tes Bunyi HP</button>
-        <button type="button" onclick="closeActiveModal('modal-notifications'); switchTab('analytics');" class="flex-1 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs">Semua Riwayat</button>
+      <div id="qr-reader" class="w-full rounded-2xl overflow-hidden bg-slate-900"></div>
+      <p class="text-[11px] text-center text-slate-500">Arahkan kamera ke stiker QR pada pintu kamar</p>
+    </div>
+  </div>
+
+  <!-- MODAL QR -->
+  <div id="modal-qr-print" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl w-full max-w-xs p-6 text-center space-y-4 shadow-2xl">
+      <div>
+        <span class="text-[10px] font-bold uppercase tracking-wider text-teal-600">RS Khusus Bedah SS Medika</span>
+        <h3 id="qr-print-title" class="text-base font-extrabold text-slate-900 mt-0.5">QR Unit Kamar</h3>
+      </div>
+      <div id="qr-code-box" class="flex justify-center p-3 bg-white border border-slate-200 rounded-2xl"></div>
+      <p id="qr-print-code" class="text-sm font-mono font-extrabold text-slate-700 tracking-wider"></p>
+      <div class="grid grid-cols-2 gap-2 pt-1">
+        <button type="button" onclick="downloadQrImage()" class="py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm">
+          <i data-lucide="download" class="w-4 h-4"></i> Simpan QR
+        </button>
+        <button type="button" onclick="closeActiveModal('modal-qr-print')" class="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold">
+          Tutup
+        </button>
       </div>
     </div>
   </div>
 
-  <div id="modal-wa-share" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-3.5 shadow-2xl max-h-[92vh] overflow-y-auto">
-      <div class="flex items-center justify-between gap-2">
-        <button type="button" onclick="closeActiveModal('modal-wa-share')" class="btn-back-glow px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-xl text-xs flex items-center gap-1 shadow-sm">
-          <i data-lucide="arrow-left" class="w-3.5 h-3.5 stroke-[2.75]"></i> Kembali
+  <!-- MODAL KIRIM LAPORAN KE WHATSAPP -->
+  <div id="modal-wa-share" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl w-full max-w-md p-5 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+            <i data-lucide="send" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-extrabold text-slate-900">Kirim Laporan ke WhatsApp</h3>
+            <p class="text-[11px] text-slate-500">Teks & link laporan penuh</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeActiveModal('modal-wa-share')" class="p-1 text-slate-400 hover:text-slate-700">
+          <i data-lucide="x" class="w-5 h-5"></i>
         </button>
-        <div class="text-right">
-          <h3 class="text-xs font-extrabold text-slate-900">Kirim Laporan WhatsApp</h3>
-          <p class="text-[10px] text-slate-500">Dilengkapi laporan mode penuh</p>
-        </div>
       </div>
-      <div class="space-y-2.5">
+
+      <div class="space-y-3">
         <div>
-          <label class="block text-[11px] font-bold text-slate-600 mb-1">Nomor WA Tujuan (Opsional)</label>
-          <input type="tel" id="wa-target-phone" placeholder="Kosongkan untuk pilih Grup / Kontak di WA" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:border-emerald-500" />
+          <label class="block text-xs font-bold text-slate-600 mb-1">Nomor WA Tujuan (Opsional)</label>
+          <input type="tel" id="wa-target-phone" placeholder="Contoh: 081234567890" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium" />
         </div>
-        <div class="space-y-1.5">
-          <label class="flex items-center gap-2 p-2.5 bg-teal-50/70 rounded-xl border border-teal-200 cursor-pointer">
-            <input type="checkbox" id="wa-include-link" checked onchange="refreshWaPreview()" class="rounded text-teal-600" />
-            <span class="text-xs font-bold text-teal-800">Sertakan tombol buka Laporan Mode Penuh</span>
+
+        <div class="flex flex-wrap gap-4">
+          <label class="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+            <input type="checkbox" id="wa-include-checklist" checked onchange="refreshWaPreview()" class="w-4 h-4 rounded text-emerald-600" />
+            <span>Rincian item checklist</span>
           </label>
-          <label class="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
-            <input type="checkbox" id="wa-include-checklist" checked onchange="refreshWaPreview()" class="rounded text-emerald-600" />
-            <span class="text-xs font-bold text-slate-700">Sertakan rincian kelengkapan di teks</span>
+          <label class="flex items-center gap-2 text-xs font-semibold text-teal-700 cursor-pointer">
+            <input type="checkbox" id="wa-include-link" checked onchange="refreshWaPreview()" class="w-4 h-4 rounded text-teal-600" />
+            <span>Link Laporan Penuh + Foto</span>
           </label>
         </div>
+
         <div>
           <div class="flex items-center justify-between mb-1">
-            <label class="text-[11px] font-bold text-slate-600">Pratinjau Pesan</label>
+            <label class="block text-xs font-bold text-slate-600">Pratinjau Pesan WhatsApp</label>
             <button type="button" onclick="previewFullReportFromModal()" class="text-[11px] font-bold text-teal-600 hover:underline flex items-center gap-1">
-              <i data-lucide="external-link" class="w-3 h-3"></i> Lihat Tampilan Penuh
+              <i data-lucide="external-link" class="w-3 h-3"></i> Buka Laporan Penuh
             </button>
           </div>
-          <textarea id="wa-message-preview" rows="7" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-mono text-slate-700 outline-none focus:border-emerald-500"></textarea>
-        </div>
-      </div>
-      <div class="grid grid-cols-2 gap-2 pt-1">
-        <button type="button" onclick="executeWhatsAppSend(false)" class="py-3 px-3 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
-          <i data-lucide="users" class="w-3.5 h-3.5"></i> Pilih Grup / Kontak
-        </button>
-        <button type="button" onclick="executeWhatsAppSend(true)" class="py-3 px-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
-          <i data-lucide="send" class="w-3.5 h-3.5"></i> Kirim ke Nomor
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <div id="modal-photo-zoom" onclick="closeActiveModal('modal-photo-zoom')" class="hidden fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="max-w-2xl w-full space-y-3 text-center">
-      <div class="flex justify-start">
-        <button type="button" onclick="closeActiveModal('modal-photo-zoom')" class="btn-back-glow px-4 py-2 bg-amber-400 text-slate-950 rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-lg">
-          <i data-lucide="arrow-left" class="w-4 h-4 stroke-[2.75]"></i> Kembali
-        </button>
-      </div>
-      <img id="zoom-photo-img" src="" class="w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl mx-auto" />
-      <p class="text-xs text-slate-300">Ketuk tombol Kembali atau layar untuk menutup</p>
-    </div>
-  </div>
-
-  <div id="modal-qr-scanner" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-4">
-      <div class="flex items-center justify-between gap-2">
-        <button type="button" onclick="closeQrScanner()" class="btn-back-glow px-3.5 py-2 bg-amber-400 text-slate-950 rounded-xl text-xs font-extrabold flex items-center gap-1 shadow-sm">
-          <i data-lucide="arrow-left" class="w-3.5 h-3.5 stroke-[2.75]"></i> Kembali
-        </button>
-        <h3 class="text-xs font-extrabold text-slate-900">Scan QR Pintu Kamar</h3>
-      </div>
-      <div id="qr-reader" class="w-full rounded-2xl overflow-hidden border border-slate-200"></div>
-      <p class="text-[11px] text-center text-slate-500">Arahkan kamera ke stiker QR Code pintu kamar</p>
-    </div>
-  </div>
-
-  <div id="modal-qr-print" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-xs rounded-3xl p-6 text-center space-y-4">
-      <h3 id="qr-print-title" class="text-base font-extrabold text-slate-900">QR Code Kamar</h3>
-      <div id="qr-code-box" class="flex justify-center p-4 bg-white border-2 border-teal-600 rounded-2xl"></div>
-      <p id="qr-print-code" class="text-xs font-mono font-bold text-slate-600"></p>
-      <p class="text-[11px] text-slate-500">Unduh gambar stiker QR siap cetak untuk ditempel di pintu kamar</p>
-      <div class="flex gap-2">
-        <button type="button" onclick="downloadQrImage()" class="flex-1 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm">
-          <i data-lucide="download" class="w-4 h-4"></i> PNG
-        </button>
-        <button type="button" onclick="closeActiveModal('modal-qr-print')" class="btn-back-glow px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-xl text-xs flex items-center gap-1 shadow-sm">
-          <i data-lucide="arrow-left" class="w-3.5 h-3.5 stroke-[2.75]"></i> Kembali
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <div id="modal-about" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto">
-      <div class="flex items-center justify-between gap-2">
-        <button type="button" onclick="closeActiveModal('modal-about')" class="btn-back-glow px-3.5 py-2 bg-amber-400 text-slate-950 rounded-xl text-xs font-extrabold flex items-center gap-1 shadow-sm">
-          <i data-lucide="arrow-left" class="w-3.5 h-3.5 stroke-[2.75]"></i> Kembali
-        </button>
-        <div class="text-right">
-          <h3 class="text-xs font-extrabold text-slate-900">Tentang Aplikasi</h3>
-          <p onclick="handleSecretHistoryTap()" class="text-[10px] text-teal-600 font-bold select-none cursor-default">Versi 5.4 PWA • Modular</p>
+          <textarea id="wa-message-preview" rows="7" class="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono leading-relaxed text-slate-700"></textarea>
         </div>
       </div>
 
-      <div class="space-y-2.5 text-xs text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100">
-        <p class="font-bold text-slate-900">Sistem Monitoring Kesiapan Kamar Rawat Inap</p>
-        <p>Aplikasi PWA untuk memantau kesiapan, kebersihan, dan kelengkapan fasilitas kamar secara real-time di <strong>RS Khusus Bedah SS Medika</strong>.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+        <button type="button" onclick="executeWhatsAppSend(false)" class="py-3 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm">
+          <i data-lucide="users" class="w-4 h-4"></i> Pilih Grup / Kontak
+        </button>
+        <button type="button" onclick="executeWhatsAppSend(true)" class="py-3 px-3 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm">
+          <i data-lucide="phone-forwarded" class="w-4 h-4"></i> Kirim ke Nomor Di Atas
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL NOTIFICATION DRAWER -->
+  <div id="modal-notifications" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl w-full max-w-md p-5 space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center">
+            <i data-lucide="bell" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-extrabold text-slate-900">Notifikasi Laporan Masuk</h3>
+            <p class="text-[11px] text-slate-500">Ketuk tombol di bawah laporan untuk cek form & approve</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeActiveModal('modal-notifications')" class="p-1 text-slate-400 hover:text-slate-700">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div id="notif-drawer-list" class="space-y-2.5 overflow-y-auto flex-1 pr-1"></div>
+      <button type="button" onclick="closeActiveModal('modal-notifications')" class="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold">
+        Tutup
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL ABOUT -->
+  <div id="modal-about" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl w-full max-w-sm p-6 text-center space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <img src="192x192.png" alt="Logo" class="w-16 h-16 mx-auto rounded-2xl shadow" />
+      <div>
+        <h3 class="text-base font-extrabold text-slate-900">Cek Kesiapan Kamar <span class="text-xs font-bold text-teal-600">v5.6</span></h3>
+        <p class="text-xs font-bold text-teal-700 mt-0.5">RS Khusus Bedah SS Medika</p>
       </div>
 
-      <div id="invite-box-about" class="bg-teal-50/70 border border-teal-200/80 rounded-2xl p-3.5 space-y-2.5">
+      <div id="invite-box-about" class="bg-teal-50/70 p-3.5 rounded-2xl border border-teal-200/80 text-left space-y-2.5">
         <div class="flex items-center justify-between">
           <span class="text-[11px] font-extrabold text-teal-900 flex items-center gap-1.5">
-            <i data-lucide="user-plus" class="w-3.5 h-3.5 text-teal-600"></i> Kirim Undangan Aplikasi
+            <i data-lucide="share-2" class="w-3.5 h-3.5 text-teal-600"></i> Undang Tim ke Aplikasi
           </span>
-          <button type="button" onclick="copyAppInviteLink()" id="btn-copy-invite" class="text-[10px] font-bold text-teal-700 hover:underline flex items-center gap-1">
+          <button type="button" onclick="copyAppInviteLink()" id="btn-copy-invite" class="text-[10px] font-bold text-teal-700 bg-white px-2 py-1 rounded-lg border border-teal-200 hover:bg-teal-100 flex items-center gap-1">
             <i data-lucide="copy" class="w-3 h-3"></i> Salin Link
           </button>
         </div>
         <div class="grid grid-cols-2 gap-2">
-          <button type="button" onclick="sendAppInviteWa('manajemen')" class="py-2.5 px-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-            <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Manajemen
+          <button type="button" onclick="sendAppInviteWa('manajemen')" class="py-2 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 shadow-sm">
+            <i data-lucide="send" class="w-3 h-3"></i> Undang Manajemen
           </button>
-          <button type="button" onclick="sendAppInviteWa('petugas')" class="py-2.5 px-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-            <i data-lucide="users" class="w-3.5 h-3.5"></i> Petugas
+          <button type="button" onclick="sendAppInviteWa('petugas')" class="py-2 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 shadow-sm">
+            <i data-lucide="send" class="w-3 h-3"></i> Undang Petugas
           </button>
         </div>
       </div>
 
-      <button type="button" id="btn-install-modal" onclick="triggerPwaInstall()" class="hidden w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm">
-        <i data-lucide="smartphone" class="w-4 h-4"></i> Install ke Layar Utama HP
+      <button type="button" id="btn-install-modal" onclick="triggerPwaInstall()" class="hidden w-full py-2.5 bg-teal-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5">
+        <i data-lucide="smartphone" class="w-4 h-4"></i> Install di Layar Utama HP
       </button>
 
-      <div class="text-center text-[11px] text-slate-400">&copy; 2026 RS Khusus Bedah SS Medika</div>
-
-      <button type="button" onclick="closeActiveModal('modal-about')" class="btn-back-glow w-full py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md">
-        <i data-lucide="arrow-left" class="w-4 h-4 stroke-[2.75]"></i> Kembali
-      </button>
+      <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-1">
+        <p class="text-[11px] text-slate-500">Pembuat & Pengembang Aplikasi</p>
+        <p class="text-sm font-extrabold text-slate-900">Azis Munandar</p>
+      </div>
+      <button onclick="closeActiveModal('modal-about')" class="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold">Tutup</button>
     </div>
   </div>
 
-  <script src="./app.js?v=5.4"></script>
+  <script src="app.js?v=5.6"></script>
 </body>
 </html>
