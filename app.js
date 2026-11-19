@@ -1,4 +1,4 @@
-const APP_VERSION = '5.4';
+const APP_VERSION = '5.5';
 const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteHB4cnJqeG51anlnYWJyaHNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MDk0MjAsImV4cCI6MjExMDQ4NTQyMH0.tFMCbg1_R-I08KEIs-h6wwxXhYLP2Z0oYgnDGC7T2YU';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -759,7 +759,6 @@ function openNotificationDrawer() {
       const meta = parseNotesMetadata(r.notes);
       const actorName = meta.executor || r.inspector_name;
       const waktu = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
-      const canApproveHere = isManagerRole() && !isApproved && r.id;
       return `
         <div class="p-3 rounded-2xl ${isApproved ? 'bg-slate-50 border-slate-200/80' : 'bg-indigo-50/70 border-indigo-200'} border transition space-y-2">
           <div onclick="${r.id ? `openReportFullView('${r.id}')` : ''}" class="cursor-pointer space-y-1">
@@ -772,9 +771,9 @@ function openNotificationDrawer() {
               <span class="shrink-0 text-[10px]">${waktu}</span>
             </div>
           </div>
-          ${canApproveHere ? `
+          ${(isManagerRole() && r.id) ? `
             <button type="button" onclick="closeActiveModal('modal-notifications'); openReportInForm('${r.id}');" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-              <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek & Approve Form
+              <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> ${isApproved ? 'Buka & Review Form' : 'Cek & Approve Form'}
             </button>
           ` : ''}
         </div>
@@ -1022,6 +1021,12 @@ function clearPrefillFormState() {
   if (btnSubmit) btnSubmit.textContent = 'Simpan Laporan Kesiapan';
 }
 
+function resetFormForFreshCheck() {
+  clearPrefillFormState();
+  populateOfficerDropdown();
+  setAutoShift();
+}
+
 function populateFormWithReport(latestRep) {
   if (!latestRep) {
     clearPrefillFormState();
@@ -1115,8 +1120,9 @@ function populateFormWithReport(latestRep) {
   const reviewDesc = document.getElementById('prefill-review-desc');
   const btnDirectApprove = document.getElementById('btn-direct-approve-form');
   if (reviewBanner && reviewDesc) {
-    const waktu = latestRep.created_at ? new Date(latestRep.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '';
-    reviewDesc.textContent = `Diisi oleh ${executorName}${waktu ? ' pukul ' + waktu : ''} • Skor Kelengkapan ${latestRep.readiness_score}%.`;
+    const waktu = latestRep.created_at ? new Date(latestRep.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    const statusInfo = isInspectionOfficiallyApproved(latestRep) ? 'Status: Sudah Approved' : 'Status: Menunggu Approval';
+    reviewDesc.innerHTML = `Diisi oleh <strong>${executorName}</strong>${waktu ? ' (' + waktu + ')' : ''} • Skor <strong>${latestRep.readiness_score}%</strong> • ${statusInfo}. <button type="button" onclick="resetFormForFreshCheck()" class="underline font-extrabold text-indigo-950 ml-1">Kosongkan Form</button>`;
     reviewBanner.classList.remove('hidden');
     if (btnDirectApprove) {
       btnDirectApprove.classList.toggle('hidden', !isManagerRole());
@@ -1134,10 +1140,9 @@ function loadExistingInspectionToForm(unitId) {
   const unit = unitsData.find(u => String(u.id) === String(unitId));
   if (!unit) { clearPrefillFormState(); return; }
 
-  const eff = getEffectiveUnitStatus(unit);
   const latestRep = getLatestInspectionForUnit(unit.id, unit.unit_name);
 
-  if (eff !== 'kosong' && latestRep && !isInspectionOfficiallyApproved(latestRep)) {
+  if (latestRep) {
     const meta = parseNotesMetadata(latestRep.notes);
     const ownerName = meta.executor || latestRep.inspector_name;
     if (isManagerRole() || (currentUser && ownerName === currentUser.full_name)) {
@@ -1291,7 +1296,7 @@ async function loadAllData() {
   if (activeTabName === 'inspect') {
     if (activeReviewReportId) {
       const rep = inspectionsData.find(r => String(r.id) === String(activeReviewReportId));
-      if (rep && !isInspectionOfficiallyApproved(rep)) populateFormWithReport(rep);
+      if (rep) populateFormWithReport(rep);
     } else {
       const curUnitId = document.getElementById('inspect-unit')?.value;
       if (curUnitId) loadExistingInspectionToForm(curUnitId);
@@ -1347,9 +1352,9 @@ function renderDashboard() {
     const actorMeta = latestRep ? parseNotesMetadata(latestRep.notes) : null;
     const checkedInfo = isWaitingApproval
       ? `Dicek: ${actorMeta?.executor || latestRep?.inspector_name || 'Petugas'} (${latestRep?.readiness_score ?? 0}%)`
-      : (eff === 'siap' ? (u.last_checked_by || 'Approved Manajemen') : 'Belum dicek (Kosong)');
+      : (eff === 'siap' ? (u.last_checked_by || 'Approved Manajemen') : (latestRep ? `Terakhir dicek (${latestRep.readiness_score}%)` : 'Belum dicek (Kosong)'));
 
-    const openAction = (latestRep && !isInspectionOfficiallyApproved(latestRep))
+    const openAction = latestRep
       ? `openReportInForm('${latestRep.id}')`
       : `quickInspect('${u.id}')`;
 
@@ -1364,16 +1369,21 @@ function renderDashboard() {
             ${dropdownOptions}
           </select>
         </div>
-        ${(isManagerRole() && isWaitingApproval) ? `
-          <button type="button" onclick="${openAction}" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-            <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek & Approve Form
-          </button>
+        ${(isManagerRole() && eff !== 'siap') ? `
+          <div class="grid grid-cols-2 gap-1.5">
+            <button type="button" onclick="${openAction}" class="py-2 px-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 shadow-sm transition">
+              <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek Form
+            </button>
+            <button type="button" onclick="approveUnitByManagement('${u.id}', '${(u.unit_name || '').replace(/'/g, "\\'")}')" class="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 shadow-sm transition">
+              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Approve
+            </button>
+          </div>
         ` : ''}
         <div class="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-100">
           <span class="text-[10px] text-slate-500 font-medium truncate">${checkedInfo}</span>
           <div class="flex items-center gap-1.5 shrink-0">
             ${(eff === 'siap' && isManagerRole()) ? `<button type="button" onclick="confirmPatientCheckout('${u.id}', '${(u.unit_name || '').replace(/'/g, "\\'")}')" title="Konfirmasi Pasien Pulang / Kosongkan" class="px-2 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-lg text-[10px] font-bold">Pasien Pulang</button>` : ''}
-            ${!isWaitingApproval ? `<button type="button" onclick="quickInspect('${u.id}')" class="px-3 py-1 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-[11px] font-bold">Cek Sekarang</button>` : ''}
+            <button type="button" onclick="quickInspect('${u.id}')" class="px-3 py-1 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-[11px] font-bold">Cek Sekarang</button>
           </div>
         </div>
       </div>
@@ -1896,9 +1906,9 @@ function renderAnalytics() {
               <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> ${isManagerRole() ? 'Masalah Selesai & Approve Siap Pakai' : 'Masalah Selesai & Kirim Approval Manajemen'}
             </button>
           ` : ''}
-          ${(isPendingApproval && isManagerRole() && r.id) ? `
+          ${(isManagerRole() && r.id) ? `
             <button type="button" onclick="openReportInForm('${r.id}')" class="w-full py-2 px-2 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-              <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek & Approve Form
+              <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> ${isApproved ? 'Review Form Isian' : 'Cek & Approve Form'}
             </button>
           ` : ''}
         </div>
@@ -1957,6 +1967,6 @@ function exportPdf() {
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=5.4').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=5.5').catch(() => {});
   });
 }
