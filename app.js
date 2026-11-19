@@ -1006,12 +1006,61 @@ function setAutoShift() {
   shiftSel.value = (hour >= 7 && hour < 14) ? 'Pagi' : (hour >= 14 && hour < 21) ? 'Siang' : 'Malam';
 }
 
+/* FUNGSI BARU: PILIH KAMERA ATAU ALBUM TERPISAH + ANIMASI */
+function triggerPhotoPicker(type, source) {
+  const inputId = source === 'camera' ? `input-camera-${type}` : `input-album-${type}`;
+  const el = document.getElementById(inputId);
+  if (el) {
+    el.value = '';
+    el.click();
+  }
+}
+
+function updatePhotoBoxUI(type, dataUrl) {
+  const wrap = document.getElementById('preview-wrap-' + type);
+  const prev = document.getElementById('preview-' + type);
+  const ph = document.getElementById('placeholder-' + type);
+  const box = document.getElementById('box-upload-' + type);
+  const btnClear = document.getElementById('btn-clear-' + type);
+
+  if (dataUrl) {
+    prev.src = dataUrl;
+    prev.classList.remove('photo-pop');
+    void prev.offsetWidth;
+    prev.classList.add('photo-pop');
+    wrap?.classList.remove('hidden');
+    ph?.classList.add('hidden');
+    btnClear?.classList.remove('hidden');
+    if (box) {
+      box.classList.remove('border-dashed', 'border-slate-300', 'bg-slate-50/80');
+      box.classList.add('border-solid', 'border-emerald-400', 'bg-emerald-50/30');
+    }
+  } else {
+    wrap?.classList.add('hidden');
+    ph?.classList.remove('hidden');
+    btnClear?.classList.add('hidden');
+    if (box) {
+      box.classList.add('border-dashed', 'border-slate-300', 'bg-slate-50/80');
+      box.classList.remove('border-solid', 'border-emerald-400', 'bg-emerald-50/30');
+    }
+  }
+}
+
+function clearSinglePhoto(type) {
+  watermarkedPhotos[type] = null;
+  updatePhotoBoxUI(type, null);
+}
+
+function resetPhotoBoxes() {
+  clearSinglePhoto('room');
+  clearSinglePhoto('toilet');
+}
+
 function clearPrefillFormState() {
   activeReviewReportId = null;
   document.getElementById('prefill-review-banner')?.classList.add('hidden');
   document.querySelectorAll('.inspect-chk').forEach(c => { c.checked = false; });
   updateScore();
-  watermarkedPhotos = { room: null, toilet: null };
   resetPhotoBoxes();
   const notesEl = document.getElementById('inspect-notes');
   if (notesEl) notesEl.value = '';
@@ -1097,24 +1146,8 @@ function populateFormWithReport(latestRep) {
     room: latestRep.photo_room_url || null,
     toilet: latestRep.photo_toilet_url || null
   };
-  ['room', 'toilet'].forEach(type => {
-    const url = watermarkedPhotos[type];
-    const prev = document.getElementById('preview-' + type);
-    const ph = document.getElementById('placeholder-' + type);
-    const box = document.getElementById('box-upload-' + type);
-    if (url && prev) {
-      prev.src = url;
-      prev.classList.remove('hidden');
-      ph?.classList.add('hidden');
-      box?.classList.remove('border-dashed');
-      box?.classList.add('border-solid', 'border-emerald-400', 'bg-emerald-50/30');
-    } else {
-      prev?.classList.add('hidden');
-      ph?.classList.remove('hidden');
-      box?.classList.add('border-dashed');
-      box?.classList.remove('border-solid', 'border-emerald-400', 'bg-emerald-50/30');
-    }
-  });
+  updatePhotoBoxUI('room', watermarkedPhotos.room);
+  updatePhotoBoxUI('toilet', watermarkedPhotos.toilet);
 
   const reviewBanner = document.getElementById('prefill-review-banner');
   const reviewDesc = document.getElementById('prefill-review-desc');
@@ -1206,8 +1239,8 @@ async function enterApp() {
   const badge = document.getElementById('user-role-badge');
   badge.textContent = currentUser.role.toUpperCase();
   badge.className = isManagerRole()
-    ? 'shrink-0 text-[8.5px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 tracking-wide'
-    : 'shrink-0 text-[8.5px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide';
+    ? 'shrink-0 text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 tracking-wide'
+    : 'shrink-0 text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide';
 
   const userCard = document.getElementById('user-management-card');
   if (userCard) userCard.style.display = isManagerRole() ? 'block' : 'none';
@@ -1229,10 +1262,10 @@ function logout() { localStorage.removeItem('ck_user'); document.documentElement
 function updateNetworkStatus() {
   const el = document.getElementById('network-status');
   if (navigator.onLine) {
-    el.className = 'flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap';
+    el.className = 'flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9.5px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap';
     el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Online';
   } else {
-    el.className = 'flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap';
+    el.className = 'flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9.5px] font-bold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap';
     el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Offline';
   }
 }
@@ -1242,8 +1275,16 @@ function switchTab(tabName, fromPopState = false, skipAutoPrefill = false) {
     tabName = 'inspect';
   }
   activeTabName = tabName;
-  document.querySelectorAll('.page-section').forEach(el => el.classList.add('hidden'));
-  document.getElementById('tab-' + tabName).classList.remove('hidden');
+  document.querySelectorAll('.page-section').forEach(el => {
+    el.classList.add('hidden');
+    el.classList.remove('page-animate');
+  });
+  const targetSection = document.getElementById('tab-' + tabName);
+  if (targetSection) {
+    targetSection.classList.remove('hidden');
+    void targetSection.offsetWidth;
+    targetSection.classList.add('page-animate');
+  }
 
   document.querySelectorAll('.nav-btn').forEach(btn => {
     const isActive = btn.dataset.tab === tabName;
@@ -1419,7 +1460,7 @@ function renderInspectForm() {
   const box = document.getElementById('checklist-container');
   if (itemsData.length === 0) { box.innerHTML = '<p class="text-xs text-slate-400">Belum ada item kelengkapan. Tambahkan di Pengaturan.</p>'; return; }
   box.innerHTML = itemsData.map(item => `
-    <label class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
+    <label class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer active:scale-[0.99] transition">
       <div>
         <span class="text-xs font-bold text-slate-800">${item.item_name}</span>
         <span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">${item.category}</span>
@@ -1457,26 +1498,11 @@ function handlePhoto(e, type) {
       const officerName = isPetugasRole() ? currentUser.full_name : (document.getElementById('inspect-executor-select')?.value || currentUser.full_name);
       ctx.fillText(`${new Date().toLocaleString('id-ID')} • ${officerName}`, 10, canvas.height - 12);
       watermarkedPhotos[type] = canvas.toDataURL('image/jpeg', 0.75);
-
-      const prev = document.getElementById('preview-' + type);
-      document.getElementById('placeholder-' + type)?.classList.add('hidden');
-      const box = document.getElementById('box-upload-' + type);
-      if (box) { box.classList.remove('border-dashed'); box.classList.add('border-solid', 'border-emerald-400', 'bg-emerald-50/30'); }
-      prev.src = watermarkedPhotos[type];
-      prev.classList.remove('hidden');
+      updatePhotoBoxUI(type, watermarkedPhotos[type]);
     };
     img.src = ev.target.result;
   };
   reader.readAsDataURL(file);
-}
-
-function resetPhotoBoxes() {
-  ['room', 'toilet'].forEach(type => {
-    document.getElementById('preview-' + type)?.classList.add('hidden');
-    document.getElementById('placeholder-' + type)?.classList.remove('hidden');
-    const box = document.getElementById('box-upload-' + type);
-    if (box) { box.classList.add('border-dashed'); box.classList.remove('border-solid', 'border-emerald-400', 'bg-emerald-50/30'); }
-  });
 }
 
 function buildWaMessage(data, includeChecklist, includeFullLink) {
@@ -1648,7 +1674,6 @@ async function processInspectionSubmit(alsoSendWa = false) {
     document.getElementById('inspection-form').reset();
     populateOfficerDropdown();
     setAutoShift();
-    watermarkedPhotos = { room: null, toilet: null };
     resetPhotoBoxes();
     playNotificationChime();
     await loadAllData();
@@ -1859,8 +1884,21 @@ function renderAnalytics() {
   if (statusChart) statusChart.destroy();
   statusChart = new Chart(ctx, {
     type: 'doughnut',
-    data: { labels: ['Siap Pakai', 'Kosong / Proses', 'Maintenance'], datasets: [{ data: [siap, kotor, maint], backgroundColor: ['#10b981', '#f59e0b', '#e11d48'] }] },
-    options: { plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } }
+    data: {
+      labels: ['Siap Pakai', 'Kosong / Proses', 'Maintenance'],
+      datasets: [{ data: [siap, kotor, maint], backgroundColor: ['#10b981', '#f59e0b', '#e11d48'], borderWidth: 2, borderColor: '#ffffff' }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '62%',
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { boxWidth: 10, padding: 10, font: { size: 10.5, weight: 'bold' } }
+        }
+      }
+    }
   });
 
   const { rows: filteredRows } = getFilteredExportData();
