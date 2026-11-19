@@ -771,7 +771,7 @@
 
   <!-- MODAL TENTANG APLIKASI -->
   <div id="modal-about" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl">
+    <div class="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2.5">
           <div class="w-10 h-10 bg-teal-600 rounded-2xl flex items-center justify-center text-white overflow-hidden">
@@ -796,6 +796,26 @@
           <li>• <strong>Notifikasi HP Real-Time:</strong> Muncul bunyi & pemberitahuan setiap ada laporan masuk.</li>
           <li>• <strong>Ekspor Periode & Kamar:</strong> Filter laporan harian, rentang tanggal, bulanan, tahunan, & lampiran foto PDF.</li>
         </ul>
+      </div>
+
+      <!-- UNDANGAN AKSES APLIKASI (TERSEMBUNYI RAPI DI MENU TENTANG) -->
+      <div class="bg-teal-50/70 border border-teal-200/80 rounded-2xl p-3.5 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-extrabold text-teal-900 flex items-center gap-1.5">
+            <i data-lucide="user-plus" class="w-3.5 h-3.5 text-teal-600"></i> Kirim Undangan Aplikasi
+          </span>
+          <button type="button" onclick="copyAppInviteLink()" id="btn-copy-invite" class="text-[10px] font-bold text-teal-700 hover:underline flex items-center gap-1">
+            <i data-lucide="copy" class="w-3 h-3"></i> Salin Link
+          </button>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" onclick="sendAppInviteWa('manajemen')" class="py-2.5 px-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
+            <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Manajemen
+          </button>
+          <button type="button" onclick="sendAppInviteWa('petugas')" class="py-2.5 px-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
+            <i data-lucide="users" class="w-3.5 h-3.5"></i> Petugas
+          </button>
+        </div>
       </div>
 
       <button type="button" id="btn-install-modal" onclick="triggerPwaInstall()" class="hidden w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm">
@@ -848,6 +868,83 @@
     let toastTimeout = null;
 
     lucide.createIcons();
+
+    // --- FUNGSI UNDANGAN APLIKASI UNTUK MANAJEMEN & PETUGAS ---
+    function getAppMainUrl() {
+      const cleanPath = window.location.pathname.replace(/\/index\.html$/, '');
+      const normalizedPath = cleanPath.endsWith('/') ? cleanPath : cleanPath + '/';
+      return `${window.location.origin}${normalizedPath}`;
+    }
+
+    function sendAppInviteWa(targetRole) {
+      const appUrl = getAppMainUrl();
+      let lines = [];
+
+      if (targetRole === 'manajemen') {
+        lines = [
+          '*UNDANGAN AKSES MONITORING*',
+          '*Aplikasi Cek Kesiapan Kamar*',
+          '*RS Khusus Bedah SS Medika*',
+          '--------------------------------',
+          'Yth. Bapak/Ibu Tim Manajemen,',
+          '',
+          'Berikut tautan aplikasi resmi untuk memantau status kesiapan kamar rawat inap, menerima notifikasi laporan masuk secara real-time, serta mengunduh rekap laporan (PDF/Excel):',
+          '',
+          `🔗 *Link Aplikasi:*`,
+          appUrl,
+          '',
+          '📱 *Cara Pasang di Layar Utama HP:*',
+          '1. Buka link di atas melalui Google Chrome / Safari',
+          '2. Ketuk menu titik tiga (⋮) atau tombol Bagikan',
+          '3. Pilih *"Tambahkan ke Layar Utama / Install Aplikasi"*',
+          '4. Login menggunakan akun Manajemen yang telah didaftarkan',
+          '',
+          'Terima kasih.'
+        ];
+      } else {
+        lines = [
+          '*UNDANGAN OPERASIONAL PETUGAS*',
+          '*Aplikasi Cek Kesiapan Kamar*',
+          '*RS Khusus Bedah SS Medika*',
+          '--------------------------------',
+          'Halo Rekan-Rekan Petugas,',
+          '',
+          'Silakan akses aplikasi di bawah ini untuk melakukan pengecekan kesiapan kamar, scan QR pintu, dan dokumentasi foto sebelum & sesudah pembersihan:',
+          '',
+          `🔗 *Link Aplikasi:*`,
+          appUrl,
+          '',
+          '📱 *Cara Pasang di HP (Wajib):*',
+          '1. Buka link di atas melalui Google Chrome',
+          '2. Ketuk menu titik tiga (⋮) di pojok kanan atas',
+          '3. Pilih *"Install Aplikasi / Tambahkan ke Layar Utama"*',
+          '4. Login menggunakan username & password petugas masing-masing',
+          '',
+          'Selamat bertugas!'
+        ];
+      }
+
+      document.getElementById('modal-about')?.classList.add('hidden');
+      window.open(`https://wa.me/?text=${encodeURIComponent(lines.join('\n'))}`, '_blank');
+    }
+
+    async function copyAppInviteLink() {
+      const appUrl = getAppMainUrl();
+      const btn = document.getElementById('btn-copy-invite');
+      try {
+        await navigator.clipboard.writeText(appUrl);
+        if (btn) {
+          btn.innerHTML = '<i data-lucide="check" class="w-3 h-3"></i> Tersalin!';
+          lucide.createIcons();
+          setTimeout(() => {
+            btn.innerHTML = '<i data-lucide="copy" class="w-3 h-3"></i> Salin Link';
+            lucide.createIcons();
+          }, 2000);
+        }
+      } catch (e) {
+        prompt('Salin link aplikasi berikut:', appUrl);
+      }
+    }
 
     // --- HELPER PARSING PETUGAS PELAKSANA & TANGGAPAN PEMERIKSA TANPA UBAH SCHEMA DB ---
     function parseNotesMetadata(rawNotes) {
@@ -1810,7 +1907,7 @@
       timerInterval = setInterval(() => {
         secondsElapsed++;
         const m = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
-        const s = String(secondsElapsed % 60).padStart(2, '0');
+        const s = String(secondsElapsed % 60)).padStart(2, '0');
         document.getElementById('timer-display').textContent = `${m}:${s}`;
       }, 1000);
     }
