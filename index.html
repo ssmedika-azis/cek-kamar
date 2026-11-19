@@ -83,7 +83,10 @@
   <div id="public-report-screen" class="hidden min-h-screen w-full bg-slate-100 pb-12">
     <header class="sticky top-0 z-30 bg-teal-700 text-white px-4 pb-3.5 safe-top shadow-md">
       <div class="max-w-2xl mx-auto flex items-center justify-between gap-2">
-        <div class="flex items-center gap-2.5 min-w-0 flex-1">
+        <div class="flex items-center gap-2 min-w-0 flex-1">
+          <button type="button" onclick="exitPublicReportMode()" title="Kembali ke Aplikasi" class="p-2 bg-teal-800/80 hover:bg-teal-900 text-white rounded-xl shrink-0 flex items-center justify-center transition">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+          </button>
           <div class="w-9 h-9 bg-white rounded-xl flex items-center justify-center shrink-0 overflow-hidden p-0.5">
             <img src="./192x192.png" alt="Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" class="w-full h-full object-contain" />
             <i data-lucide="hospital" class="w-5 h-5 text-teal-700 hidden"></i>
@@ -110,7 +113,7 @@
     </div>
     <div class="max-w-2xl mx-auto px-4 pt-2">
       <button type="button" onclick="exitPublicReportMode()" class="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-sm transition">
-        <i data-lucide="layout-grid" class="w-4 h-4"></i> Buka Aplikasi Utama Cek Kesiapan Kamar
+        <i data-lucide="arrow-left" class="w-4 h-4"></i> Kembali ke Aplikasi Utama
       </button>
     </div>
   </div>
@@ -174,7 +177,7 @@
           <span id="network-status" class="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Online
           </span>
-          <button onclick="document.getElementById('modal-about').classList.remove('hidden')" title="Tentang Aplikasi" class="p-1.5 text-slate-500 hover:text-teal-600 hover:bg-teal-50 rounded-xl transition">
+          <button onclick="openModalWithHistory('modal-about')" title="Tentang Aplikasi" class="p-1.5 text-slate-500 hover:text-teal-600 hover:bg-teal-50 rounded-xl transition">
             <i data-lucide="info" class="w-4 h-4"></i>
           </button>
           <button onclick="logout()" title="Keluar" class="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition">
@@ -208,7 +211,7 @@
             <p id="stat-siap" class="text-2xl font-extrabold text-emerald-600 mt-0.5">0</p>
           </div>
           <div class="glass-card rounded-2xl p-3.5 text-center shadow-sm">
-            <p class="text-[11px] font-bold text-slate-500">Perlu Cek</p>
+            <p class="text-[11px] font-bold text-slate-500">Kosong / Bersih</p>
             <p id="stat-kotor" class="text-2xl font-extrabold text-amber-500 mt-0.5">0</p>
           </div>
           <div class="glass-card rounded-2xl p-3.5 text-center shadow-sm">
@@ -228,10 +231,15 @@
       <!-- TAB 2: CEK KAMAR -->
       <section id="tab-inspect" class="page-section hidden space-y-4">
         <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <h2 class="text-base font-extrabold text-slate-900">Form Inspeksi Kamar</h2>
-              <p class="text-xs text-slate-500">Isi checklist kelengkapan & kebersihan</p>
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="switchTab('dashboard')" title="Kembali ke Dasbor" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition">
+                <i data-lucide="arrow-left" class="w-4 h-4"></i>
+              </button>
+              <div>
+                <h2 class="text-base font-extrabold text-slate-900">Form Inspeksi Kamar</h2>
+                <p class="text-xs text-slate-500">Isi checklist kelengkapan & kebersihan</p>
+              </div>
             </div>
             <div class="px-3 py-1.5 bg-slate-100 rounded-xl text-xs font-mono font-bold text-slate-700" id="timer-display">00:00</div>
           </div>
@@ -280,7 +288,8 @@
                 <span class="text-[10px] font-bold text-amber-700">Evaluasi</span>
               </div>
               <select id="inspect-feedback-status" onchange="handleFeedbackStatusChange()" class="w-full p-2.5 bg-white border border-amber-200 rounded-xl text-xs font-extrabold text-slate-800 outline-none focus:border-amber-500">
-                <option value="Sesuai Standar (Baik)">✅ Hasil Kerja Sesuai Standar (Baik)</option>
+                <option value="Sesuai Standar (Baik)">✅ Hasil Kerja Sesuai Standar (Approved / Siap Pakai)</option>
+                <option value="Sedang Dibersihkan / Proses">🧹 Sedang Dibersihkan / Menunggu Approval</option>
                 <option value="Perlu Perbaikan Ringan">⚠️ Perlu Perbaikan Ringan (Tandai Bagian)</option>
                 <option value="Wajib Diperbaiki Segera">🚨 Wajib Diperbaiki Segera (Belum Layak)</option>
               </select>
@@ -364,7 +373,12 @@
       <section id="tab-analytics" class="page-section hidden space-y-4">
         <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
           <div class="flex flex-wrap items-center justify-between gap-2">
-            <h2 class="text-base font-extrabold text-slate-900">Analitik & Riwayat</h2>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="switchTab('dashboard')" title="Kembali ke Dasbor" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition">
+                <i data-lucide="arrow-left" class="w-4 h-4"></i>
+              </button>
+              <h2 class="text-base font-extrabold text-slate-900">Analitik & Riwayat</h2>
+            </div>
             <div class="flex items-center gap-1.5">
               <button onclick="exportCsv()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm">
                 <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Ekspor CSV
@@ -458,9 +472,14 @@
       <section id="tab-master" class="page-section hidden space-y-5">
         <div class="glass-card rounded-3xl p-5 shadow-sm space-y-3">
           <div class="flex items-center justify-between gap-2">
-            <div>
-              <h2 class="text-base font-extrabold text-slate-900">Notifikasi Laporan Masuk</h2>
-              <p class="text-xs text-slate-500">Bunyi & notifikasi layar HP saat ada petugas mengisi form</p>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="switchTab('dashboard')" title="Kembali ke Dasbor" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition">
+                <i data-lucide="arrow-left" class="w-4 h-4"></i>
+              </button>
+              <div>
+                <h2 class="text-base font-extrabold text-slate-900">Notifikasi Laporan Masuk</h2>
+                <p class="text-xs text-slate-500">Bunyi & notifikasi layar HP saat ada petugas mengisi form</p>
+              </div>
             </div>
             <button type="button" onclick="testNotificationAlert()" class="px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-xl text-xs font-bold flex items-center gap-1.5">
               <i data-lucide="volume-2" class="w-3.5 h-3.5"></i> Tes Bunyi
@@ -563,22 +582,22 @@
     <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-3.5 shadow-2xl max-h-[85vh] flex flex-col">
       <div class="flex items-center justify-between shrink-0">
         <div class="flex items-center gap-2">
-          <div class="w-9 h-9 bg-teal-100 text-teal-700 rounded-xl flex items-center justify-center">
-            <i data-lucide="bell-ring" class="w-4 h-4"></i>
-          </div>
+          <button type="button" onclick="closeActiveModal('modal-notifications')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+          </button>
           <div>
             <h3 class="text-sm font-extrabold text-slate-900">Notifikasi Laporan Masuk</h3>
             <p class="text-[11px] text-slate-500">Update real-time pengisian form kamar</p>
           </div>
         </div>
-        <button onclick="document.getElementById('modal-notifications').classList.add('hidden')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
+        <button onclick="closeActiveModal('modal-notifications')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
           <i data-lucide="x" class="w-4 h-4"></i>
         </button>
       </div>
       <div id="notif-drawer-list" class="overflow-y-auto space-y-2 pr-1 flex-1"></div>
       <div class="flex gap-2 pt-1 shrink-0">
         <button type="button" onclick="testNotificationAlert()" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">Tes Notifikasi HP</button>
-        <button type="button" onclick="document.getElementById('modal-notifications').classList.add('hidden'); switchTab('analytics');" class="flex-1 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs">Semua Riwayat</button>
+        <button type="button" onclick="closeActiveModal('modal-notifications'); switchTab('analytics');" class="flex-1 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs">Semua Riwayat</button>
       </div>
     </div>
   </div>
@@ -588,15 +607,15 @@
     <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-3.5 shadow-2xl max-h-[92vh] overflow-y-auto">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <div class="w-9 h-9 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
-            <i data-lucide="send" class="w-4 h-4"></i>
-          </div>
+          <button type="button" onclick="closeActiveModal('modal-wa-share')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+          </button>
           <div>
             <h3 class="text-sm font-extrabold text-slate-900">Kirim Laporan WhatsApp</h3>
             <p class="text-[11px] text-slate-500">Dilengkapi tombol laporan mode penuh</p>
           </div>
         </div>
-        <button onclick="document.getElementById('modal-wa-share').classList.add('hidden')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
+        <button onclick="closeActiveModal('modal-wa-share')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
           <i data-lucide="x" class="w-4 h-4"></i>
         </button>
       </div>
@@ -637,9 +656,14 @@
   </div>
 
   <!-- MODAL ZOOM FOTO -->
-  <div id="modal-photo-zoom" onclick="this.classList.add('hidden')" class="hidden fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
+  <div id="modal-photo-zoom" onclick="closeActiveModal('modal-photo-zoom')" class="hidden fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="max-w-2xl w-full space-y-3 text-center">
-      <img id="zoom-photo-img" src="" class="w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl mx-auto" />
+      <div class="flex justify-end">
+        <button type="button" onclick="closeActiveModal('modal-photo-zoom')" class="px-3 py-1.5 bg-white/15 text-white rounded-full text-xs font-bold flex items-center gap-1">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Kembali
+        </button>
+      </div>
+      <img id="zoom-photo-img" src="" class="w-full max-h-[76vh] object-contain rounded-2xl shadow-2xl mx-auto" />
       <p class="text-xs text-slate-300">Ketuk di mana saja untuk menutup foto</p>
     </div>
   </div>
@@ -648,7 +672,10 @@
   <div id="modal-qr-scanner" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-4">
       <div class="flex items-center justify-between">
-        <h3 class="text-sm font-extrabold text-slate-900">Scan QR Code Pintu Kamar</h3>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="closeQrScanner()" class="p-1.5 bg-slate-100 rounded-full text-slate-600"><i data-lucide="arrow-left" class="w-4 h-4"></i></button>
+          <h3 class="text-sm font-extrabold text-slate-900">Scan QR Code Pintu Kamar</h3>
+        </div>
         <button onclick="closeQrScanner()" class="p-1.5 bg-slate-100 rounded-full text-slate-600"><i data-lucide="x" class="w-4 h-4"></i></button>
       </div>
       <div id="qr-reader" class="w-full rounded-2xl overflow-hidden border border-slate-200"></div>
@@ -667,8 +694,8 @@
         <button type="button" onclick="downloadQrImage()" class="flex-1 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm">
           <i data-lucide="download" class="w-4 h-4"></i> Download PNG
         </button>
-        <button type="button" onclick="document.getElementById('modal-qr-print').classList.add('hidden')" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">
-          Tutup
+        <button type="button" onclick="closeActiveModal('modal-qr-print')" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">
+          Kembali
         </button>
       </div>
     </div>
@@ -679,16 +706,15 @@
     <div class="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2.5">
-          <div class="w-10 h-10 bg-teal-600 rounded-2xl flex items-center justify-center text-white overflow-hidden">
-            <img src="./192x192.png" alt="Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" class="w-full h-full object-cover" />
-            <i data-lucide="hospital" class="w-5 h-5 hidden"></i>
-          </div>
+          <button type="button" onclick="closeActiveModal('modal-about')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+          </button>
           <div>
             <h3 class="text-sm font-extrabold text-slate-900">Tentang Aplikasi</h3>
-            <p onclick="handleSecretHistoryTap()" class="text-[11px] text-teal-600 font-bold select-none cursor-default">Versi 3.8 PWA • Live Notifikasi</p>
+            <p onclick="handleSecretHistoryTap()" class="text-[11px] text-teal-600 font-bold select-none cursor-default">Versi 4.0 PWA • Siklus Status & Revisi</p>
           </div>
         </div>
-        <button onclick="document.getElementById('modal-about').classList.add('hidden')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
+        <button onclick="closeActiveModal('modal-about')" class="p-1.5 bg-slate-100 rounded-full text-slate-600">
           <i data-lucide="x" class="w-4 h-4"></i>
         </button>
       </div>
@@ -697,13 +723,13 @@
         <p class="font-bold text-slate-900">Sistem Monitoring Kesiapan Kamar Rawat Inap</p>
         <p>Aplikasi PWA (Progressive Web App) untuk memantau kesiapan, kebersihan, dan kelengkapan fasilitas kamar secara real-time di lingkungan <strong>RS Khusus Bedah SS Medika</strong>.</p>
         <ul class="space-y-1 text-[11px] text-slate-600 pt-1">
-          <li>• <strong>Evaluasi Pelaksana & Tanggapan Pemeriksa:</strong> Pemilihan nama pelaksana terdaftar & catatan perbaikan hasil kerja.</li>
-          <li>• <strong>Notifikasi HP Real-Time:</strong> Muncul bunyi & pemberitahuan setiap ada laporan masuk.</li>
-          <li>• <strong>Ekspor Periode & Kamar:</strong> Filter laporan harian, rentang tanggal, bulanan, tahunan, & lampiran foto PDF.</li>
+          <li>• <strong>Siklus Status Kamar:</strong> Kosong (belum dicek / pasien pulang), Sedang Dibersihkan, hingga Siap Pakai setelah disetujui pemeriksa.</li>
+          <li>• <strong>Tombol Selesai Revisi:</strong> Petugas dapat langsung menandai perbaikan telah selesai agar status kamar otomatis menjadi Siap Pakai.</li>
+          <li>• <strong>Navigasi Back Aman:</strong> Dilengkapi tombol kembali di tiap halaman & modal agar aplikasi tidak tertutup saat tombol Back HP ditekan.</li>
         </ul>
       </div>
 
-      <!-- UNDANGAN AKSES APLIKASI (TERSEMBUNYI RAPI DI MENU TENTANG) -->
+      <!-- UNDANGAN AKSES APLIKASI -->
       <div class="bg-teal-50/70 border border-teal-200/80 rounded-2xl p-3.5 space-y-2.5">
         <div class="flex items-center justify-between">
           <span class="text-[11px] font-extrabold text-teal-900 flex items-center gap-1.5">
@@ -729,8 +755,8 @@
 
       <div class="text-center text-[11px] text-slate-400">&copy; 2026 RS Khusus Bedah SS Medika</div>
 
-      <button type="button" onclick="document.getElementById('modal-about').classList.add('hidden')" class="w-full py-2.5 bg-teal-600 text-white font-bold rounded-xl text-xs">
-        Mengerti
+      <button type="button" onclick="closeActiveModal('modal-about')" class="w-full py-2.5 bg-teal-600 text-white font-bold rounded-xl text-xs">
+        Kembali
       </button>
     </div>
   </div>
@@ -760,6 +786,7 @@
     let deferredInstallPrompt = null;
     let activeWaPayload = null;
     let currentPublicReport = null;
+    let activeTabName = 'dashboard';
 
     let realtimeChannel = null;
     let pollingInterval = null;
@@ -769,6 +796,117 @@
     let toastTimeout = null;
 
     if (window.lucide) lucide.createIcons();
+
+    // --- NAVIGASI BACK HP (MENCEGAH APLIKASI PWA LANGSUNG KELUAR) ---
+    function openModalWithHistory(modalId) {
+      const el = document.getElementById(modalId);
+      if (!el) return;
+      el.classList.remove('hidden');
+      try { window.history.pushState({ modal: modalId, tab: activeTabName }, ''); } catch (e) {}
+    }
+
+    function closeActiveModal(modalId) {
+      const el = document.getElementById(modalId);
+      if (el) el.classList.add('hidden');
+    }
+
+    window.addEventListener('popstate', () => {
+      const openModals = ['modal-photo-zoom', 'modal-qr-scanner', 'modal-qr-print', 'modal-wa-share', 'modal-notifications', 'modal-about'];
+      for (const id of openModals) {
+        const el = document.getElementById(id);
+        if (el && !el.classList.contains('hidden')) {
+          if (id === 'modal-qr-scanner') closeQrScanner();
+          else el.classList.add('hidden');
+          return;
+        }
+      }
+      if (activeTabName !== 'dashboard') {
+        switchTab('dashboard', true);
+      }
+    });
+
+    // --- SIKLUS STATUS KAMAR (KOSONG / SEDANG DIBERSIHKAN / SIAP PAKAI / MAINTENANCE) ---
+    function getEffectiveUnitStatus(u) {
+      if (u.status === 'maintenance') return 'maintenance';
+      if (!u.last_checked_by || u.status === 'kosong') return 'kosong';
+      if (u.status === 'kotor' || u.status === 'dibersihkan') return 'dibersihkan';
+      if (u.status === 'siap') return 'siap';
+      return 'kosong';
+    }
+
+    async function confirmPatientCheckout(unitId, unitName) {
+      if (!confirm(`Konfirmasi pasien pulang di "${unitName}"?\n\nStatus kamar akan diubah menjadi KOSONG (Perlu Dibersihkan & Dicek).`)) return;
+      const { error } = await db.from('master_units').update({
+        status: 'kotor',
+        last_checked_by: null,
+        last_checked_at: new Date().toISOString()
+      }).eq('id', unitId);
+
+      if (error) return alert('Gagal memperbarui status kamar: ' + error.message);
+      playNotificationChime();
+      await loadAllData();
+    }
+
+    async function quickChangeUnitStatus(unitId, newMode) {
+      let dbStatus = 'kotor';
+      let checkedBy = null;
+
+      if (newMode === 'siap') {
+        dbStatus = 'siap';
+        checkedBy = currentUser ? currentUser.full_name : 'Supervisor';
+      } else if (newMode === 'dibersihkan') {
+        dbStatus = 'kotor';
+        checkedBy = currentUser ? currentUser.full_name : 'Petugas';
+      } else {
+        dbStatus = 'kotor';
+        checkedBy = null;
+      }
+
+      const { error } = await db.from('master_units').update({
+        status: dbStatus,
+        last_checked_by: checkedBy,
+        last_checked_at: new Date().toISOString()
+      }).eq('id', unitId);
+
+      if (error) return alert('Gagal mengubah status: ' + error.message);
+      await loadAllData();
+    }
+
+    // --- PENYELESAIAN MASALAH / REVISI OLEH PETUGAS ---
+    async function markIssueResolvedByOfficer(reportId) {
+      const report = inspectionsData.find(r => String(r.id) === String(reportId));
+      if (!report) return;
+      if (!confirm(`Konfirmasi bahwa perbaikan pada "${report.unit_name}" sudah selesai dikerjakan dan kamar siap dipakai?`)) return;
+
+      const meta = parseNotesMetadata(report.notes);
+      const resolverName = currentUser ? currentUser.full_name : 'Petugas';
+      const resolvedNote = composeNotesWithMetadata(
+        meta.executor || resolverName,
+        `Selesai Diperbaiki & Siap Pakai (Oleh ${resolverName})`,
+        '',
+        meta.cleanNotes
+      );
+
+      const { error } = await db.from('room_inspections').update({
+        final_status: 'siap',
+        readiness_score: 100,
+        notes: resolvedNote
+      }).eq('id', report.id);
+
+      if (error) return alert('Gagal memperbarui status perbaikan: ' + error.message);
+
+      if (report.unit_id) {
+        await db.from('master_units').update({
+          status: 'siap',
+          last_checked_by: resolverName,
+          last_checked_at: new Date().toISOString()
+        }).eq('id', report.unit_id);
+      }
+
+      playNotificationChime();
+      await loadAllData();
+      alert(`Berhasil! Status ${report.unit_name} kini telah diperbarui menjadi SIAP PAKAI.`);
+    }
 
     function getAppMainUrl() {
       const cleanPath = window.location.pathname.replace(/\/index\.html$/, '');
@@ -818,7 +956,7 @@
         'Selamat bertugas!'
       ];
 
-      document.getElementById('modal-about')?.classList.add('hidden');
+      closeActiveModal('modal-about');
       window.open(`https://wa.me/?text=${encodeURIComponent(lines.join('\n'))}`, '_blank');
     }
 
@@ -931,7 +1069,7 @@
             last_checked_by: latest.inspector_name
           }).eq('id', unitId);
         } else {
-          await db.from('master_units').update({ status: 'siap', last_checked_at: null, last_checked_by: null }).eq('id', unitId);
+          await db.from('master_units').update({ status: 'kotor', last_checked_at: null, last_checked_by: null }).eq('id', unitId);
         }
       }
       await loadAllData();
@@ -1107,14 +1245,14 @@
           if (reg && reg.showNotification) { await reg.showNotification(title, options); return; }
         }
         const n = new Notification(title, options);
-        n.onclick = () => { window.focus(); if (reportId) window.open(targetUrl, '_blank'); };
+        n.onclick = () => { window.focus(); if (reportId) window.location.href = targetUrl; };
       } catch (e) {}
     }
 
     function showInAppBanner(report) {
       latestNotifReport = report;
       const banner = document.getElementById('live-toast-banner');
-      const statusLabel = report.final_status === 'siap' ? 'SIAP PAKAI ✅' : 'PERLU CEK ⚠️';
+      const statusLabel = report.final_status === 'siap' ? 'SIAP PAKAI ✅' : 'SEDANG DIBERSIHKAN 🧹';
       document.getElementById('toast-banner-title').textContent = `${report.unit_name} • ${statusLabel}`;
       document.getElementById('toast-banner-body').textContent = `Oleh ${report.inspector_name} (Shift ${report.shift}) • Skor ${report.readiness_score}%`;
       document.getElementById('toast-banner-time').textContent = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -1129,8 +1267,12 @@
 
     function openLatestNotifFromBanner() {
       hideToastBanner();
-      if (latestNotifReport && latestNotifReport.id) window.open(getPublicReportUrl(latestNotifReport.id, true), '_blank');
+      if (latestNotifReport && latestNotifReport.id) openReportFullView(latestNotifReport.id);
       else switchTab('analytics');
+    }
+
+    function openReportFullView(reportId) {
+      window.location.href = getPublicReportUrl(reportId, true);
     }
 
     function handleIncomingNewReport(report) {
@@ -1171,10 +1313,10 @@
           const isSiap = r.final_status === 'siap';
           const waktu = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
           return `
-            <div onclick="${r.id ? `window.open('${getPublicReportUrl(r.id, true)}', '_blank')` : ''}" class="p-3 rounded-2xl bg-slate-50 hover:bg-teal-50/60 border border-slate-200/80 cursor-pointer transition space-y-1">
+            <div onclick="${r.id ? `openReportFullView('${r.id}')` : ''}" class="p-3 rounded-2xl bg-slate-50 hover:bg-teal-50/60 border border-slate-200/80 cursor-pointer transition space-y-1">
               <div class="flex items-center justify-between gap-2">
                 <span class="text-xs font-extrabold text-slate-900 truncate">${r.unit_name}</span>
-                <span class="shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full ${isSiap ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${isSiap ? 'SIAP' : 'PERLU CEK'} (${r.readiness_score}%)</span>
+                <span class="shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full ${isSiap ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${isSiap ? 'SIAP' : 'PROSES'} (${r.readiness_score}%)</span>
               </div>
               <div class="flex items-center justify-between text-[11px] text-slate-500">
                 <span class="truncate">Oleh: <strong>${r.inspector_name}</strong></span>
@@ -1184,7 +1326,7 @@
           `;
         }).join('');
       }
-      document.getElementById('modal-notifications').classList.remove('hidden');
+      openModalWithHistory('modal-notifications');
       lucide.createIcons();
     }
 
@@ -1192,6 +1334,7 @@
       if (realtimeChannel) db.removeChannel(realtimeChannel);
       realtimeChannel = db.channel('room-inspections-live')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'room_inspections' }, (payload) => { if (payload?.new) handleIncomingNewReport(payload.new); })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'room_inspections' }, () => { loadAllData(); })
         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'room_inspections' }, () => { loadAllData(); })
         .subscribe();
 
@@ -1260,7 +1403,7 @@
             <div><span class="text-[10px] text-slate-400 font-bold block">SHIFT KERJA</span><span class="font-extrabold text-slate-800">Shift ${r.shift}</span></div>
             ${meta.executor ? `<div class="col-span-2 pt-1 border-t border-slate-200/70"><span class="text-[10px] text-indigo-600 font-bold block">PETUGAS PELAKSANA</span><span class="font-extrabold text-slate-800">${meta.executor}</span></div>` : ''}
           </div>
-          ${meta.feedbackStatus ? `<div class="${meta.feedbackStatus.includes('Baik') ? 'bg-emerald-50/80 border-emerald-200' : 'bg-rose-50/80 border-rose-200'} border rounded-2xl p-3 space-y-1"><span class="text-[10px] font-extrabold uppercase ${meta.feedbackStatus.includes('Baik') ? 'text-emerald-800' : 'text-rose-800'} block">Tanggapan Pemeriksa Hasil Kerja</span><p class="text-xs font-extrabold text-slate-800">${meta.feedbackStatus}</p>${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">Bagian Ditandai Perbaikan: ${meta.feedbackDetail}</p>` : ''}</div>` : ''}
+          ${meta.feedbackStatus ? `<div class="${(meta.feedbackStatus.includes('Baik') || meta.feedbackStatus.includes('Selesai Diperbaiki')) ? 'bg-emerald-50/80 border-emerald-200' : 'bg-rose-50/80 border-rose-200'} border rounded-2xl p-3 space-y-1"><span class="text-[10px] font-extrabold uppercase ${(meta.feedbackStatus.includes('Baik') || meta.feedbackStatus.includes('Selesai Diperbaiki')) ? 'text-emerald-800' : 'text-rose-800'} block">Tanggapan Pemeriksa Hasil Kerja</span><p class="text-xs font-extrabold text-slate-800">${meta.feedbackStatus}</p>${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">Bagian Ditandai Perbaikan: ${meta.feedbackDetail}</p>` : ''}</div>` : ''}
           ${(r.photo_room_url || r.photo_toilet_url) ? `<div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Dokumentasi Foto</h3><div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${r.photo_room_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">Area Kamar</span><img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}${r.photo_toilet_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">Kamar Mandi</span><img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}</div></div>` : ''}
           <div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Rincian Kelengkapan & Kebersihan</h3><div class="space-y-1.5">${checklistHtml}</div></div>
           ${meta.cleanNotes ? `<div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-3"><span class="text-[10px] font-extrabold uppercase text-amber-800 block">Catatan Tambahan</span><p class="text-xs text-slate-700 mt-0.5">${meta.cleanNotes}</p></div>` : ''}
@@ -1276,7 +1419,7 @@
 
     function zoomPhoto(src) {
       document.getElementById('zoom-photo-img').src = src;
-      document.getElementById('modal-photo-zoom').classList.remove('hidden');
+      openModalWithHistory('modal-photo-zoom');
     }
 
     function downloadPublicReportPdf() {
@@ -1290,7 +1433,10 @@
       });
     }
 
-    function exitPublicReportMode() { window.location.href = window.location.origin + window.location.pathname; }
+    function exitPublicReportMode() {
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.location.href = cleanUrl;
+    }
 
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
@@ -1384,6 +1530,8 @@
       setAutoShift();
       updateNotificationPermissionUI();
 
+      try { window.history.replaceState({ tab: 'dashboard' }, ''); } catch (e) {}
+
       const badge = document.getElementById('user-role-badge');
       badge.textContent = currentUser.role.toUpperCase();
       badge.className = currentUser.role === 'manajemen'
@@ -1414,7 +1562,8 @@
       }
     }
 
-    function switchTab(tabName) {
+    function switchTab(tabName, fromPopState = false) {
+      activeTabName = tabName;
       document.querySelectorAll('.page-section').forEach(el => el.classList.add('hidden'));
       document.getElementById('tab-' + tabName).classList.remove('hidden');
       document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -1422,6 +1571,9 @@
         btn.classList.toggle('font-bold', btn.dataset.tab === tabName);
         btn.classList.toggle('text-slate-400', btn.dataset.tab !== tabName);
       });
+      if (!fromPopState && tabName !== 'dashboard') {
+        try { window.history.pushState({ tab: tabName }, ''); } catch (e) {}
+      }
       if (tabName === 'inspect') { populateOfficerDropdown(); setAutoShift(); startTimer(); }
       if (tabName === 'analytics') renderAnalytics();
     }
@@ -1449,9 +1601,13 @@
     }
 
     function renderDashboard() {
-      document.getElementById('stat-siap').textContent = unitsData.filter(u => u.status === 'siap').length;
-      document.getElementById('stat-kotor').textContent = unitsData.filter(u => u.status === 'kotor').length;
-      document.getElementById('stat-maint').textContent = unitsData.filter(u => u.status === 'maintenance').length;
+      const siap = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
+      const kosongOrProses = unitsData.filter(u => ['kosong', 'dibersihkan'].includes(getEffectiveUnitStatus(u))).length;
+      const maint = unitsData.filter(u => getEffectiveUnitStatus(u) === 'maintenance').length;
+
+      document.getElementById('stat-siap').textContent = siap;
+      document.getElementById('stat-kotor').textContent = kosongOrProses;
+      document.getElementById('stat-maint').textContent = maint;
 
       const grid = document.getElementById('dashboard-unit-grid');
       if (unitsData.length === 0) {
@@ -1459,24 +1615,33 @@
         return;
       }
       grid.innerHTML = unitsData.map(u => {
+        const eff = getEffectiveUnitStatus(u);
         const statusMap = {
           siap: { label: 'SIAP PAKAI', bg: 'bg-emerald-100 text-emerald-700', border: 'border-emerald-200' },
-          kotor: { label: 'PERLU CEK', bg: 'bg-amber-100 text-amber-700', border: 'border-amber-200' },
+          dibersihkan: { label: 'SEDANG DIBERSIHKAN', bg: 'bg-amber-100 text-amber-700', border: 'border-amber-200' },
+          kosong: { label: 'KOSONG', bg: 'bg-slate-200 text-slate-700', border: 'border-slate-300' },
           maintenance: { label: 'MAINTENANCE', bg: 'bg-rose-100 text-rose-700', border: 'border-rose-200' }
         };
-        const st = statusMap[u.status] || statusMap.siap;
+        const st = statusMap[eff] || statusMap.kosong;
         return `
           <div class="glass-card rounded-2xl p-4 shadow-sm border ${st.border} flex flex-col justify-between space-y-3">
-            <div class="flex items-start justify-between">
-              <div>
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
                 <span class="text-[10px] font-mono font-bold text-slate-400">${u.unit_code} • ${u.floor || ''}</span>
-                <h3 class="text-sm font-extrabold text-slate-900">${u.unit_name}</h3>
+                <h3 class="text-sm font-extrabold text-slate-900 truncate">${u.unit_name}</h3>
               </div>
-              <span class="text-[10px] font-extrabold px-2.5 py-1 rounded-full ${st.bg}">${st.label}</span>
+              <select onchange="quickChangeUnitStatus('${u.id}', this.value)" class="shrink-0 text-[9.5px] font-extrabold px-2 py-1 rounded-full ${st.bg} outline-none cursor-pointer">
+                <option value="siap" ${eff === 'siap' ? 'selected' : ''}>SIAP PAKAI</option>
+                <option value="dibersihkan" ${eff === 'dibersihkan' ? 'selected' : ''}>SEDANG DIBERSIHKAN</option>
+                <option value="kosong" ${eff === 'kosong' ? 'selected' : ''}>KOSONG</option>
+              </select>
             </div>
-            <div class="flex items-center justify-between pt-2 border-t border-slate-100">
-              <span class="text-[10px] text-slate-400">${u.last_checked_by ? 'Cek: ' + u.last_checked_by : 'Belum dicek'}</span>
-              <button onclick="quickInspect('${u.id}')" class="px-3 py-1 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-[11px] font-bold">Cek Sekarang</button>
+            <div class="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-100">
+              <span class="text-[10px] text-slate-400 truncate">${u.last_checked_by ? 'Cek: ' + u.last_checked_by : 'Belum dicek (Kosong)'}</span>
+              <div class="flex items-center gap-1.5 shrink-0">
+                ${eff === 'siap' ? `<button type="button" onclick="confirmPatientCheckout('${u.id}', '${(u.unit_name || '').replace(/'/g, "\\'")}')" title="Konfirmasi Pasien Pulang / Kosongkan" class="px-2 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-lg text-[10px] font-bold">Pasien Pulang</button>` : ''}
+                <button type="button" onclick="quickInspect('${u.id}')" class="px-3 py-1 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-[11px] font-bold">Cek Sekarang</button>
+              </div>
             </div>
           </div>
         `;
@@ -1561,7 +1726,7 @@
 
     function buildWaMessage(data, includeChecklist, includeFullLink) {
       const waktu = data.created_at ? new Date(data.created_at).toLocaleString('id-ID') : new Date().toLocaleString('id-ID');
-      const statusText = data.final_status === 'siap' ? 'SIAP PAKAI ✅' : 'PERLU CEK ⚠️';
+      const statusText = data.final_status === 'siap' ? 'SIAP PAKAI ✅' : 'SEDANG DIBERSIHKAN / PERLU PERBAIKAN ⚠️';
       const meta = parseNotesMetadata(data.notes);
       const lines = ['*LAPORAN CEK KESIAPAN KAMAR*', '*RS Khusus Bedah SS Medika*', '--------------------------------', `• *Kamar:* ${data.unit_name}`, `• *Shift:* ${data.shift}`, `• *Pemeriksa:* ${data.inspector_name}`];
       if (meta.executor) lines.push(`• *Pelaksana:* ${meta.executor}`);
@@ -1586,7 +1751,7 @@
       const linkChk = document.getElementById('wa-include-link');
       linkChk.checked = Boolean(data.id); linkChk.disabled = !data.id;
       refreshWaPreview();
-      document.getElementById('modal-wa-share').classList.remove('hidden');
+      openModalWithHistory('modal-wa-share');
       lucide.createIcons();
     }
 
@@ -1597,7 +1762,7 @@
 
     function previewFullReportFromModal() {
       if (!activeWaPayload) return;
-      if (activeWaPayload.id) window.open(getPublicReportUrl(activeWaPayload.id, true), '_blank');
+      if (activeWaPayload.id) openReportFullView(activeWaPayload.id);
       else alert('Laporan ini tersimpan saat offline.');
     }
 
@@ -1621,7 +1786,7 @@
       } else {
         waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
       }
-      document.getElementById('modal-wa-share').classList.add('hidden');
+      closeActiveModal('modal-wa-share');
       window.open(waUrl, '_blank');
     }
 
@@ -1645,8 +1810,8 @@
       const checkedCount = chks.filter(c => c.checked).length;
       const score = chks.length ? Math.round((checkedCount / chks.length) * 100) : 100;
       const missingCritical = chks.some(c => c.dataset.critical === 'true' && !c.checked);
-      const needsRework = feedbackStatus.includes('Wajib Diperbaiki');
-      const finalStatus = (score === 100 && !missingCritical && !needsRework) ? 'siap' : 'kotor';
+      const isApproved = feedbackStatus.includes('Sesuai Standar') && score === 100 && !missingCritical;
+      const finalStatus = isApproved ? 'siap' : 'kotor';
 
       const payload = {
         unit_id: unit.id,
@@ -1717,7 +1882,7 @@
     }
 
     function openQrScanner() {
-      document.getElementById('modal-qr-scanner').classList.remove('hidden');
+      openModalWithHistory('modal-qr-scanner');
       qrScannerInstance = new Html5Qrcode("qr-reader");
       qrScannerInstance.start({ facingMode: "environment" }, { fps: 10, qrbox: 220 }, (decodedText) => {
         closeQrScanner();
@@ -1728,7 +1893,7 @@
     }
 
     function closeQrScanner() {
-      document.getElementById('modal-qr-scanner').classList.add('hidden');
+      closeActiveModal('modal-qr-scanner');
       if (qrScannerInstance) qrScannerInstance.stop().catch(() => {});
     }
 
@@ -1739,7 +1904,7 @@
       const box = document.getElementById('qr-code-box');
       box.innerHTML = '';
       new QRCode(box, { text: code, width: 200, height: 200 });
-      document.getElementById('modal-qr-print').classList.remove('hidden');
+      openModalWithHistory('modal-qr-print');
     }
 
     function downloadQrImage() {
@@ -1820,7 +1985,7 @@
         <div class="py-3 flex items-center justify-between gap-2">
           <div>
             <p class="text-xs font-extrabold text-slate-900">${u.unit_code} — ${u.unit_name}</p>
-            <p class="text-[11px] text-slate-500">${u.floor || ''} • Status: <strong class="uppercase">${u.status}</strong></p>
+            <p class="text-[11px] text-slate-500">${u.floor || ''} • Status: <strong class="uppercase">${getEffectiveUnitStatus(u)}</strong></p>
           </div>
           <div class="flex items-center gap-1.5">
             <button onclick="showQrPrint('${u.unit_code}', '${u.unit_name}')" class="px-2.5 py-1.5 bg-teal-50 text-teal-700 rounded-lg text-[11px] font-bold">QR</button>
@@ -1834,8 +1999,8 @@
     document.getElementById('form-add-unit').addEventListener('submit', async (e) => {
       e.preventDefault();
       const id = document.getElementById('edit-unit-id').value;
-      const payload = { unit_code: document.getElementById('unit-code').value.trim(), unit_name: document.getElementById('unit-name').value.trim(), floor: document.getElementById('unit-floor').value.trim() };
-      if (id) await db.from('master_units').update(payload).eq('id', id);
+      const payload = { unit_code: document.getElementById('unit-code').value.trim(), unit_name: document.getElementById('unit-name').value.trim(), floor: document.getElementById('unit-floor').value.trim(), status: 'kotor' };
+      if (id) { delete payload.status; await db.from('master_units').update(payload).eq('id', id); }
       else await db.from('master_units').insert([payload]);
       e.target.reset(); document.getElementById('edit-unit-id').value = ''; document.getElementById('btn-save-unit').textContent = '+ Simpan Unit';
       loadAllData();
@@ -1891,14 +2056,14 @@
     async function deleteItem(id) { if (confirm('Hapus item kelengkapan ini?')) { await db.from('master_items').delete().eq('id', id); loadAllData(); } }
 
     function renderAnalytics() {
-      const siap = unitsData.filter(u => u.status === 'siap').length;
-      const kotor = unitsData.filter(u => u.status === 'kotor').length;
-      const maint = unitsData.filter(u => u.status === 'maintenance').length;
+      const siap = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
+      const kotor = unitsData.filter(u => ['kosong', 'dibersihkan'].includes(getEffectiveUnitStatus(u))).length;
+      const maint = unitsData.filter(u => getEffectiveUnitStatus(u) === 'maintenance').length;
       const ctx = document.getElementById('chart-status');
       if (statusChart) statusChart.destroy();
       statusChart = new Chart(ctx, {
         type: 'doughnut',
-        data: { labels: ['Siap Pakai', 'Perlu Cek', 'Maintenance'], datasets: [{ data: [siap, kotor, maint], backgroundColor: ['#10b981', '#f59e0b', '#e11d48'] }] },
+        data: { labels: ['Siap Pakai', 'Kosong / Proses', 'Maintenance'], datasets: [{ data: [siap, kotor, maint], backgroundColor: ['#10b981', '#f59e0b', '#e11d48'] }] },
         options: { plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } }
       });
 
@@ -1920,6 +2085,8 @@
       historyBox.innerHTML = filteredRows.map((r) => {
         const waktuStr = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
         const meta = parseNotesMetadata(r.notes);
+        const needsFix = r.final_status !== 'siap' && (meta.feedbackStatus.includes('Perbaikan') || meta.feedbackStatus.includes('Wajib Diperbaiki') || meta.feedbackStatus.includes('Dibersihkan'));
+        const isResolved = meta.feedbackStatus.includes('Baik') || meta.feedbackStatus.includes('Selesai Diperbaiki');
         return `
           <div class="glass-card rounded-2xl p-4 shadow-sm space-y-2.5">
             <div class="flex items-start justify-between gap-2">
@@ -1929,9 +2096,21 @@
                 ${meta.executor ? `<p class="text-[11px] text-indigo-700 font-semibold">Pelaksana: <strong>${meta.executor}</strong></p>` : ''}
                 <p class="text-[10px] text-slate-400 mt-0.5">${waktuStr}</p>
               </div>
-              <span class="shrink-0 text-[10px] font-extrabold px-2.5 py-1 rounded-full ${r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${r.final_status.toUpperCase()} (${r.readiness_score}%)</span>
+              <span class="shrink-0 text-[10px] font-extrabold px-2.5 py-1 rounded-full ${r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${r.final_status === 'siap' ? 'SIAP PAKAI' : 'PERLU PERBAIKAN'} (${r.readiness_score}%)</span>
             </div>
-            ${meta.feedbackStatus ? `<div class="text-[11px] px-2.5 py-2 rounded-xl border ${meta.feedbackStatus.includes('Baik') ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' : 'bg-rose-50/80 border-rose-200 text-rose-900'}"><p class="font-extrabold">Tanggapan Pemeriksa: ${meta.feedbackStatus}</p>${meta.feedbackDetail ? `<p class="text-[10.5px] mt-0.5">Bagian Perbaikan: <strong>${meta.feedbackDetail}</strong></p>` : ''}</div>` : ''}
+            ${meta.feedbackStatus ? `
+              <div class="text-[11px] px-2.5 py-2 rounded-xl border ${isResolved ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' : 'bg-rose-50/80 border-rose-200 text-rose-900'} space-y-1.5">
+                <div>
+                  <p class="font-extrabold">Tanggapan Pemeriksa: ${meta.feedbackStatus}</p>
+                  ${meta.feedbackDetail ? `<p class="text-[10.5px] mt-0.5">Bagian Perbaikan: <strong>${meta.feedbackDetail}</strong></p>` : ''}
+                </div>
+                ${(needsFix && r.id) ? `
+                  <button type="button" onclick="markIssueResolvedByOfficer('${r.id}')" class="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
+                    <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Masalah Selesai & Siap Pakai
+                  </button>
+                ` : ''}
+              </div>
+            ` : ''}
             ${meta.cleanNotes ? `<p class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg">Catatan: ${meta.cleanNotes}</p>` : ''}
             <div class="grid grid-cols-2 gap-2">
               ${r.photo_room_url ? `<img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />` : ''}
@@ -1939,7 +2118,7 @@
             </div>
             <div class="pt-1 flex items-center justify-end gap-2 flex-wrap">
               ${(creatorDeleteUnlocked && r.id) ? `<button type="button" onclick="deleteHistoryRecord('${r.id}', '${(r.unit_name || '').replace(/'/g, "\\'")}', '${r.unit_id || ''}')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-[11px] font-bold rounded-xl flex items-center gap-1 transition"><i data-lucide="trash-2" class="w-3 h-3"></i> Hapus</button>` : ''}
-              ${r.id ? `<a href="${getPublicReportUrl(r.id, true)}" target="_blank" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl flex items-center gap-1 transition"><i data-lucide="maximize-2" class="w-3 h-3"></i> Mode Penuh</a>` : ''}
+              ${r.id ? `<button type="button" onclick="openReportFullView('${r.id}')" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl flex items-center gap-1 transition"><i data-lucide="maximize-2" class="w-3 h-3"></i> Mode Penuh</button>` : ''}
               <button type="button" onclick="shareHistoryWaById('${r.id}')" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-[11px] font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition">
                 <i data-lucide="send" class="w-3.5 h-3.5"></i> Kirim ke WhatsApp
               </button>
