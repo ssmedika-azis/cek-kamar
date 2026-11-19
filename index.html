@@ -113,7 +113,7 @@
     </div>
   </div>
 
-  <!-- HALAMAN LAPORAN MODE PENUH (FOLDER DALAM: TOMBOL KEMBALI TETAP ADA) -->
+  <!-- HALAMAN LAPORAN MODE PENUH -->
   <div id="public-report-screen" class="hidden min-h-screen w-full bg-slate-100 pb-14">
     <header class="sticky top-0 z-30 bg-teal-700 text-white px-3.5 pb-3.5 safe-top shadow-md">
       <div class="max-w-2xl mx-auto flex items-center justify-between gap-2">
@@ -631,7 +631,7 @@
     </nav>
   </div>
 
-  <!-- MODAL NOTIFIKASI & APPROVAL (FOLDER DALAM: TOMBOL KEMBALI TETAP ADA) -->
+  <!-- MODAL NOTIFIKASI & APPROVAL -->
   <div id="modal-notifications" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-3.5 shadow-2xl max-h-[85vh] flex flex-col">
       <div class="flex items-center justify-between shrink-0 gap-2">
@@ -651,7 +651,7 @@
     </div>
   </div>
 
-  <!-- MODAL SHARE WHATSAPP (FOLDER DALAM: TOMBOL KEMBALI TETAP ADA) -->
+  <!-- MODAL SHARE WHATSAPP -->
   <div id="modal-wa-share" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-3.5 shadow-2xl max-h-[92vh] overflow-y-auto">
       <div class="flex items-center justify-between gap-2">
@@ -699,7 +699,7 @@
     </div>
   </div>
 
-  <!-- MODAL ZOOM FOTO (FOLDER DALAM: TOMBOL KEMBALI TETAP ADA) -->
+  <!-- MODAL ZOOM FOTO -->
   <div id="modal-photo-zoom" onclick="closeActiveModal('modal-photo-zoom')" class="hidden fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="max-w-2xl w-full space-y-3 text-center">
       <div class="flex justify-start">
@@ -712,7 +712,7 @@
     </div>
   </div>
 
-  <!-- MODAL QR SCANNER (FOLDER DALAM: TOMBOL KEMBALI TETAP ADA) -->
+  <!-- MODAL QR SCANNER -->
   <div id="modal-qr-scanner" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-sm rounded-3xl p-5 space-y-4">
       <div class="flex items-center justify-between gap-2">
@@ -726,7 +726,7 @@
     </div>
   </div>
 
-  <!-- MODAL QR PRINT (FOLDER DALAM: TOMBOL KEMBALI TETAP ADA) -->
+  <!-- MODAL QR PRINT -->
   <div id="modal-qr-print" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-xs rounded-3xl p-6 text-center space-y-4">
       <h3 id="qr-print-title" class="text-base font-extrabold text-slate-900">QR Code Kamar</h3>
@@ -744,7 +744,7 @@
     </div>
   </div>
 
-  <!-- MODAL TENTANG APLIKASI (FOLDER DALAM: TOMBOL KEMBALI TETAP ADA) -->
+  <!-- MODAL TENTANG APLIKASI -->
   <div id="modal-about" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto">
       <div class="flex items-center justify-between gap-2">
@@ -753,7 +753,7 @@
         </button>
         <div class="text-right">
           <h3 class="text-xs font-extrabold text-slate-900">Tentang Aplikasi</h3>
-          <p onclick="handleSecretHistoryTap()" class="text-[10px] text-teal-600 font-bold select-none cursor-default">Versi 5.0 PWA • Per-Role & Approval</p>
+          <p onclick="handleSecretHistoryTap()" class="text-[10px] text-teal-600 font-bold select-none cursor-default">Versi 5.1 PWA • Strict Approval</p>
         </div>
       </div>
 
@@ -856,7 +856,7 @@
       window.location.reload(true);
     }
 
-    // --- NAVIGASI BACK HP (HANYA UNTUK FOLDER DALAM / MODAL) ---
+    // --- NAVIGASI BACK HP ---
     function openModalWithHistory(modalId) {
       const el = document.getElementById(modalId);
       if (!el) return;
@@ -885,7 +885,7 @@
       }
     });
 
-    // --- SIKLUS STATUS KAMAR & APPROVAL PER-FORM ---
+    // --- ATURAN KETAT STATUS KAMAR & APPROVAL ---
     function getLatestInspectionForUnit(unitId) {
       return inspectionsData.find(r => String(r.unit_id) === String(unitId)) || null;
     }
@@ -900,36 +900,32 @@
       if (u.status === 'maintenance') return 'maintenance';
 
       const latestRep = getLatestInspectionForUnit(u.id);
+      const checkedByStr = String(u.last_checked_by || '');
+      const hasApprovedStampOnUnit = checkedByStr.includes('Approved');
 
-      // Tidak akan pernah SIAP PAKAI jika belum di-approve Manajemen
-      if (u.status === 'siap') {
-        if (u.last_checked_by && String(u.last_checked_by).includes('Approved')) return 'siap';
-        if (latestRep && isInspectionOfficiallyApproved(latestRep)) return 'siap';
-        return latestRep || u.last_checked_by ? 'pending_approval' : 'kosong';
-      }
-
-      if (!u.last_checked_by || u.status === 'kosong') {
-        if (latestRep && !isInspectionOfficiallyApproved(latestRep)) {
-          const meta = parseNotesMetadata(latestRep.notes);
-          if (meta.feedbackStatus.includes('Sedang Dibersihkan')) return 'dibersihkan';
-          return 'pending_approval';
-        }
-        return 'kosong';
-      }
-
-      if (String(u.last_checked_by).includes('Menunggu Approval')) {
-        return 'pending_approval';
-      }
-
+      // 1. Jika laporan terbaru untuk kamar ini BELUM di-approve Manajemen -> SELALU MENUNGGU APPROVAL (tidak boleh SIAP PAKAI)
       if (latestRep && !isInspectionOfficiallyApproved(latestRep)) {
         const meta = parseNotesMetadata(latestRep.notes);
         if (meta.feedbackStatus.includes('Sedang Dibersihkan')) return 'dibersihkan';
         return 'pending_approval';
       }
 
-      if (u.status === 'kotor' || u.status === 'dibersihkan') {
-        return u.last_checked_by ? 'pending_approval' : 'kosong';
+      // 2. Jika laporan terbaru SUDAH di-approve Manajemen -> SIAP PAKAI (kecuali jika sudah dikosongkan setelah pasien pulang)
+      if (latestRep && isInspectionOfficiallyApproved(latestRep)) {
+        if (!u.last_checked_by && u.status === 'kotor') return 'kosong';
+        if (u.status === 'siap' || hasApprovedStampOnUnit) return 'siap';
       }
+
+      // 3. Jika belum ada riwayat laporan di daftar, hanya boleh SIAP PAKAI jika benar-benar punya stempel "Approved"
+      if (u.status === 'siap' && hasApprovedStampOnUnit) {
+        return 'siap';
+      }
+
+      // 4. Jika pernah diisi/dicek petugas tapi belum ada stempel Approved -> MENUNGGU APPROVAL
+      if (checkedByStr && !hasApprovedStampOnUnit) {
+        return 'pending_approval';
+      }
+
       return 'kosong';
     }
 
@@ -1027,16 +1023,18 @@
         alert('Petugas tidak diizinkan mengubah status kamar secara manual. Silakan isi Form Cek Kamar.');
         return renderDashboard();
       }
+      const unit = unitsData.find(u => String(u.id) === String(unitId));
       let dbStatus = 'kotor';
       let checkedBy = null;
 
       if (newMode === 'siap') {
         const latestRep = getLatestInspectionForUnit(unitId);
         if (latestRep && !isInspectionOfficiallyApproved(latestRep)) {
+          renderDashboard();
           return approveReportById(latestRep.id);
         }
-        dbStatus = 'siap';
-        checkedBy = `Approved: ${currentUser.full_name || 'Supervisor'}`;
+        renderDashboard();
+        return approveUnitByManagement(unitId, unit ? unit.unit_name : 'Kamar');
       } else if (newMode === 'pending_approval') {
         dbStatus = 'kotor';
         checkedBy = 'Menunggu Approval';
@@ -1753,13 +1751,11 @@
 
       if (execSel) {
         if (isPetugasRole() && currentUser) {
-          // PETUGAS HANYA BISA MEMAKAI NAMANYA SENDIRI SESUAI AKUN LOGIN (HILANGKAN MANAJEMEN & PETUGAS LAIN)
           execSel.innerHTML = `<option value="${currentUser.full_name}">${currentUser.full_name} (PETUGAS)</option>`;
           execSel.value = currentUser.full_name;
           execSel.disabled = true;
           if (execBadge) execBadge.textContent = '🔒 Terkunci Sesuai Akun Login';
         } else {
-          // MANAJEMEN MELIHAT DAFTAR PETUGAS SAJA (TANPA MANAJEMEN)
           const petugasOnly = list.filter(u => (u.role || '').toLowerCase() === 'petugas');
           const finalPetugasList = petugasOnly.length > 0 ? petugasOnly : [{ full_name: 'Petugas Kebersihan', role: 'petugas' }];
           execSel.innerHTML = finalPetugasList.map(u => `<option value="${u.full_name}">${u.full_name} (PETUGAS)</option>`).join('');
@@ -1913,8 +1909,6 @@
       const eff = getEffectiveUnitStatus(unit);
       const latestRep = getLatestInspectionForUnit(unitId);
 
-      // Untuk Manajemen: muat form isian petugas jika ada laporan yang belum approved
-      // Untuk Petugas: hanya muat jika laporan itu milik petugas itu sendiri dan belum approved
       if (latestRep && !isInspectionOfficiallyApproved(latestRep) && eff !== 'kosong') {
         const meta = parseNotesMetadata(latestRep.notes);
         const ownerName = meta.executor || latestRep.inspector_name;
@@ -1942,7 +1936,6 @@
       if (unitId) loadExistingInspectionToForm(unitId);
     }
 
-    // --- ATUR HAK AKSES MENU & NAVIGASI SESUAI ROLE ---
     function configureNavigationByRole() {
       const navGrid = document.getElementById('bottom-nav-grid');
       const btnDash = document.getElementById('nav-item-dashboard');
@@ -1950,7 +1943,6 @@
       const inviteBox = document.getElementById('invite-box-about');
 
       if (isPetugasRole()) {
-        // Petugas hanya melihat 2 menu navigasi: Cek Kamar & Analitik
         btnDash?.classList.add('hidden');
         btnMaster?.classList.add('hidden');
         if (navGrid) {
@@ -2013,7 +2005,6 @@
     }
 
     function switchTab(tabName, fromPopState = false, skipAutoPrefill = false) {
-      // Cegah petugas masuk ke dashboard atau pengaturan
       if (isPetugasRole() && (tabName === 'dashboard' || tabName === 'master')) {
         tabName = 'inspect';
       }
@@ -2113,7 +2104,7 @@
                 <h3 class="text-sm font-extrabold text-slate-900 truncate">${u.unit_name}</h3>
               </div>
               <select onchange="quickChangeUnitStatus('${u.id}', this.value)" ${!isManagerRole() ? 'disabled' : ''} class="shrink-0 text-[9px] font-extrabold px-2 py-1 rounded-full ${st.bg} outline-none cursor-pointer">
-                <option value="siap" ${eff === 'siap' ? 'selected' : ''}>SIAP PAKAI</option>
+                <option value="siap" ${eff === 'siap' ? 'selected' : ''}>${eff === 'siap' ? 'SIAP PAKAI' : 'APPROVE SIAP PAKAI'}</option>
                 <option value="pending_approval" ${eff === 'pending_approval' ? 'selected' : ''}>MENUNGGU APPROVAL</option>
                 <option value="dibersihkan" ${eff === 'dibersihkan' ? 'selected' : ''}>SEDANG DIBERSIHKAN</option>
                 <option value="kosong" ${eff === 'kosong' ? 'selected' : ''}>KOSONG</option>
@@ -2125,7 +2116,7 @@
               </button>
             ` : ''}
             <div class="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-100">
-              <span class="text-[10px] text-slate-400 truncate">${eff === 'pending_approval' ? 'Belum di-approve Manajemen' : (u.last_checked_by ? u.last_checked_by : 'Belum dicek (Kosong)')}</span>
+              <span class="text-[10px] text-slate-400 truncate">${eff === 'pending_approval' ? 'Belum di-approve Manajemen' : (eff === 'siap' ? u.last_checked_by : 'Belum dicek (Kosong)')}</span>
               <div class="flex items-center gap-1.5 shrink-0">
                 ${(eff === 'siap' && isManagerRole()) ? `<button type="button" onclick="confirmPatientCheckout('${u.id}', '${(u.unit_name || '').replace(/'/g, "\\'")}')" title="Konfirmasi Pasien Pulang / Kosongkan" class="px-2 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-lg text-[10px] font-bold">Pasien Pulang</button>` : ''}
                 <button type="button" onclick="quickInspect('${u.id}')" class="px-3 py-1 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-[11px] font-bold">Cek Sekarang</button>
@@ -2302,7 +2293,6 @@
       if (!unit) return alert('Pilih unit kamar terlebih dahulu');
 
       const officerName = document.getElementById('inspect-officer-select')?.value || 'Supervisor Manajemen';
-      // Paksa nama pelaksana sesuai akun login jika yang login adalah Petugas
       const executorVal = isPetugasRole()
         ? currentUser.full_name
         : (document.getElementById('inspect-executor-select')?.value || currentUser.full_name);
@@ -2317,7 +2307,6 @@
       const missingCritical = chks.some(c => c.dataset.critical === 'true' && !c.checked);
 
       let isApproved = false;
-      // Hanya Manajemen yang boleh membuat status SIAP PAKAI
       if (isManagerRole() && feedbackStatus.includes('Approved') && score === 100 && !missingCritical) {
         isApproved = true;
         feedbackStatus = `Sesuai Standar (Approved oleh ${currentUser.full_name || officerName})`;
