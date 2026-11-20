@@ -38,8 +38,6 @@
       overflow-x: hidden !important;
       position: relative;
     }
-    .no-scrollbar::-webkit-scrollbar { display: none; }
-    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     @keyframes pulseRing {
       0%, 100% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.45); }
       50% { box-shadow: 0 0 0 8px rgba(234, 179, 8, 0); }
@@ -49,12 +47,49 @@
 </head>
 <body class="overflow-x-hidden select-none">
   <div id="appRoot" class="min-h-screen w-full overflow-x-hidden flex flex-col">
-    <div class="flex-1 flex flex-col items-center justify-center p-6 text-center">
+    <div id="bootScreen" class="flex-1 flex flex-col items-center justify-center p-6 text-center">
       <div class="w-12 h-12 rounded-2xl bg-teal-700 text-white flex items-center justify-center font-extrabold text-lg shadow-lg mb-3">SS</div>
       <p class="text-sm font-bold text-slate-700">Memuat Sistem Cek Kamar v6.5...</p>
       <p class="text-xs text-slate-400 mt-1">RS Khusus Bedah SS Medika</p>
+      <p id="bootErrorMsg" class="hidden mt-4 max-w-xs rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700 font-semibold"></p>
+      <button id="forceResetBtn" onclick="forceClearCacheAndReload()" class="hidden mt-3 px-4 py-2.5 rounded-xl bg-teal-700 text-white text-xs font-extrabold shadow">
+        🔄 Bersihkan Cache & Muat Ulang
+      </button>
     </div>
   </div>
+
+  <script>
+    window.onerror = function(msg, url, line) {
+      var errEl = document.getElementById('bootErrorMsg');
+      var btnEl = document.getElementById('forceResetBtn');
+      if (errEl) {
+        errEl.textContent = 'Kendala memuat script (baris ' + line + '): ' + msg;
+        errEl.classList.remove('hidden');
+      }
+      if (btnEl) btnEl.classList.remove('hidden');
+    };
+
+    async function forceClearCacheAndReload() {
+      try {
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (const r of regs) await r.unregister();
+        }
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          for (const k of keys) await caches.delete(k);
+        }
+      } catch (e) {}
+      window.location.href = './index.html?nocache=' + Date.now();
+    }
+
+    // Jika lebih dari 3.5 detik masih di layar memuat, tampilkan tombol pembersih cache otomatis
+    setTimeout(function() {
+      var boot = document.getElementById('bootScreen');
+      var btn = document.getElementById('forceResetBtn');
+      if (boot && btn) btn.classList.remove('hidden');
+    }, 3500);
+  </script>
   <script src="./app.js?v=6.5"></script>
 </body>
 </html>
