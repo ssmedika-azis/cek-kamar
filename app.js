@@ -1,4 +1,4 @@
-const APP_VERSION = '5.8';
+const APP_VERSION = '6.0';
 const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteHB4cnJqeG51anlnYWJyaHNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MDk0MjAsImV4cCI6MjExMDQ4NTQyMH0.tFMCbg1_R-I08KEIs-h6wwxXhYLP2Z0oYgnDGC7T2YU';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -26,6 +26,7 @@ let secretTapTimer = null;
 
 const SHIFT_CATEGORY_KEY = '__SHIFT__';
 const APPROVAL_CONFIG_KEY = '__CONFIG_APPROVAL__';
+const REPAIR_RECORD_TAG = '[JENIS_LAPORAN: CEK_PERBAIKAN]';
 let requireApprovalMode = localStorage.getItem('ck_require_approval') !== 'false';
 
 const DEFAULT_SHIFTS = [
@@ -49,6 +50,8 @@ let itemsData = [];
 let inspectionsData = [];
 let usersData = [];
 let watermarkedPhotos = { room: null, toilet: null };
+let repairPhotos = { before: null, after: null };
+let activeRepairReportId = null;
 let timerInterval = null;
 let secondsElapsed = 0;
 let qrScannerInstance = null;
@@ -71,6 +74,19 @@ if (window.lucide) lucide.createIcons();
 
 function isSystemMetaCategory(category) {
   return category === SHIFT_CATEGORY_KEY || category === APPROVAL_CONFIG_KEY;
+}
+
+function isRepairRecord(rep) {
+  if (!rep) return false;
+  return String(rep.notes || '').includes(REPAIR_RECORD_TAG) || String(rep.shift || '').startsWith('Perbaikan');
+}
+
+function getRoomChecklistReports() {
+  return inspectionsData.filter(r => !isRepairRecord(r));
+}
+
+function getRepairReports() {
+  return inspectionsData.filter(r => isRepairRecord(r));
 }
 
 function syncApprovalConfigFromItems() {
@@ -381,7 +397,7 @@ function getLatestInspectionForUnit(unitId, unitName = '') {
   const targetName = normalizeText(unitName || unitObj?.unit_name || '');
   const targetCode = normalizeText(unitObj?.unit_code || '');
 
-  return inspectionsData.find(r => {
+  return getRoomChecklistReports().find(r => {
     if (unitId && r.unit_id && String(r.unit_id) === String(unitId)) return true;
     const repName = normalizeText(r.unit_name);
     if (targetName && repName && repName === targetName) return true;
@@ -433,7 +449,7 @@ function openFirstPendingApproval() {
     quickInspect(pendingUnit.id);
     return;
   }
-  const pendingRep = inspectionsData.find(r => !isInspectionOfficiallyApproved(r));
+  const pendingRep = getRoomChecklistReports().find(r => !isInspectionOfficiallyApproved(r));
   if (pendingRep) {
     openReportInForm(pendingRep.id);
     return;
@@ -639,6 +655,7 @@ async function quickChangeUnitStatus(unitId, newMode) {
   let checkedBy = null;
   if (newMode === 'pending_approval') checkedBy = 'Menunggu Approval';
   else if (newMode === 'dibersihkan') checkedBy = currentUser ? currentUser.full_name : 'Petugas';
+  else if (newMode === 'maintenance') { dbStatus = 'maintenance'; checkedBy = 'Maintenance / Perbaikan'; }
 
   const { error } = await db.from('master_units').update({
     status: dbStatus,
@@ -752,7 +769,7 @@ function renderOfficerRevisionBanner() {
     return;
   }
 
-  const revisionReports = inspectionsData.filter(r => isRevisionRequested(r));
+  const revisionReports = getRoomChecklistReports().filter(r => isRevisionRequested(r));
   if (revisionReports.length === 0) {
     container.innerHTML = '';
     container.classList.add('hidden');
@@ -801,6 +818,638 @@ function renderOfficerRevisionBanner() {
   lucide.createIcons();
 }
 
+// ==================== MODUL NAVIGASI & FORM CEK PERBAIKAN ====================
+
+function ensureRepairNavigationAndSection() {
+  const navGrid = document.getElementById('bottom-nav-grid');
+  if (navGrid && !document.getElementById('nav-item-repair')) {
+    const repairBtn = document.createElement('button');
+    repairBtn.type = 'button';
+    repairBtn.id = 'nav-item-repair';
+    repairBtn.dataset.tab = 'repair';
+    repairBtn.className = 'nav-btn flex flex-col items-center justify-center py-2 px-1 rounded-xl text-slate-500 transition relative';
+    repairBtn.onclick = () => switchTab('repair');
+    repairBtn.innerHTML = `
+      <i data-lucide="wrench" class="w-4 h-4 mb-0.5"></i>
+      <span class="text-[10px] font-extrabold leading-tight">Perbaikan</span>
+      <span id="repair-nav-badge" class="hidden absolute top-1 right-2 w-2 h-2 rounded-full bg-rose-500"></span>
+    `;
+    const analyticsBtn = Array.from(navGrid.querySelectorAll('.nav-btn')).find(b => b.dataset.tab === 'analytics');
+    if (analyticsBtn) navGrid.insertBefore(repairBtn, analyticsBtn);
+    else navGrid.appendChild(repairBtn);
+  }
+
+  const inspectSection = document.getElementById('tab-inspect');
+  if (inspectSection && inspectSection.parentElement && !document.getElementById('tab-repair')) {
+    const repairSection = document.createElement('section');
+    repairSection.id = 'tab-repair';
+    repairSection.className = 'page-section hidden space-y-4';
+    repairSection.innerHTML = `
+      <div class="glass-card rounded-3xl p-4 sm:p-5 shadow-sm border border-amber-200/80 space-y-4">
+        <div class="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+              <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Form Perbaikan & Maintenance</span>
+            </div>
+            <h2 class="text-base font-extrabold text-slate-900 mt-0.5">Form Cek Perbaikan Fasilitas</h2>
+            <p class="text-[11px] text-slate-500">Dokumentasi kerusakan & bukti selesai perbaikan kamar</p>
+          </div>
+          <span id="repair-mode-badge" class="shrink-0 text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800">Laporan Baru</span>
+        </div>
+
+        <div id="repair-edit-banner" class="hidden rounded-2xl bg-amber-50 border border-amber-300 p-3 flex items-center justify-between gap-2">
+          <p id="repair-edit-desc" class="text-[11px] text-amber-900 font-semibold"></p>
+          <button type="button" onclick="resetRepairForm()" class="shrink-0 px-2.5 py-1 bg-white border border-amber-300 rounded-lg text-[10px] font-extrabold text-amber-900">Batal Edit</button>
+        </div>
+
+        <form id="repair-inspection-form" class="space-y-3.5">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-extrabold text-slate-700 mb-1">1. Unit Kamar / Area</label>
+              <select id="repair-unit" required class="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 outline-none focus:border-amber-500"></select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-extrabold text-slate-700 mb-1">2. Shift Kerja</label>
+              <select id="repair-shift" class="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 outline-none focus:border-amber-500"></select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-extrabold text-slate-700 mb-1">3. Kategori Kerusakan</label>
+              <select id="repair-category" class="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 outline-none focus:border-amber-500">
+                <option value="Kelistrikan & Lampu">Kelistrikan & Lampu</option>
+                <option value="AC & Sirkulasi Udara">AC & Sirkulasi Udara</option>
+                <option value="Sanitasi, Keran & Toilet">Sanitasi, Keran & Toilet</option>
+                <option value="Bed, Pintu & Furnitur">Bed, Pintu & Furnitur</option>
+                <option value="Gas Medis & Alat">Gas Medis & Alat</option>
+                <option value="Lainnya">Lainnya</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-extrabold text-slate-700 mb-1">4. Status Pengerjaan</label>
+              <select id="repair-status-select" onchange="handleRepairStatusChange()" class="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 outline-none focus:border-amber-500">
+                <option value="butuh_perbaikan">⚠️ Butuh Perbaikan (Kamar Maintenance)</option>
+                <option value="proses_perbaikan">🔧 Sedang Proses Perbaikan</option>
+                <option value="selesai_petugas">✅ Selesai Diperbaiki (Menunggu Verifikasi)</option>
+                <option id="opt-repair-approved" value="selesai_approved">🏆 Selesai & Approve (Siap Dibersihkan)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-extrabold text-slate-700 mb-1">5. Petugas / Teknisi Pelaksana <span id="repair-executor-badge" class="text-teal-700"></span></label>
+              <select id="repair-executor-select" class="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 outline-none focus:border-amber-500"></select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-extrabold text-slate-700 mb-1">6. Pemeriksa (Manajemen)</label>
+              <select id="repair-officer-select" class="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 outline-none focus:border-amber-500"></select>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-extrabold text-slate-700 mb-1">7. Detail Kerusakan / Tindakan Perbaikan</label>
+            <textarea id="repair-notes" rows="2" required placeholder="Contoh: Keran wastafel bocor, seal sudah diganti baru dan dicek tidak menetes..." class="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 outline-none focus:border-amber-500"></textarea>
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-[11px] font-extrabold text-slate-700">8. Dokumentasi Foto Perbaikan (Kamera / Album)</label>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <!-- FOTO 1: SEBELUM / TEMUAN -->
+              <div id="box-repair-before" class="rounded-2xl border-2 border-dashed border-slate-300 bg-gradient-to-b from-white to-slate-50 p-3 text-center space-y-2 transition">
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-extrabold text-slate-800">Foto Kondisi Awal / Rusak</span>
+                  <button type="button" id="btn-clear-repair-before" onclick="clearRepairPhoto('before')" class="hidden text-[10px] font-bold text-rose-600 hover:underline">Hapus</button>
+                </div>
+                <div id="preview-wrap-repair-before" class="hidden">
+                  <img id="preview-repair-before" onclick="zoomPhoto(this.src)" class="w-full h-36 object-cover rounded-xl border border-slate-200 cursor-pointer shadow-sm" />
+                </div>
+                <div id="placeholder-repair-before" class="py-3 text-slate-400">
+                  <i data-lucide="camera" class="w-6 h-6 mx-auto mb-1 opacity-60"></i>
+                  <p class="text-[10px]">Ambil foto kerusakan awal</p>
+                </div>
+                <div class="grid grid-cols-2 gap-1.5 pt-1">
+                  <button type="button" onclick="triggerRepairPhotoPicker('before', 'camera')" class="py-2 px-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1 shadow-sm transition">
+                    <i data-lucide="camera" class="w-3.5 h-3.5"></i> Kamera
+                  </button>
+                  <button type="button" onclick="triggerRepairPhotoPicker('before', 'album')" class="py-2 px-2 bg-slate-800 hover:bg-slate-900 active:scale-95 text-white rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1 shadow-sm transition">
+                    <i data-lucide="image" class="w-3.5 h-3.5"></i> Album
+                  </button>
+                </div>
+                <input type="file" id="input-camera-repair-before" accept="image/*" capture="environment" class="hidden" onchange="handleRepairPhoto(event, 'before')" />
+                <input type="file" id="input-album-repair-before" accept="image/*" class="hidden" onchange="handleRepairPhoto(event, 'before')" />
+              </div>
+
+              <!-- FOTO 2: SESUDAH / SELESAI -->
+              <div id="box-repair-after" class="rounded-2xl border-2 border-dashed border-slate-300 bg-gradient-to-b from-white to-slate-50 p-3 text-center space-y-2 transition">
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-extrabold text-slate-800">Foto Hasil Sesudah Perbaikan</span>
+                  <button type="button" id="btn-clear-repair-after" onclick="clearRepairPhoto('after')" class="hidden text-[10px] font-bold text-rose-600 hover:underline">Hapus</button>
+                </div>
+                <div id="preview-wrap-repair-after" class="hidden">
+                  <img id="preview-repair-after" onclick="zoomPhoto(this.src)" class="w-full h-36 object-cover rounded-xl border border-slate-200 cursor-pointer shadow-sm" />
+                </div>
+                <div id="placeholder-repair-after" class="py-3 text-slate-400">
+                  <i data-lucide="check-square" class="w-6 h-6 mx-auto mb-1 opacity-60"></i>
+                  <p class="text-[10px]">Ambil foto setelah diperbaiki</p>
+                </div>
+                <div class="grid grid-cols-2 gap-1.5 pt-1">
+                  <button type="button" onclick="triggerRepairPhotoPicker('after', 'camera')" class="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1 shadow-sm transition">
+                    <i data-lucide="camera" class="w-3.5 h-3.5"></i> Kamera
+                  </button>
+                  <button type="button" onclick="triggerRepairPhotoPicker('after', 'album')" class="py-2 px-2 bg-slate-800 hover:bg-slate-900 active:scale-95 text-white rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1 shadow-sm transition">
+                    <i data-lucide="image" class="w-3.5 h-3.5"></i> Album
+                  </button>
+                </div>
+                <input type="file" id="input-camera-repair-after" accept="image/*" capture="environment" class="hidden" onchange="handleRepairPhoto(event, 'after')" />
+                <input type="file" id="input-album-repair-after" accept="image/*" class="hidden" onchange="handleRepairPhoto(event, 'after')" />
+              </div>
+            </div>
+          </div>
+
+          <div id="repair-form-actions" class="grid grid-cols-2 gap-2.5 pt-2">
+            <button type="submit" id="btn-submit-repair" class="py-3 px-3 bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs shadow-sm transition">Simpan Perbaikan</button>
+            <button type="button" id="btn-submit-repair-wa" onclick="saveRepairAndSendWa()" class="py-3 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
+              <i data-lucide="send" class="w-3.5 h-3.5"></i> Simpan & WA
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div class="space-y-2.5">
+        <div class="flex items-center justify-between px-1">
+          <h3 class="text-xs font-extrabold text-slate-800 uppercase tracking-wide">Daftar & Riwayat Cek Perbaikan</h3>
+          <span id="repair-history-count" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">0 Laporan</span>
+        </div>
+        <div id="repair-history-list" class="space-y-3"></div>
+      </div>
+    `;
+    inspectSection.parentElement.insertBefore(repairSection, inspectSection.nextSibling);
+    document.getElementById('repair-inspection-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await processRepairSubmit(false);
+    });
+  }
+  lucide.createIcons();
+}
+
+function populateRepairFormDropdowns() {
+  ensureRepairNavigationAndSection();
+
+  const unitSel = document.getElementById('repair-unit');
+  if (unitSel) {
+    const prevUnit = unitSel.value;
+    unitSel.innerHTML = unitsData.map(u => `<option value="${u.id}">${u.unit_code} - ${u.unit_name}</option>`).join('');
+    if (prevUnit && unitsData.some(u => String(u.id) === String(prevUnit))) unitSel.value = prevUnit;
+  }
+
+  const shiftSel = document.getElementById('repair-shift');
+  if (shiftSel) {
+    const prevShift = shiftSel.value;
+    shiftSel.innerHTML = shiftsData.map(s => `<option value="${s.name}">${s.hours ? `${s.name} (${s.hours})` : s.name}</option>`).join('');
+    if (prevShift) shiftSel.value = prevShift;
+  }
+
+  const officerSel = document.getElementById('repair-officer-select');
+  const execSel = document.getElementById('repair-executor-select');
+  const execBadge = document.getElementById('repair-executor-badge');
+  const optApproved = document.getElementById('opt-repair-approved');
+  const statusSel = document.getElementById('repair-status-select');
+
+  let managerOnly = usersData.filter(u => (u.role || '').toLowerCase() === 'manajemen' || (u.full_name || '').toLowerCase().includes('supervisor'));
+  if (currentUser && isManagerRole() && !managerOnly.some(u => u.full_name === currentUser.full_name)) {
+    managerOnly.unshift({ full_name: currentUser.full_name, role: 'manajemen' });
+  }
+  if (managerOnly.length === 0) managerOnly = [{ full_name: 'Supervisor Manajemen', role: 'manajemen' }];
+
+  if (officerSel) {
+    officerSel.innerHTML = managerOnly.map(u => `<option value="${u.full_name}">${u.full_name}</option>`).join('');
+    if (isManagerRole() && currentUser?.full_name) officerSel.value = currentUser.full_name;
+  }
+
+  if (execSel) {
+    if (isPetugasRole() && currentUser) {
+      execSel.innerHTML = `<option value="${currentUser.full_name}">${currentUser.full_name}</option>`;
+      execSel.value = currentUser.full_name;
+      execSel.disabled = true;
+      if (execBadge) execBadge.textContent = '🔒 Terkunci';
+    } else {
+      const petugasOnly = usersData.filter(u => (u.role || '').toLowerCase() === 'petugas');
+      const finalList = petugasOnly.length > 0 ? petugasOnly : [{ full_name: currentUser?.full_name || 'Teknisi / Petugas', role: 'petugas' }];
+      execSel.innerHTML = finalList.map(u => `<option value="${u.full_name}">${u.full_name}</option>`).join('');
+      execSel.disabled = false;
+      if (execBadge) execBadge.textContent = '';
+    }
+  }
+
+  if (optApproved) {
+    optApproved.disabled = isPetugasRole();
+    optApproved.hidden = isPetugasRole();
+  }
+  if (statusSel && !activeRepairReportId && isPetugasRole() && statusSel.value === 'selesai_approved') {
+    statusSel.value = 'selesai_petugas';
+  }
+}
+
+function handleRepairStatusChange() {
+  const sel = document.getElementById('repair-status-select');
+  if (!sel) return;
+  if (isPetugasRole() && sel.value === 'selesai_approved') {
+    sel.value = 'selesai_petugas';
+  }
+}
+
+function triggerRepairPhotoPicker(slot, source) {
+  const inputId = source === 'camera' ? `input-camera-repair-${slot}` : `input-album-repair-${slot}`;
+  const el = document.getElementById(inputId);
+  if (el) {
+    el.value = '';
+    el.click();
+  }
+}
+
+function updateRepairPhotoBoxUI(slot, dataUrl) {
+  const wrap = document.getElementById(`preview-wrap-repair-${slot}`);
+  const prev = document.getElementById(`preview-repair-${slot}`);
+  const ph = document.getElementById(`placeholder-repair-${slot}`);
+  const box = document.getElementById(`box-repair-${slot}`);
+  const btnClear = document.getElementById(`btn-clear-repair-${slot}`);
+
+  if (dataUrl) {
+    prev.src = dataUrl;
+    wrap?.classList.remove('hidden');
+    ph?.classList.add('hidden');
+    btnClear?.classList.remove('hidden');
+    if (box) {
+      box.classList.remove('border-dashed', 'border-slate-300', 'from-white', 'to-slate-50');
+      box.classList.add('border-solid', 'border-amber-400', 'bg-amber-50/30');
+    }
+  } else {
+    wrap?.classList.add('hidden');
+    ph?.classList.remove('hidden');
+    btnClear?.classList.add('hidden');
+    if (box) {
+      box.classList.add('border-dashed', 'border-slate-300', 'from-white', 'to-slate-50');
+      box.classList.remove('border-solid', 'border-amber-400', 'bg-amber-50/30');
+    }
+  }
+}
+
+function clearRepairPhoto(slot) {
+  repairPhotos[slot] = null;
+  updateRepairPhotoBoxUI(slot, null);
+}
+
+function resetRepairForm() {
+  activeRepairReportId = null;
+  repairPhotos = { before: null, after: null };
+  clearRepairPhoto('before');
+  clearRepairPhoto('after');
+  document.getElementById('repair-edit-banner')?.classList.add('hidden');
+  const badge = document.getElementById('repair-mode-badge');
+  if (badge) badge.textContent = 'Laporan Baru';
+  const notesEl = document.getElementById('repair-notes');
+  if (notesEl) notesEl.value = '';
+  const btnSubmit = document.getElementById('btn-submit-repair');
+  if (btnSubmit) btnSubmit.textContent = 'Simpan Perbaikan';
+  populateRepairFormDropdowns();
+}
+
+function openRepairReportInForm(reportId) {
+  const rep = getRepairReports().find(r => String(r.id) === String(reportId));
+  if (!rep) return;
+  switchTab('repair');
+  populateRepairFormDropdowns();
+
+  activeRepairReportId = rep.id;
+  const meta = parseNotesMetadata(rep.notes);
+  const unitSel = document.getElementById('repair-unit');
+  if (unitSel && rep.unit_id) unitSel.value = rep.unit_id;
+
+  const shiftSel = document.getElementById('repair-shift');
+  const cleanShift = String(rep.shift || '').replace(/^Perbaikan\s*•\s*/i, '');
+  if (shiftSel && cleanShift) shiftSel.value = cleanShift;
+
+  const catSel = document.getElementById('repair-category');
+  const savedCat = Array.isArray(rep.checklist_data) && rep.checklist_data[0]?.item ? rep.checklist_data[0].item : '';
+  if (catSel && savedCat) catSel.value = savedCat;
+
+  const statusSel = document.getElementById('repair-status-select');
+  if (statusSel) {
+    if (rep.final_status === 'siap') statusSel.value = isManagerRole() ? 'selesai_approved' : 'selesai_petugas';
+    else if (meta.feedbackStatus.includes('Selesai Diperbaiki')) statusSel.value = isManagerRole() ? 'selesai_approved' : 'selesai_petugas';
+    else if (meta.feedbackStatus.includes('Sedang Proses')) statusSel.value = 'proses_perbaikan';
+    else statusSel.value = 'butuh_perbaikan';
+  }
+
+  const execSel = document.getElementById('repair-executor-select');
+  if (execSel && !isPetugasRole() && meta.executor) execSel.value = meta.executor;
+
+  const notesEl = document.getElementById('repair-notes');
+  if (notesEl) notesEl.value = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
+
+  repairPhotos = {
+    before: rep.photo_room_url || null,
+    after: rep.photo_toilet_url || null
+  };
+  updateRepairPhotoBoxUI('before', repairPhotos.before);
+  updateRepairPhotoBoxUI('after', repairPhotos.after);
+
+  const badge = document.getElementById('repair-mode-badge');
+  if (badge) badge.textContent = 'Update Perbaikan';
+
+  const banner = document.getElementById('repair-edit-banner');
+  const desc = document.getElementById('repair-edit-desc');
+  if (banner && desc) {
+    desc.innerHTML = `Memperbarui laporan perbaikan <strong>${rep.unit_name}</strong>. Silakan lengkapi foto sesudah perbaikan & simpan.`;
+    banner.classList.remove('hidden');
+  }
+
+  const btnSubmit = document.getElementById('btn-submit-repair');
+  if (btnSubmit) btnSubmit.textContent = isManagerRole() ? 'Simpan & Verifikasi' : 'Update Perbaikan';
+}
+
+function handleRepairPhoto(e, slot) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.createElement('canvas');
+      const scale = Math.min(1, 800 / img.width);
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'rgba(0,0,0,0.68)';
+      ctx.fillRect(0, canvas.height - 32, canvas.width, 32);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 12px sans-serif';
+      const actor = isPetugasRole() ? currentUser.full_name : (document.getElementById('repair-executor-select')?.value || currentUser.full_name);
+      const labelSlot = slot === 'before' ? 'SEBELUM' : 'SESUDAH';
+      ctx.fillText(`[${labelSlot}] ${new Date().toLocaleString('id-ID')} • ${actor}`, 10, canvas.height - 12);
+      repairPhotos[slot] = canvas.toDataURL('image/jpeg', 0.75);
+      updateRepairPhotoBoxUI(slot, repairPhotos[slot]);
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function approveRepairRecordById(reportId) {
+  if (!isManagerRole()) return alert('Hanya akun Manajemen yang dapat memverifikasi selesai perbaikan.');
+  const rep = getRepairReports().find(r => String(r.id) === String(reportId));
+  if (!rep) return;
+  if (!confirm(`Verifikasi perbaikan "${rep.unit_name}" sudah selesai?\n\nStatus kamar akan dikembalikan dari Maintenance menjadi KOSONG (siap dibersihkan petugas).`)) return;
+
+  const approverName = currentUser.full_name || 'Supervisor Manajemen';
+  const meta = parseNotesMetadata(rep.notes);
+  const rawNote = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
+  const updatedNotes = composeNotesWithMetadata(
+    meta.executor || rep.inspector_name,
+    `Perbaikan Selesai & Terverifikasi (Approved oleh ${approverName})`,
+    '',
+    `${REPAIR_RECORD_TAG}\n${rawNote}`
+  );
+
+  const { error } = await db.from('room_inspections').update({
+    final_status: 'siap',
+    readiness_score: 100,
+    notes: updatedNotes
+  }).eq('id', rep.id);
+
+  if (error) return alert('Gagal memverifikasi perbaikan: ' + error.message);
+
+  if (rep.unit_id) {
+    await db.from('master_units').update({
+      status: 'kotor',
+      last_checked_by: null,
+      last_checked_at: new Date().toISOString()
+    }).eq('id', rep.unit_id);
+  }
+
+  playNotificationChime();
+  await loadAllData();
+  alert(`Berhasil! Perbaikan ${rep.unit_name} terverifikasi selesai dan kamar siap dibersihkan.`);
+}
+
+async function processRepairSubmit(alsoSendWa = false) {
+  const unitId = document.getElementById('repair-unit')?.value;
+  const unit = unitsData.find(u => String(u.id) === String(unitId));
+  if (!unit) return alert('Pilih unit kamar terlebih dahulu.');
+
+  const shiftVal = document.getElementById('repair-shift')?.value || 'Shift Pagi';
+  const categoryVal = document.getElementById('repair-category')?.value || 'Lainnya';
+  const statusChoice = document.getElementById('repair-status-select')?.value || 'butuh_perbaikan';
+  const executorVal = isPetugasRole()
+    ? currentUser.full_name
+    : (document.getElementById('repair-executor-select')?.value || currentUser.full_name);
+  const officerVal = document.getElementById('repair-officer-select')?.value || 'Supervisor Manajemen';
+  const detailText = document.getElementById('repair-notes')?.value.trim();
+
+  if (!detailText) return alert('Mohon isi detail kerusakan atau tindakan perbaikan.');
+
+  let feedbackLabel = 'Butuh Perbaikan (Maintenance)';
+  let finalStatus = 'maintenance';
+  let score = 0;
+  let unitDbStatus = 'maintenance';
+  let unitCheckedBy = `Perbaikan: ${categoryVal}`;
+
+  if (statusChoice === 'proses_perbaikan') {
+    feedbackLabel = 'Sedang Proses Perbaikan';
+    finalStatus = 'maintenance';
+    score = 50;
+  } else if (statusChoice === 'selesai_petugas') {
+    feedbackLabel = isManagerRole()
+      ? `Perbaikan Selesai & Terverifikasi (Approved oleh ${currentUser.full_name})`
+      : 'Selesai Diperbaiki (Menunggu Verifikasi Manajemen)';
+    finalStatus = isManagerRole() ? 'siap' : 'kotor';
+    score = 100;
+    if (isManagerRole()) {
+      unitDbStatus = 'kotor';
+      unitCheckedBy = null;
+    } else {
+      unitDbStatus = 'maintenance';
+      unitCheckedBy = `Selesai Perbaikan (${executorVal}) - Menunggu Verifikasi`;
+    }
+  } else if (statusChoice === 'selesai_approved' && isManagerRole()) {
+    feedbackLabel = `Perbaikan Selesai & Terverifikasi (Approved oleh ${currentUser.full_name})`;
+    finalStatus = 'siap';
+    score = 100;
+    unitDbStatus = 'kotor';
+    unitCheckedBy = null;
+  }
+
+  const composedNotes = composeNotesWithMetadata(
+    executorVal,
+    feedbackLabel,
+    categoryVal,
+    `${REPAIR_RECORD_TAG}\n${detailText}`
+  );
+
+  const payload = {
+    unit_id: unit.id,
+    unit_name: unit.unit_name,
+    inspector_name: officerVal,
+    inspector_role: currentUser.role,
+    shift: `Perbaikan • ${shiftVal}`,
+    readiness_score: score,
+    final_status: finalStatus,
+    duration_seconds: 0,
+    checklist_data: [
+      { item: categoryVal, checked: score === 100 },
+      { item: 'Dokumentasi Foto Kondisi Awal', checked: Boolean(repairPhotos.before) },
+      { item: 'Dokumentasi Foto Sesudah Perbaikan', checked: Boolean(repairPhotos.after) }
+    ],
+    notes: composedNotes,
+    photo_room_url: repairPhotos.before,
+    photo_toilet_url: repairPhotos.after
+  };
+
+  const btn = document.getElementById('btn-submit-repair');
+  const btnWa = document.getElementById('btn-submit-repair-wa');
+  if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan...'; }
+  if (btnWa) btnWa.disabled = true;
+
+  let savedOk = false;
+  let savedRecord = { ...payload, created_at: new Date().toISOString() };
+
+  if (!navigator.onLine) {
+    const q = JSON.parse(localStorage.getItem('ck_offline_queue') || '[]');
+    q.push(payload);
+    localStorage.setItem('ck_offline_queue', JSON.stringify(q));
+    savedOk = true;
+  } else if (activeRepairReportId) {
+    const { data: updatedRows, error } = await db.from('room_inspections')
+      .update({ ...payload, created_at: new Date().toISOString() })
+      .eq('id', activeRepairReportId)
+      .select();
+    if (error) alert('Gagal memperbarui laporan perbaikan: ' + error.message);
+    else {
+      if (updatedRows?.[0]) savedRecord = updatedRows[0];
+      await db.from('master_units').update({ status: unitDbStatus, last_checked_by: unitCheckedBy, last_checked_at: new Date().toISOString() }).eq('id', unit.id);
+      savedOk = true;
+    }
+  } else {
+    const { data: insertedRows, error } = await db.from('room_inspections').insert([payload]).select();
+    if (error) alert('Gagal menyimpan laporan perbaikan: ' + error.message);
+    else {
+      if (insertedRows?.[0]) {
+        savedRecord = insertedRows[0];
+        lastKnownReportId = savedRecord.id;
+        localStorage.setItem('ck_last_seen_id', savedRecord.id);
+      }
+      await db.from('master_units').update({ status: unitDbStatus, last_checked_by: unitCheckedBy, last_checked_at: new Date().toISOString() }).eq('id', unit.id);
+      savedOk = true;
+    }
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Simpan Perbaikan'; }
+  if (btnWa) btnWa.disabled = false;
+
+  if (savedOk) {
+    resetRepairForm();
+    playNotificationChime();
+    await loadAllData();
+    if (alsoSendWa) openWaShareModal(savedRecord);
+    else alert('Laporan Cek Perbaikan berhasil disimpan!');
+  }
+}
+
+async function saveRepairAndSendWa() {
+  await processRepairSubmit(true);
+}
+
+function renderRepairHistoryList() {
+  const listEl = document.getElementById('repair-history-list');
+  const countEl = document.getElementById('repair-history-count');
+  const navBadge = document.getElementById('repair-nav-badge');
+  if (!listEl) return;
+
+  const repairs = getRepairReports();
+  const activeCount = repairs.filter(r => r.final_status !== 'siap').length;
+  if (countEl) countEl.textContent = `${repairs.length} Laporan`;
+  if (navBadge) navBadge.classList.toggle('hidden', activeCount === 0);
+
+  if (repairs.length === 0) {
+    listEl.innerHTML = '<div class="text-center py-6 text-xs text-slate-400 bg-white/70 rounded-2xl border border-slate-200/70">Belum ada laporan cek perbaikan fasilitas.</div>';
+    return;
+  }
+
+  listEl.innerHTML = repairs.map(r => {
+    const waktuStr = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
+    const meta = parseNotesMetadata(r.notes);
+    const isVerified = r.final_status === 'siap';
+    const isDoneWaiting = !isVerified && meta.feedbackStatus.includes('Selesai Diperbaiki');
+    const cleanDetail = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
+
+    const badgeClass = isVerified
+      ? 'bg-emerald-100 text-emerald-700'
+      : isDoneWaiting
+        ? 'bg-indigo-100 text-indigo-800'
+        : 'bg-amber-100 text-amber-800';
+    const badgeText = isVerified
+      ? 'SELESAI & TERVERIFIKASI'
+      : isDoneWaiting
+        ? 'MENUNGGU VERIFIKASI'
+        : 'BUTUH PERBAIKAN';
+
+    return `
+      <div class="glass-card rounded-2xl p-4 shadow-sm border ${isVerified ? 'border-emerald-200' : 'border-amber-200'} space-y-2.5">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <h4 class="text-xs font-extrabold text-slate-900">${r.unit_name}</h4>
+            <p class="text-[11px] text-slate-500">Pelaksana: <strong>${meta.executor || r.inspector_name}</strong> • ${waktuStr}</p>
+            ${meta.feedbackDetail ? `<span class="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">Kategori: ${meta.feedbackDetail}</span>` : ''}
+          </div>
+          <span class="shrink-0 text-[9px] font-extrabold px-2.5 py-1 rounded-full ${badgeClass}">${badgeText}</span>
+        </div>
+
+        ${cleanDetail ? `<p class="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-100">${cleanDetail}</p>` : ''}
+
+        ${(r.photo_room_url || r.photo_toilet_url) ? `
+          <div class="grid grid-cols-2 gap-2">
+            ${r.photo_room_url ? `
+              <div class="space-y-1">
+                <span class="text-[9.5px] font-bold text-slate-500 block">Foto Awal / Rusak</span>
+                <img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />
+              </div>
+            ` : ''}
+            ${r.photo_toilet_url ? `
+              <div class="space-y-1">
+                <span class="text-[9.5px] font-bold text-emerald-700 block">Foto Sesudah Perbaikan</span>
+                <img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />
+              </div>
+            ` : ''}
+          </div>
+        ` : ''}
+
+        <div class="pt-1 flex items-center justify-end gap-1.5 flex-wrap">
+          ${!isVerified ? `
+            <button type="button" onclick="openRepairReportInForm('${r.id}')" class="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-bold rounded-xl flex items-center gap-1 transition">
+              <i data-lucide="edit-3" class="w-3 h-3"></i> Edit / Upload Sesudah
+            </button>
+          ` : ''}
+          ${(isManagerRole() && !isVerified && r.id) ? `
+            <button type="button" onclick="approveRepairRecordById('${r.id}')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-extrabold rounded-xl flex items-center gap-1 shadow-sm transition">
+              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Approve Selesai
+            </button>
+          ` : ''}
+          <button type="button" onclick="shareHistoryWaById('${r.id}')" class="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-bold rounded-xl flex items-center gap-1 shadow-sm transition">
+            <i data-lucide="send" class="w-3 h-3"></i> Kirim WA
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+  lucide.createIcons();
+}
+
+// =========================================================================
+
 function getAppMainUrl() {
   const cleanPath = window.location.pathname.replace(/\/index\.html$/, '');
   const normalizedPath = cleanPath.endsWith('/') ? cleanPath : cleanPath + '/';
@@ -829,7 +1478,7 @@ function sendAppInviteWa(targetRole) {
     '--------------------------------',
     'Halo Rekan-Rekan Petugas,',
     '',
-    'Silakan akses aplikasi di bawah ini untuk melakukan pengecekan kesiapan kamar, scan QR pintu, dan dokumentasi foto:',
+    'Silakan akses aplikasi di bawah ini untuk melakukan pengecekan kesiapan kamar, cek perbaikan, scan QR pintu, dan dokumentasi foto:',
     '',
     '🔗 *Link Aplikasi:*',
     appUrl,
@@ -946,7 +1595,7 @@ async function deleteHistoryRecord(id, unitName, unitId) {
   }
 
   if (unitId) {
-    const remainingForUnit = inspectionsData.filter(item => String(item.unit_id) === String(unitId));
+    const remainingForUnit = getRoomChecklistReports().filter(item => String(item.unit_id) === String(unitId));
     if (remainingForUnit.length > 0) {
       const latest = remainingForUnit[0];
       const approved = isInspectionOfficiallyApproved(latest);
@@ -1139,6 +1788,7 @@ async function triggerNativePhoneNotification(title, body, reportId) {
 function showInAppBanner(report) {
   latestNotifReport = report;
   const banner = document.getElementById('live-toast-banner');
+  const isRepair = isRepairRecord(report);
   const isApproved = isInspectionOfficiallyApproved(report);
   const isRev = isRevisionRequested(report);
   const meta = parseNotesMetadata(report.notes);
@@ -1148,7 +1798,11 @@ function showInAppBanner(report) {
   let badgeLabel = 'Butuh Approval Manajemen • Baru Saja';
   let bodyLabel = `Oleh ${actorName} • Klik untuk cek form & approve`;
 
-  if (isApproved) {
+  if (isRepair) {
+    statusLabel = report.final_status === 'siap' ? 'PERBAIKAN SELESAI ✅' : 'CEK PERBAIKAN 🔧';
+    badgeLabel = 'Laporan Perbaikan Fasilitas • Baru Saja';
+    bodyLabel = `Oleh ${actorName} • ${meta.feedbackDetail || 'Perbaikan Kamar'}`;
+  } else if (isApproved) {
     statusLabel = 'SIAP PAKAI ✅';
     badgeLabel = 'Laporan Kesiapan Kamar • Baru Saja';
     bodyLabel = `Oleh ${actorName} • Skor ${report.readiness_score}%`;
@@ -1173,7 +1827,9 @@ function hideToastBanner() { document.getElementById('live-toast-banner')?.class
 
 function openLatestNotifFromBanner() {
   hideToastBanner();
-  if (latestNotifReport && latestNotifReport.id && !isInspectionOfficiallyApproved(latestNotifReport)) {
+  if (latestNotifReport && isRepairRecord(latestNotifReport)) {
+    openRepairReportInForm(latestNotifReport.id);
+  } else if (latestNotifReport && latestNotifReport.id && !isInspectionOfficiallyApproved(latestNotifReport)) {
     openReportInForm(latestNotifReport.id);
   } else if (isManagerRole()) {
     openNotificationDrawer();
@@ -1194,6 +1850,7 @@ function handleIncomingNewReport(report) {
   lastKnownReportId = report.id;
   localStorage.setItem('ck_last_seen_id', report.id);
 
+  const isRepair = isRepairRecord(report);
   const isApproved = isInspectionOfficiallyApproved(report);
   const isRev = isRevisionRequested(report);
 
@@ -1214,7 +1871,10 @@ function handleIncomingNewReport(report) {
     let notifTitle = `Approval Dibutuhkan: ${report.unit_name}`;
     let notifBody = `Petugas ${actorName} selesai cek (${report.readiness_score}%). Mohon cek form & approve.`;
 
-    if (isApproved) {
+    if (isRepair) {
+      notifTitle = `Laporan Perbaikan: ${report.unit_name}`;
+      notifBody = `Oleh ${actorName} • ${meta.feedbackStatus}`;
+    } else if (isApproved) {
       notifTitle = `Kamar Siap Pakai: ${report.unit_name}`;
       notifBody = `Oleh ${actorName} (${report.readiness_score}%).`;
     } else if (isRev) {
@@ -1244,30 +1904,37 @@ function openNotificationDrawer() {
   } else {
     const resolveBtnLabel = requireApprovalMode ? 'Selesai Perbaikan & Minta Approve' : 'Selesai Perbaikan (Siap Pakai)';
     listEl.innerHTML = inspectionsData.slice(0, 20).map(r => {
+      const isRepair = isRepairRecord(r);
       const isApproved = isInspectionOfficiallyApproved(r);
       const isRev = isRevisionRequested(r);
       const meta = parseNotesMetadata(r.notes);
       const actorName = meta.executor || r.inspector_name;
       const waktu = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 
-      const cardStyle = isApproved
-        ? 'bg-slate-50 border-slate-200/80'
-        : isRev
-          ? 'bg-rose-50/80 border-rose-200'
-          : 'bg-indigo-50/70 border-indigo-200';
-      const badgeStyle = isApproved
-        ? 'bg-emerald-100 text-emerald-700'
-        : isRev
-          ? 'bg-rose-100 text-rose-800'
-          : 'bg-indigo-100 text-indigo-800';
-      const badgeLabel = isApproved ? 'SIAP PAKAI' : isRev ? 'PERLU PERBAIKAN' : 'MENUNGGU APPROVAL';
+      const cardStyle = isRepair
+        ? 'bg-amber-50/80 border-amber-200'
+        : isApproved
+          ? 'bg-slate-50 border-slate-200/80'
+          : isRev
+            ? 'bg-rose-50/80 border-rose-200'
+            : 'bg-indigo-50/70 border-indigo-200';
+      const badgeStyle = isRepair
+        ? 'bg-amber-100 text-amber-800'
+        : isApproved
+          ? 'bg-emerald-100 text-emerald-700'
+          : isRev
+            ? 'bg-rose-100 text-rose-800'
+            : 'bg-indigo-100 text-indigo-800';
+      const badgeLabel = isRepair
+        ? (r.final_status === 'siap' ? 'PERBAIKAN SELESAI' : 'CEK PERBAIKAN')
+        : isApproved ? 'SIAP PAKAI' : isRev ? 'PERLU PERBAIKAN' : 'MENUNGGU APPROVAL';
 
       return `
         <div class="p-3 rounded-2xl ${cardStyle} border transition space-y-2">
           <div onclick="${r.id ? `openReportFullView('${r.id}')` : ''}" class="cursor-pointer space-y-1">
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs font-extrabold text-slate-900 truncate">${r.unit_name}</span>
-              <span class="shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full ${badgeStyle}">${badgeLabel} (${r.readiness_score}%)</span>
+              <span class="shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full ${badgeStyle}">${badgeLabel}</span>
             </div>
             <div class="flex items-center justify-between text-[11px] text-slate-500">
               <span class="truncate">Petugas: <strong>${actorName}</strong></span>
@@ -1275,12 +1942,17 @@ function openNotificationDrawer() {
             </div>
             ${isRev && meta.feedbackDetail ? `<p class="text-[11px] font-bold text-rose-700">Komplain: ${meta.feedbackDetail}</p>` : ''}
           </div>
-          ${(isManagerRole() && !isApproved && r.id) ? `
+          ${(isManagerRole() && !isApproved && !isRepair && r.id) ? `
             <button type="button" onclick="closeActiveModal('modal-notifications'); openReportInForm('${r.id}');" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
               <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek & Approve Form
             </button>
           ` : ''}
-          ${(isPetugasRole() && isRev && r.id) ? `
+          ${(isRepair && r.final_status !== 'siap' && r.id) ? `
+            <button type="button" onclick="closeActiveModal('modal-notifications'); openRepairReportInForm('${r.id}');" class="w-full py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
+              <i data-lucide="wrench" class="w-3.5 h-3.5"></i> Buka Laporan Perbaikan
+            </button>
+          ` : ''}
+          ${(isPetugasRole() && isRev && !isRepair && r.id) ? `
             <button type="button" onclick="closeActiveModal('modal-notifications'); markIssueResolvedByOfficer('${r.id}');" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
               <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> ${resolveBtnLabel}
             </button>
@@ -1344,24 +2016,33 @@ async function loadPublicReport(codeParam) {
 
 function renderPublicReportView(r) {
   const container = document.getElementById('public-report-container');
+  const isRepair = isRepairRecord(r);
   const isApproved = isInspectionOfficiallyApproved(r);
   const isRev = isRevisionRequested(r);
   const waktu = r.created_at ? new Date(r.created_at).toLocaleString('id-ID') : '-';
   const meta = parseNotesMetadata(r.notes);
+  const cleanNotesText = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
   const checklistHtml = Array.isArray(r.checklist_data) && r.checklist_data.length > 0
     ? r.checklist_data.map(c => `<div class="flex items-center justify-between py-2 px-3 rounded-xl ${c.checked ? 'bg-emerald-50/70 text-slate-800' : 'bg-rose-50/70 text-rose-800'}"><span class="text-xs font-bold">${c.item}</span><span class="text-xs font-extrabold">${c.checked ? '✅ Sesuai' : '❌ Belum'}</span></div>`).join('')
     : '<p class="text-xs text-slate-400">Tidak ada rincian checklist.</p>';
 
-  const badgeClass = isApproved
-    ? 'bg-emerald-100 text-emerald-700'
-    : isRev
-      ? 'bg-rose-100 text-rose-800'
-      : 'bg-indigo-100 text-indigo-800';
-  const badgeText = isApproved
-    ? 'SIAP PAKAI ✅'
-    : isRev
-      ? 'PERLU PERBAIKAN ⚠️'
-      : 'MENUNGGU APPROVAL ⏳';
+  const badgeClass = isRepair
+    ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')
+    : isApproved
+      ? 'bg-emerald-100 text-emerald-700'
+      : isRev
+        ? 'bg-rose-100 text-rose-800'
+        : 'bg-indigo-100 text-indigo-800';
+  const badgeText = isRepair
+    ? (r.final_status === 'siap' ? 'PERBAIKAN SELESAI ✅' : 'BUTUH PERBAIKAN 🔧')
+    : isApproved
+      ? 'SIAP PAKAI ✅'
+      : isRev
+        ? 'PERLU PERBAIKAN ⚠️'
+        : 'MENUNGGU APPROVAL ⏳';
+
+  const photo1Label = isRepair ? 'Kondisi Awal / Rusak' : 'Area Kamar';
+  const photo2Label = isRepair ? 'Hasil Sesudah Perbaikan' : 'Kamar Mandi';
 
   container.innerHTML = `
     <div id="public-pdf-area" class="bg-white rounded-3xl p-5 shadow-sm border border-slate-200 space-y-4">
@@ -1369,11 +2050,11 @@ function renderPublicReportView(r) {
         <div>
           <span class="text-[10px] font-extrabold uppercase tracking-wider text-teal-600">RS Khusus Bedah SS Medika</span>
           <h2 class="text-lg font-extrabold text-slate-900 mt-0.5">${r.unit_name}</h2>
-          <p class="text-xs text-slate-500 mt-0.5">Waktu Cek: <strong>${waktu}</strong></p>
+          <p class="text-xs text-slate-500 mt-0.5">Waktu Laporan: <strong>${waktu}</strong></p>
         </div>
         <div class="text-right shrink-0">
           <span class="inline-block text-xs font-extrabold px-3 py-1 rounded-full ${badgeClass}">${badgeText}</span>
-          <p class="text-lg font-extrabold text-teal-700 mt-1">Skor: ${r.readiness_score}%</p>
+          ${!isRepair ? `<p class="text-lg font-extrabold text-teal-700 mt-1">Skor: ${r.readiness_score}%</p>` : ''}
         </div>
       </div>
       <div class="grid grid-cols-2 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs">
@@ -1381,10 +2062,10 @@ function renderPublicReportView(r) {
         <div><span class="text-[10px] text-slate-400 font-bold block">SHIFT KERJA</span><span class="font-extrabold text-slate-800">${r.shift}</span></div>
         ${meta.executor ? `<div class="col-span-2 pt-1 border-t border-slate-200/70"><span class="text-[10px] text-indigo-600 font-bold block">PETUGAS PELAKSANA</span><span class="font-extrabold text-slate-800">${meta.executor}</span></div>` : ''}
       </div>
-      ${meta.feedbackStatus ? `<div class="${isApproved ? 'bg-emerald-50/80 border-emerald-200' : isRev ? 'bg-rose-50/80 border-rose-200' : 'bg-amber-50/80 border-amber-200'} border rounded-2xl p-3 space-y-1"><span class="text-[10px] font-extrabold uppercase ${isApproved ? 'text-emerald-800' : isRev ? 'text-rose-800' : 'text-amber-800'} block">Status & Tanggapan Pemeriksa</span><p class="text-xs font-extrabold text-slate-800">${meta.feedbackStatus}</p>${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">Bagian Ditandai Perbaikan: ${meta.feedbackDetail}</p>` : ''}</div>` : ''}
-      ${(r.photo_room_url || r.photo_toilet_url) ? `<div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Dokumentasi Foto</h3><div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${r.photo_room_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">Area Kamar</span><img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}${r.photo_toilet_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">Kamar Mandi</span><img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}</div></div>` : ''}
-      <div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Rincian Kelengkapan & Kebersihan</h3><div class="space-y-1.5">${checklistHtml}</div></div>
-      ${meta.cleanNotes ? `<div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-3"><span class="text-[10px] font-extrabold uppercase text-amber-800 block">Catatan Tambahan</span><p class="text-xs text-slate-700 mt-0.5">${meta.cleanNotes}</p></div>` : ''}
+      ${meta.feedbackStatus ? `<div class="${isApproved || r.final_status === 'siap' ? 'bg-emerald-50/80 border-emerald-200' : isRev ? 'bg-rose-50/80 border-rose-200' : 'bg-amber-50/80 border-amber-200'} border rounded-2xl p-3 space-y-1"><span class="text-[10px] font-extrabold uppercase ${isApproved || r.final_status === 'siap' ? 'text-emerald-800' : isRev ? 'text-rose-800' : 'text-amber-800'} block">Status & Tanggapan</span><p class="text-xs font-extrabold text-slate-800">${meta.feedbackStatus}</p>${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">${isRepair ? 'Kategori' : 'Bagian Ditandai Perbaikan'}: ${meta.feedbackDetail}</p>` : ''}</div>` : ''}
+      ${(r.photo_room_url || r.photo_toilet_url) ? `<div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Dokumentasi Foto</h3><div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${r.photo_room_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">${photo1Label}</span><img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}${r.photo_toilet_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">${photo2Label}</span><img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}</div></div>` : ''}
+      <div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Rincian Pemeriksaan</h3><div class="space-y-1.5">${checklistHtml}</div></div>
+      ${cleanNotesText ? `<div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-3"><span class="text-[10px] font-extrabold uppercase text-amber-800 block">Catatan / Detail Perbaikan</span><p class="text-xs text-slate-700 mt-0.5">${cleanNotesText}</p></div>` : ''}
     </div>
   `;
   lucide.createIcons();
@@ -1783,6 +2464,10 @@ function loadExistingInspectionToForm(unitId) {
 function openReportInForm(reportId) {
   const rep = inspectionsData.find(r => String(r.id) === String(reportId));
   if (!rep) return;
+  if (isRepairRecord(rep)) {
+    openRepairReportInForm(reportId);
+    return;
+  }
   switchTab('inspect', false, true);
   populateOfficerDropdown();
   populateShiftDropdown();
@@ -1795,6 +2480,7 @@ function handleInspectUnitChange() {
 }
 
 function configureNavigationByRole() {
+  ensureRepairNavigationAndSection();
   const navGrid = document.getElementById('bottom-nav-grid');
   const btnDash = document.getElementById('nav-item-dashboard');
   const btnMaster = document.getElementById('nav-item-master');
@@ -1804,16 +2490,16 @@ function configureNavigationByRole() {
     btnDash?.classList.add('hidden');
     btnMaster?.classList.add('hidden');
     if (navGrid) {
-      navGrid.classList.remove('grid-cols-4');
-      navGrid.classList.add('grid-cols-2');
+      navGrid.classList.remove('grid-cols-2', 'grid-cols-4', 'grid-cols-5');
+      navGrid.classList.add('grid-cols-3');
     }
     inviteBox?.classList.add('hidden');
   } else {
     btnDash?.classList.remove('hidden');
     btnMaster?.classList.remove('hidden');
     if (navGrid) {
-      navGrid.classList.remove('grid-cols-2');
-      navGrid.classList.add('grid-cols-4');
+      navGrid.classList.remove('grid-cols-2', 'grid-cols-3', 'grid-cols-4');
+      navGrid.classList.add('grid-cols-5');
     }
     inviteBox?.classList.remove('hidden');
   }
@@ -1827,6 +2513,7 @@ async function enterApp() {
   renderApprovalToggleCard();
   populateOfficerDropdown();
   populateShiftDropdown();
+  populateRepairFormDropdowns();
   renderMasterShifts();
   updateNotificationPermissionUI();
 
@@ -1840,7 +2527,7 @@ async function enterApp() {
   if (userCard) userCard.style.display = isManagerRole() ? 'block' : 'none';
 
   const savedTab = localStorage.getItem('ck_last_tab');
-  const validTabs = isManagerRole() ? ['dashboard', 'inspect', 'analytics', 'master'] : ['inspect', 'analytics'];
+  const validTabs = isManagerRole() ? ['dashboard', 'inspect', 'repair', 'analytics', 'master'] : ['inspect', 'repair', 'analytics'];
   const startTab = validTabs.includes(savedTab) ? savedTab : (isManagerRole() ? 'dashboard' : 'inspect');
   try { window.history.replaceState({ tab: startTab }, ''); } catch (e) {}
   switchTab(startTab, true);
@@ -1875,6 +2562,7 @@ function switchTab(tabName, fromPopState = false, skipAutoPrefill = false) {
   if (isPetugasRole() && (tabName === 'dashboard' || tabName === 'master')) {
     tabName = 'inspect';
   }
+  ensureRepairNavigationAndSection();
   activeTabName = tabName;
   localStorage.setItem('ck_last_tab', tabName);
 
@@ -1914,6 +2602,10 @@ function switchTab(tabName, fromPopState = false, skipAutoPrefill = false) {
       }
     }
   }
+  if (tabName === 'repair') {
+    populateRepairFormDropdowns();
+    renderRepairHistoryList();
+  }
   if (tabName === 'master') {
     renderApprovalToggleCard();
     renderMasterShifts();
@@ -1937,10 +2629,12 @@ async function loadAllData() {
   await ensureDefaultShiftsInDb();
   rebuildShiftsFromItems();
   populateOfficerDropdown();
+  populateRepairFormDropdowns();
   initExportPeriodInputs();
   renderDashboard();
   renderInspectForm();
   renderOfficerRevisionBanner();
+  renderRepairHistoryList();
   renderUsers();
   renderMasterUnits();
   renderMasterItems();
@@ -2004,14 +2698,17 @@ function renderDashboard() {
       <option value="perlu_perbaikan" ${eff === 'perlu_perbaikan' ? 'selected' : ''}>PERLU PERBAIKAN</option>
       <option value="dibersihkan" ${eff === 'dibersihkan' ? 'selected' : ''}>SEDANG DIBERSIHKAN</option>
       <option value="kosong" ${eff === 'kosong' ? 'selected' : ''}>KOSONG</option>
+      <option value="maintenance" ${eff === 'maintenance' ? 'selected' : ''}>MAINTENANCE</option>
     `;
 
     const actorMeta = latestRep ? parseNotesMetadata(latestRep.notes) : null;
-    const checkedInfo = isNeedsRevision
-      ? `⚠️ Komplain: ${actorMeta?.feedbackDetail || 'Menunggu perbaikan petugas'}`
-      : isWaitingApproval
-        ? `Diajukan: ${actorMeta?.executor || latestRep?.inspector_name || 'Petugas'} (${latestRep?.readiness_score ?? 0}%)`
-        : (eff === 'siap' ? (u.last_checked_by || 'Siap Pakai') : 'Belum dicek (Kosong)');
+    const checkedInfo = eff === 'maintenance'
+      ? (u.last_checked_by || 'Dalam Perbaikan / Maintenance')
+      : isNeedsRevision
+        ? `⚠️ Komplain: ${actorMeta?.feedbackDetail || 'Menunggu perbaikan petugas'}`
+        : isWaitingApproval
+          ? `Diajukan: ${actorMeta?.executor || latestRep?.inspector_name || 'Petugas'} (${latestRep?.readiness_score ?? 0}%)`
+          : (eff === 'siap' ? (u.last_checked_by || 'Siap Pakai') : 'Belum dicek (Kosong)');
 
     const openAction = (latestRep && !isInspectionOfficiallyApproved(latestRep))
       ? `openReportInForm('${latestRep.id}')`
@@ -2132,26 +2829,33 @@ function handlePhoto(e, type) {
 
 function buildWaMessage(data, includeChecklist, includeFullLink) {
   const waktu = data.created_at ? new Date(data.created_at).toLocaleString('id-ID') : new Date().toLocaleString('id-ID');
+  const isRepair = isRepairRecord(data);
   const isApproved = isInspectionOfficiallyApproved(data);
   const isRev = isRevisionRequested(data);
-  const statusText = isApproved
-    ? 'SIAP PAKAI ✅'
-    : isRev
-      ? 'PERLU PERBAIKAN ⚠️'
-      : 'MENUNGGU APPROVAL MANAJEMEN ⏳';
+  const statusText = isRepair
+    ? (data.final_status === 'siap' ? 'PERBAIKAN SELESAI ✅' : 'BUTUH PERBAIKAN / MAINTENANCE 🔧')
+    : isApproved
+      ? 'SIAP PAKAI ✅'
+      : isRev
+        ? 'PERLU PERBAIKAN ⚠️'
+        : 'MENUNGGU APPROVAL MANAJEMEN ⏳';
   const meta = parseNotesMetadata(data.notes);
-  const lines = ['*LAPORAN CEK KESIAPAN KAMAR*', '*RS Khusus Bedah SS Medika*', '--------------------------------', `• *Kamar:* ${data.unit_name}`, `• *Shift:* ${data.shift}`, `• *Pemeriksa:* ${data.inspector_name}`];
+  const cleanNotesText = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
+  const titleText = isRepair ? '*LAPORAN CEK PERBAIKAN FASILITAS*' : '*LAPORAN CEK KESIAPAN KAMAR*';
+
+  const lines = [titleText, '*RS Khusus Bedah SS Medika*', '--------------------------------', `• *Kamar:* ${data.unit_name}`, `• *Shift:* ${data.shift}`, `• *Pemeriksa:* ${data.inspector_name}`];
   if (meta.executor) lines.push(`• *Pelaksana:* ${meta.executor}`);
-  lines.push(`• *Skor Kesiapan:* ${data.readiness_score}%`, `• *Status:* ${statusText}`, `• *Waktu:* ${waktu}`);
+  if (!isRepair) lines.push(`• *Skor Kesiapan:* ${data.readiness_score}%`);
+  lines.push(`• *Status:* ${statusText}`, `• *Waktu:* ${waktu}`);
   if (meta.feedbackStatus) {
     lines.push('--------------------------------', `• *Tanggapan / Status:* ${meta.feedbackStatus}`);
-    if (meta.feedbackDetail) lines.push(`• *Bagian Perbaikan:* ${meta.feedbackDetail}`);
+    if (meta.feedbackDetail) lines.push(`• *${isRepair ? 'Kategori' : 'Bagian Perbaikan'}:* ${meta.feedbackDetail}`);
   }
   if (includeChecklist && Array.isArray(data.checklist_data) && data.checklist_data.length > 0) {
-    lines.push('--------------------------------', '*Rincian Kelengkapan:*');
+    lines.push('--------------------------------', '*Rincian:*');
     data.checklist_data.forEach(c => lines.push(`${c.checked ? '✅' : '❌'} ${c.item}`));
   }
-  if (meta.cleanNotes) lines.push('--------------------------------', `• *Catatan:* ${meta.cleanNotes}`);
+  if (cleanNotesText) lines.push('--------------------------------', `• *Catatan:* ${cleanNotesText}`);
   if (includeFullLink && data.id) lines.push('', '╭──────────────────────────╮', '│  📄 *BUKA LAPORAN PENUH*   │', `│  ${getPublicReportUrl(data.id, false)}`, '╰──────────────────────────╯');
   return lines.join('\n');
 }
@@ -2601,12 +3305,29 @@ function renderAnalytics() {
   historyBox.innerHTML = filteredRows.map((r) => {
     const waktuStr = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
     const meta = parseNotesMetadata(r.notes);
+    const isRepair = isRepairRecord(r);
     const isApproved = isInspectionOfficiallyApproved(r);
     const needsFix = isRevisionRequested(r);
-    const isPendingApproval = !isApproved && !needsFix;
+    const isPendingApproval = !isApproved && !needsFix && !isRepair;
     const ownerName = meta.executor || r.inspector_name;
-    const canResolveFix = needsFix && r.id && (isManagerRole() || isPetugasRole() || (currentUser && ownerName === currentUser.full_name));
+    const canResolveFix = !isRepair && needsFix && r.id && (isManagerRole() || isPetugasRole() || (currentUser && ownerName === currentUser.full_name));
     const safeUnitName = (r.unit_name || '').replace(/'/g, "\\'");
+    const cleanNotesText = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
+
+    const pillClass = isRepair
+      ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')
+      : isApproved
+        ? 'bg-emerald-100 text-emerald-700'
+        : isPendingApproval
+          ? 'bg-indigo-100 text-indigo-800'
+          : 'bg-rose-100 text-rose-800';
+    const pillText = isRepair
+      ? (r.final_status === 'siap' ? 'PERBAIKAN SELESAI' : 'CEK PERBAIKAN')
+      : isApproved
+        ? `SIAP PAKAI (${r.readiness_score}%)`
+        : isPendingApproval
+          ? `MENUNGGU APPROVAL (${r.readiness_score}%)`
+          : `PERLU PERBAIKAN (${r.readiness_score}%)`;
 
     return `
       <div class="glass-card rounded-2xl p-4 shadow-sm space-y-2.5">
@@ -2617,19 +3338,19 @@ function renderAnalytics() {
             ${meta.executor ? `<p class="text-[11px] text-indigo-700 font-semibold">Pelaksana: <strong>${meta.executor}</strong></p>` : ''}
             <p class="text-[10px] text-slate-400 mt-0.5">${waktuStr}</p>
           </div>
-          <span class="shrink-0 text-[9.5px] font-extrabold px-2.5 py-1 rounded-full ${isApproved ? 'bg-emerald-100 text-emerald-700' : isPendingApproval ? 'bg-indigo-100 text-indigo-800' : 'bg-rose-100 text-rose-800'}">${isApproved ? 'SIAP PAKAI' : isPendingApproval ? 'MENUNGGU APPROVAL' : 'PERLU PERBAIKAN'} (${r.readiness_score}%)</span>
+          <span class="shrink-0 text-[9.5px] font-extrabold px-2.5 py-1 rounded-full ${pillClass}">${pillText}</span>
         </div>
-        <div class="text-[11px] px-2.5 py-2 rounded-xl border ${isApproved ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' : isPendingApproval ? 'bg-indigo-50/80 border-indigo-200 text-indigo-900' : 'bg-rose-50/80 border-rose-200 text-rose-900'} space-y-1.5">
+        <div class="text-[11px] px-2.5 py-2 rounded-xl border ${isRepair ? 'bg-amber-50/70 border-amber-200 text-amber-900' : isApproved ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' : isPendingApproval ? 'bg-indigo-50/80 border-indigo-200 text-indigo-900' : 'bg-rose-50/80 border-rose-200 text-rose-900'} space-y-1.5">
           <div>
             <p class="font-extrabold">Status: ${meta.feedbackStatus || (isApproved ? 'Sesuai Standar (Approved)' : 'Menunggu Approval Manajemen')}</p>
-            ${meta.feedbackDetail ? `<p class="text-[10.5px] mt-0.5">Bagian Perbaikan: <strong>${meta.feedbackDetail}</strong></p>` : ''}
+            ${meta.feedbackDetail ? `<p class="text-[10.5px] mt-0.5">${isRepair ? 'Kategori' : 'Bagian Perbaikan'}: <strong>${meta.feedbackDetail}</strong></p>` : ''}
           </div>
           ${canResolveFix ? `
             <button type="button" onclick="markIssueResolvedByOfficer('${r.id}')" class="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
               <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> ${isManagerRole() ? 'Masalah Selesai & Approve Siap Pakai' : resolveBtnLabel}
             </button>
           ` : ''}
-          ${(isManagerRole() && !isApproved && r.id) ? `
+          ${(isManagerRole() && !isApproved && !isRepair && r.id) ? `
             <div class="grid grid-cols-2 gap-1.5">
               <button type="button" onclick="openReportInForm('${r.id}')" class="py-2 px-2 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
                 <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek & Approve
@@ -2639,8 +3360,20 @@ function renderAnalytics() {
               </button>
             </div>
           ` : ''}
+          ${(isRepair && r.final_status !== 'siap' && r.id) ? `
+            <div class="grid grid-cols-2 gap-1.5">
+              <button type="button" onclick="openRepairReportInForm('${r.id}')" class="py-2 px-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+                <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Update Perbaikan
+              </button>
+              ${isManagerRole() ? `
+                <button type="button" onclick="approveRepairRecordById('${r.id}')" class="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+                  <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Approve Selesai
+                </button>
+              ` : ''}
+            </div>
+          ` : ''}
         </div>
-        ${meta.cleanNotes ? `<p class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg">Catatan: ${meta.cleanNotes}</p>` : ''}
+        ${cleanNotesText ? `<p class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg">Catatan: ${cleanNotesText}</p>` : ''}
         <div class="grid grid-cols-2 gap-2">
           ${r.photo_room_url ? `<img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />` : ''}
           ${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />` : ''}
@@ -2664,8 +3397,9 @@ function exportCsv() {
   const headers = ['No,Waktu,Unit Kamar,Pemeriksa,Pelaksana,Shift,Skor (%),Status,Tanggapan Pemeriksa,Bagian Perbaikan,Durasi (Detik),Rincian Checklist,Catatan'];
   const rows = filteredRows.map((r, idx) => {
     const meta = parseNotesMetadata(r.notes);
+    const cleanNotesText = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
     const checklistStr = Array.isArray(r.checklist_data) ? r.checklist_data.map(c => `${c.item}: ${c.checked ? 'OK' : 'BELUM'}`).join(' | ') : '';
-    return `${idx + 1},"${new Date(r.created_at).toLocaleString('id-ID')}","${r.unit_name}","${r.inspector_name}","${meta.executor || r.inspector_name}","${r.shift}",${r.readiness_score},"${r.final_status.toUpperCase()}","${(meta.feedbackStatus || '-').replace(/"/g, '""')}","${(meta.feedbackDetail || '-').replace(/"/g, '""')}",${r.duration_seconds || 0},"${checklistStr.replace(/"/g, '""')}","${(meta.cleanNotes || '').replace(/"/g, '""')}"`;
+    return `${idx + 1},"${new Date(r.created_at).toLocaleString('id-ID')}","${r.unit_name}","${r.inspector_name}","${meta.executor || r.inspector_name}","${r.shift}",${r.readiness_score},"${r.final_status.toUpperCase()}","${(meta.feedbackStatus || '-').replace(/"/g, '""')}","${(meta.feedbackDetail || '-').replace(/"/g, '""')}",${r.duration_seconds || 0},"${checklistStr.replace(/"/g, '""')}","${cleanNotesText.replace(/"/g, '""')}"`;
   });
   const blob = new Blob(['\uFEFF' + headers.concat(rows).join('\n')], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
@@ -2685,8 +3419,9 @@ function exportPdf() {
 
   const rowsHtml = filteredRows.map((r, i) => {
     const meta = parseNotesMetadata(r.notes);
-    const feedbackFull = [meta.feedbackStatus, meta.feedbackDetail ? `Perbaikan: ${meta.feedbackDetail}` : ''].filter(Boolean).join(' • ') || '-';
-    return `<tr><td>${i + 1}</td><td>${new Date(r.created_at).toLocaleString('id-ID')}</td><td>${r.unit_name}</td><td>${r.inspector_name}</td><td>${meta.executor || r.inspector_name}</td><td>${r.shift}</td><td>${r.readiness_score}%</td><td>${r.final_status.toUpperCase()}</td><td>${feedbackFull}</td><td>${meta.cleanNotes || '-'}</td>${includePhotos ? `<td><div style="display:flex;gap:4px;">${r.photo_room_url ? `<img src="${r.photo_room_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}</div></td>` : ''}</tr>`;
+    const cleanNotesText = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
+    const feedbackFull = [meta.feedbackStatus, meta.feedbackDetail ? `Keterangan: ${meta.feedbackDetail}` : ''].filter(Boolean).join(' • ') || '-';
+    return `<tr><td>${i + 1}</td><td>${new Date(r.created_at).toLocaleString('id-ID')}</td><td>${r.unit_name}</td><td>${r.inspector_name}</td><td>${meta.executor || r.inspector_name}</td><td>${r.shift}</td><td>${r.readiness_score}%</td><td>${r.final_status.toUpperCase()}</td><td>${feedbackFull}</td><td>${cleanNotesText || '-'}</td>${includePhotos ? `<td><div style="display:flex;gap:4px;">${r.photo_room_url ? `<img src="${r.photo_room_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}</div></td>` : ''}</tr>`;
   }).join('');
 
   printWin.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8" /><title>Rekap Kesiapan Kamar</title><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script><style>body{font-family:Arial,sans-serif;padding:20px;color:#1e293b;background:#f8fafc;margin:0}.toolbar{display:flex;gap:10px;margin-bottom:16px;background:#fff;padding:12px 16px;border-radius:12px;border:1px solid #e2e8f0}.btn{padding:10px 16px;border:none;border-radius:10px;font-weight:bold;font-size:13px;cursor:pointer}.btn-download{background:#0d9488;color:#fff}.btn-print{background:#334155;color:#fff}.report-box{background:#fff;padding:24px;border-radius:12px;border:1px solid #e2e8f0}h2{margin:0 0 4px;color:#0d9488;font-size:18px}p{margin:0 0 14px;font-size:12px;color:#64748b}.summary{display:flex;gap:16px;margin-bottom:14px;font-size:12px;background:#f1f5f9;padding:10px 14px;border-radius:8px}table{width:100%;border-collapse:collapse;font-size:10.5px}th,td{border:1px solid #cbd5e1;padding:6px;text-align:left;vertical-align:middle}th{background-color:#f1f5f9;font-weight:bold}@media print{.no-print{display:none!important}body{background:#fff;padding:0}.report-box{border:none;padding:0}}</style></head><body><div class="toolbar no-print"><button type="button" id="btn-dl-pdf" class="btn btn-download" onclick="downloadDirectPdf()">⬇ Download PDF</button><button type="button" id="btn-print" class="btn btn-print" onclick="window.print()">🖨 Cetak / Print</button></div><div id="pdf-content" class="report-box"><h2>REKAPITULASI LAPORAN KESIAPAN KAMAR</h2><p>RS Khusus Bedah SS Medika • Filter: <strong>${label}</strong> • Dicetak: ${new Date().toLocaleString('id-ID')}</p><div class="summary"><span><strong>Total Laporan:</strong> ${total}</span><span><strong>Rata-Rata Skor Kesiapan:</strong> ${avgScore}%</span></div><table><thead><tr><th>No</th><th>Waktu</th><th>Unit Kamar</th><th>Pemeriksa</th><th>Pelaksana</th><th>Shift</th><th>Skor</th><th>Status</th><th>Tanggapan Pemeriksa</th><th>Catatan</th>${includePhotos ? '<th>Foto</th>' : ''}</tr></thead><tbody>${rowsHtml}</tbody></table></div><script>function downloadDirectPdf(){const btn=document.getElementById('btn-dl-pdf');btn.textContent='Memproses PDF...';btn.disabled=true;html2pdf().set({margin:10,filename:'Rekap_Kesiapan_Kamar_${fileSuffix}.pdf',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'landscape'}}).from(document.getElementById('pdf-content')).save().then(()=>{btn.textContent='⬇ Download PDF';btn.disabled=false;});}<\/script></body></html>`);
@@ -2695,6 +3430,6 @@ function exportPdf() {
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=5.8').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=6.0').catch(() => {});
   });
 }
