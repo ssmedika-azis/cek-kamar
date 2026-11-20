@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cek-kamar-v6.3';
+const CACHE_NAME = 'cek-kamar-v6.4';
 
 
 self.addEventListener('install', (e) => {
