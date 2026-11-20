@@ -1,4 +1,4 @@
-const APP_VERSION = '6.0';
+const APP_VERSION = '6.1';
 const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteHB4cnJqeG51anlnYWJyaHNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MDk0MjAsImV4cCI6MjExMDQ4NTQyMH0.tFMCbg1_R-I08KEIs-h6wwxXhYLP2Z0oYgnDGC7T2YU';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -818,7 +818,7 @@ function renderOfficerRevisionBanner() {
   lucide.createIcons();
 }
 
-// ==================== MODUL NAVIGASI & FORM CEK PERBAIKAN ====================
+// ==================== MODUL NAVIGASI & FORM CEK PERBAIKAN FASILITAS ====================
 
 function ensureRepairNavigationAndSection() {
   const navGrid = document.getElementById('bottom-nav-grid');
@@ -853,14 +853,14 @@ function ensureRepairNavigationAndSection() {
               <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Form Perbaikan & Maintenance</span>
             </div>
             <h2 class="text-base font-extrabold text-slate-900 mt-0.5">Form Cek Perbaikan Fasilitas</h2>
-            <p class="text-[11px] text-slate-500">Dokumentasi kerusakan & bukti selesai perbaikan kamar</p>
+            <p class="text-[11px] text-slate-500">Ajukan perbaikan, penugasan teknisi oleh manajemen, & bukti selesai</p>
           </div>
-          <span id="repair-mode-badge" class="shrink-0 text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800">Laporan Baru</span>
+          <span id="repair-mode-badge" class="shrink-0 text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800">Pengajuan Baru</span>
         </div>
 
-        <div id="repair-edit-banner" class="hidden rounded-2xl bg-amber-50 border border-amber-300 p-3 flex items-center justify-between gap-2">
-          <p id="repair-edit-desc" class="text-[11px] text-amber-900 font-semibold"></p>
-          <button type="button" onclick="resetRepairForm()" class="shrink-0 px-2.5 py-1 bg-white border border-amber-300 rounded-lg text-[10px] font-extrabold text-amber-900">Batal Edit</button>
+        <div id="repair-edit-banner" class="hidden rounded-2xl bg-indigo-50 border border-indigo-300 p-3 flex items-center justify-between gap-2">
+          <p id="repair-edit-desc" class="text-[11px] text-indigo-950 font-semibold"></p>
+          <button type="button" onclick="resetRepairForm()" class="shrink-0 px-2.5 py-1 bg-white border border-indigo-300 rounded-lg text-[10px] font-extrabold text-indigo-900">Buat Baru</button>
         </div>
 
         <form id="repair-inspection-form" class="space-y-3.5">
@@ -888,39 +888,36 @@ function ensureRepairNavigationAndSection() {
               </select>
             </div>
             <div>
-              <label class="block text-[11px] font-extrabold text-slate-700 mb-1">4. Status Pengerjaan</label>
-              <select id="repair-status-select" onchange="handleRepairStatusChange()" class="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 outline-none focus:border-amber-500">
-                <option value="butuh_perbaikan">⚠️ Butuh Perbaikan (Kamar Maintenance)</option>
-                <option value="proses_perbaikan">🔧 Sedang Proses Perbaikan</option>
-                <option value="selesai_petugas">✅ Selesai Diperbaiki (Menunggu Verifikasi)</option>
-                <option id="opt-repair-approved" value="selesai_approved">🏆 Selesai & Approve (Siap Dibersihkan)</option>
-              </select>
+              <label class="block text-[11px] font-extrabold text-slate-700 mb-1">4. Petugas Pelapor / Pengaju</label>
+              <input type="text" id="repair-reporter-input" readonly class="w-full px-3 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 outline-none" />
             </div>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label class="block text-[11px] font-extrabold text-slate-700 mb-1">5. Petugas / Teknisi Pelaksana <span id="repair-executor-badge" class="text-teal-700"></span></label>
-              <select id="repair-executor-select" class="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 outline-none focus:border-amber-500"></select>
+          <!-- KOTAK PENUGASAN OLEH MANAJEMEN -->
+          <div id="repair-assignment-box" class="rounded-2xl bg-indigo-50/80 border border-indigo-200 p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="text-[11px] font-extrabold text-indigo-950 flex items-center gap-1.5">
+                <i data-lucide="user-check" class="w-3.5 h-3.5 text-indigo-600"></i>
+                5. Petugas / Teknisi yang Ditugaskan Memperbaiki
+              </label>
+              <span id="repair-assignee-lock-badge" class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">Dipilih Manajemen</span>
             </div>
-            <div>
-              <label class="block text-[11px] font-extrabold text-slate-700 mb-1">6. Pemeriksa (Manajemen)</label>
-              <select id="repair-officer-select" class="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 outline-none focus:border-amber-500"></select>
-            </div>
+            <select id="repair-assignee-select" class="w-full px-3 py-2.5 rounded-xl bg-white border border-indigo-200 text-xs font-bold text-slate-800 outline-none focus:border-indigo-500"></select>
+            <p id="repair-assignee-hint" class="text-[10.5px] text-indigo-700">Manajemen dapat memilih petugas/teknisi yang bertugas memperbaiki kerusakan ini.</p>
           </div>
 
           <div>
-            <label class="block text-[11px] font-extrabold text-slate-700 mb-1">7. Detail Kerusakan / Tindakan Perbaikan</label>
-            <textarea id="repair-notes" rows="2" required placeholder="Contoh: Keran wastafel bocor, seal sudah diganti baru dan dicek tidak menetes..." class="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 outline-none focus:border-amber-500"></textarea>
+            <label class="block text-[11px] font-extrabold text-slate-700 mb-1">6. Detail Kerusakan / Keterangan Perbaikan</label>
+            <textarea id="repair-notes" rows="2" required placeholder="Contoh: Keran wastafel bocor / lampu kamar mandi mati, mohon segera diperbaiki..." class="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 outline-none focus:border-amber-500"></textarea>
           </div>
 
           <div class="space-y-2">
-            <label class="block text-[11px] font-extrabold text-slate-700">8. Dokumentasi Foto Perbaikan (Kamera / Album)</label>
+            <label class="block text-[11px] font-extrabold text-slate-700">7. Dokumentasi Foto Perbaikan (Kamera / Album)</label>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <!-- FOTO 1: SEBELUM / TEMUAN -->
               <div id="box-repair-before" class="rounded-2xl border-2 border-dashed border-slate-300 bg-gradient-to-b from-white to-slate-50 p-3 text-center space-y-2 transition">
                 <div class="flex items-center justify-between">
-                  <span class="text-[11px] font-extrabold text-slate-800">Foto Kondisi Awal / Rusak</span>
+                  <span class="text-[11px] font-extrabold text-slate-800">Foto Kondisi Rusak (Awal)</span>
                   <button type="button" id="btn-clear-repair-before" onclick="clearRepairPhoto('before')" class="hidden text-[10px] font-bold text-rose-600 hover:underline">Hapus</button>
                 </div>
                 <div id="preview-wrap-repair-before" class="hidden">
@@ -928,7 +925,7 @@ function ensureRepairNavigationAndSection() {
                 </div>
                 <div id="placeholder-repair-before" class="py-3 text-slate-400">
                   <i data-lucide="camera" class="w-6 h-6 mx-auto mb-1 opacity-60"></i>
-                  <p class="text-[10px]">Ambil foto kerusakan awal</p>
+                  <p class="text-[10px]">Foto bagian yang rusak</p>
                 </div>
                 <div class="grid grid-cols-2 gap-1.5 pt-1">
                   <button type="button" onclick="triggerRepairPhotoPicker('before', 'camera')" class="py-2 px-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1 shadow-sm transition">
@@ -945,7 +942,7 @@ function ensureRepairNavigationAndSection() {
               <!-- FOTO 2: SESUDAH / SELESAI -->
               <div id="box-repair-after" class="rounded-2xl border-2 border-dashed border-slate-300 bg-gradient-to-b from-white to-slate-50 p-3 text-center space-y-2 transition">
                 <div class="flex items-center justify-between">
-                  <span class="text-[11px] font-extrabold text-slate-800">Foto Hasil Sesudah Perbaikan</span>
+                  <span class="text-[11px] font-extrabold text-slate-800">Foto Sesudah Diperbaiki</span>
                   <button type="button" id="btn-clear-repair-after" onclick="clearRepairPhoto('after')" class="hidden text-[10px] font-bold text-rose-600 hover:underline">Hapus</button>
                 </div>
                 <div id="preview-wrap-repair-after" class="hidden">
@@ -953,7 +950,7 @@ function ensureRepairNavigationAndSection() {
                 </div>
                 <div id="placeholder-repair-after" class="py-3 text-slate-400">
                   <i data-lucide="check-square" class="w-6 h-6 mx-auto mb-1 opacity-60"></i>
-                  <p class="text-[10px]">Ambil foto setelah diperbaiki</p>
+                  <p class="text-[10px]">Foto bukti setelah diperbaiki</p>
                 </div>
                 <div class="grid grid-cols-2 gap-1.5 pt-1">
                   <button type="button" onclick="triggerRepairPhotoPicker('after', 'camera')" class="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1 shadow-sm transition">
@@ -969,10 +966,26 @@ function ensureRepairNavigationAndSection() {
             </div>
           </div>
 
-          <div id="repair-form-actions" class="grid grid-cols-2 gap-2.5 pt-2">
-            <button type="submit" id="btn-submit-repair" class="py-3 px-3 bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs shadow-sm transition">Simpan Perbaikan</button>
-            <button type="button" id="btn-submit-repair-wa" onclick="saveRepairAndSendWa()" class="py-3 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
-              <i data-lucide="send" class="w-3.5 h-3.5"></i> Simpan & WA
+          <!-- TOMBOL AKSI FORM PERBAIKAN -->
+          <div id="repair-form-actions" class="space-y-2.5 pt-2">
+            <!-- Tombol Pengajuan Perbaikan (Untuk Laporan Baru) -->
+            <div id="repair-request-buttons" class="grid grid-cols-2 gap-2.5">
+              <button type="submit" id="btn-submit-repair-request" class="py-3.5 px-3 bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
+                <i data-lucide="wrench" class="w-4 h-4"></i> Ajukan Perbaikan
+              </button>
+              <button type="button" id="btn-submit-repair-wa" onclick="saveRepairRequestAndWa()" class="py-3.5 px-3 bg-teal-600 hover:bg-teal-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
+                <i data-lucide="send" class="w-4 h-4"></i> Ajukan & WA
+              </button>
+            </div>
+
+            <!-- Tombol Penugasan Manajemen (Muncul saat Manajemen memilih petugas yang harus memperbaiki) -->
+            <button type="button" id="btn-assign-repair-worker" onclick="assignRepairWorkerFromForm()" class="hidden w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition">
+              <i data-lucide="user-check" class="w-4 h-4"></i> Simpan & Tugaskan Petugas Perbaikan
+            </button>
+
+            <!-- Tombol Sudah Diperbaiki (Muncul setelah beres perbaikan) -->
+            <button type="button" id="btn-mark-repair-done" onclick="markActiveRepairAsDone()" class="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition">
+              <i data-lucide="check-circle-2" class="w-4 h-4"></i> Sudah Diperbaiki (Selesai)
             </button>
           </div>
         </form>
@@ -980,7 +993,7 @@ function ensureRepairNavigationAndSection() {
 
       <div class="space-y-2.5">
         <div class="flex items-center justify-between px-1">
-          <h3 class="text-xs font-extrabold text-slate-800 uppercase tracking-wide">Daftar & Riwayat Cek Perbaikan</h3>
+          <h3 class="text-xs font-extrabold text-slate-800 uppercase tracking-wide">Daftar Pengajuan & Tugas Perbaikan</h3>
           <span id="repair-history-count" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">0 Laporan</span>
         </div>
         <div id="repair-history-list" class="space-y-3"></div>
@@ -989,7 +1002,7 @@ function ensureRepairNavigationAndSection() {
     inspectSection.parentElement.insertBefore(repairSection, inspectSection.nextSibling);
     document.getElementById('repair-inspection-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      await processRepairSubmit(false);
+      await processRepairRequestSubmit(false);
     });
   }
   lucide.createIcons();
@@ -1012,52 +1025,46 @@ function populateRepairFormDropdowns() {
     if (prevShift) shiftSel.value = prevShift;
   }
 
-  const officerSel = document.getElementById('repair-officer-select');
-  const execSel = document.getElementById('repair-executor-select');
-  const execBadge = document.getElementById('repair-executor-badge');
-  const optApproved = document.getElementById('opt-repair-approved');
-  const statusSel = document.getElementById('repair-status-select');
-
-  let managerOnly = usersData.filter(u => (u.role || '').toLowerCase() === 'manajemen' || (u.full_name || '').toLowerCase().includes('supervisor'));
-  if (currentUser && isManagerRole() && !managerOnly.some(u => u.full_name === currentUser.full_name)) {
-    managerOnly.unshift({ full_name: currentUser.full_name, role: 'manajemen' });
-  }
-  if (managerOnly.length === 0) managerOnly = [{ full_name: 'Supervisor Manajemen', role: 'manajemen' }];
-
-  if (officerSel) {
-    officerSel.innerHTML = managerOnly.map(u => `<option value="${u.full_name}">${u.full_name}</option>`).join('');
-    if (isManagerRole() && currentUser?.full_name) officerSel.value = currentUser.full_name;
+  const reporterInput = document.getElementById('repair-reporter-input');
+  if (reporterInput && !activeRepairReportId && currentUser) {
+    reporterInput.value = currentUser.full_name;
   }
 
-  if (execSel) {
-    if (isPetugasRole() && currentUser) {
-      execSel.innerHTML = `<option value="${currentUser.full_name}">${currentUser.full_name}</option>`;
-      execSel.value = currentUser.full_name;
-      execSel.disabled = true;
-      if (execBadge) execBadge.textContent = '🔒 Terkunci';
+  const assigneeSel = document.getElementById('repair-assignee-select');
+  const assigneeBadge = document.getElementById('repair-assignee-lock-badge');
+  const assigneeHint = document.getElementById('repair-assignee-hint');
+  const btnAssign = document.getElementById('btn-assign-repair-worker');
+
+  if (assigneeSel) {
+    const prevAssignee = assigneeSel.value;
+    const allStaff = usersData.length > 0
+      ? usersData
+      : [{ full_name: currentUser?.full_name || 'Petugas / Teknisi', role: 'petugas' }];
+
+    const optionsHtml = ['<option value="">-- Belum Ditentukan (Menunggu Penugasan Manajemen) --</option>']
+      .concat(allStaff.map(u => `<option value="${u.full_name}">${u.full_name} (${u.role})</option>`))
+      .join('');
+    assigneeSel.innerHTML = optionsHtml;
+
+    if (prevAssignee) assigneeSel.value = prevAssignee;
+
+    if (isManagerRole()) {
+      assigneeSel.disabled = false;
+      if (assigneeBadge) {
+        assigneeBadge.textContent = 'Pilih Pelaksana';
+        assigneeBadge.className = 'text-[9.5px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-600 text-white';
+      }
+      if (assigneeHint) assigneeHint.textContent = 'Pilih petugas/teknisi yang harus mengerjakan perbaikan fasilitas ini.';
+      if (btnAssign) btnAssign.classList.remove('hidden');
     } else {
-      const petugasOnly = usersData.filter(u => (u.role || '').toLowerCase() === 'petugas');
-      const finalList = petugasOnly.length > 0 ? petugasOnly : [{ full_name: currentUser?.full_name || 'Teknisi / Petugas', role: 'petugas' }];
-      execSel.innerHTML = finalList.map(u => `<option value="${u.full_name}">${u.full_name}</option>`).join('');
-      execSel.disabled = false;
-      if (execBadge) execBadge.textContent = '';
+      assigneeSel.disabled = true;
+      if (assigneeBadge) {
+        assigneeBadge.textContent = '🔒 Diatur Manajemen';
+        assigneeBadge.className = 'text-[9.5px] font-extrabold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700';
+      }
+      if (assigneeHint) assigneeHint.textContent = 'Bagian Manajemen yang akan menunjuk petugas/teknisi untuk memperbaiki laporan ini.';
+      if (btnAssign) btnAssign.classList.add('hidden');
     }
-  }
-
-  if (optApproved) {
-    optApproved.disabled = isPetugasRole();
-    optApproved.hidden = isPetugasRole();
-  }
-  if (statusSel && !activeRepairReportId && isPetugasRole() && statusSel.value === 'selesai_approved') {
-    statusSel.value = 'selesai_petugas';
-  }
-}
-
-function handleRepairStatusChange() {
-  const sel = document.getElementById('repair-status-select');
-  if (!sel) return;
-  if (isPetugasRole() && sel.value === 'selesai_approved') {
-    sel.value = 'selesai_petugas';
   }
 }
 
@@ -1109,12 +1116,18 @@ function resetRepairForm() {
   clearRepairPhoto('after');
   document.getElementById('repair-edit-banner')?.classList.add('hidden');
   const badge = document.getElementById('repair-mode-badge');
-  if (badge) badge.textContent = 'Laporan Baru';
+  if (badge) {
+    badge.textContent = 'Pengajuan Baru';
+    badge.className = 'shrink-0 text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800';
+  }
   const notesEl = document.getElementById('repair-notes');
   if (notesEl) notesEl.value = '';
-  const btnSubmit = document.getElementById('btn-submit-repair');
-  if (btnSubmit) btnSubmit.textContent = 'Simpan Perbaikan';
+  const btnReq = document.getElementById('btn-submit-repair-request');
+  if (btnReq) btnReq.innerHTML = '<i data-lucide="wrench" class="w-4 h-4"></i> Ajukan Perbaikan';
   populateRepairFormDropdowns();
+  const assigneeSel = document.getElementById('repair-assignee-select');
+  if (assigneeSel) assigneeSel.value = '';
+  lucide.createIcons();
 }
 
 function openRepairReportInForm(reportId) {
@@ -1125,6 +1138,7 @@ function openRepairReportInForm(reportId) {
 
   activeRepairReportId = rep.id;
   const meta = parseNotesMetadata(rep.notes);
+
   const unitSel = document.getElementById('repair-unit');
   if (unitSel && rep.unit_id) unitSel.value = rep.unit_id;
 
@@ -1133,19 +1147,23 @@ function openRepairReportInForm(reportId) {
   if (shiftSel && cleanShift) shiftSel.value = cleanShift;
 
   const catSel = document.getElementById('repair-category');
-  const savedCat = Array.isArray(rep.checklist_data) && rep.checklist_data[0]?.item ? rep.checklist_data[0].item : '';
+  const savedCat = Array.isArray(rep.checklist_data) && rep.checklist_data[0]?.item ? rep.checklist_data[0].item : meta.feedbackDetail;
   if (catSel && savedCat) catSel.value = savedCat;
 
-  const statusSel = document.getElementById('repair-status-select');
-  if (statusSel) {
-    if (rep.final_status === 'siap') statusSel.value = isManagerRole() ? 'selesai_approved' : 'selesai_petugas';
-    else if (meta.feedbackStatus.includes('Selesai Diperbaiki')) statusSel.value = isManagerRole() ? 'selesai_approved' : 'selesai_petugas';
-    else if (meta.feedbackStatus.includes('Sedang Proses')) statusSel.value = 'proses_perbaikan';
-    else statusSel.value = 'butuh_perbaikan';
-  }
+  const reporterInput = document.getElementById('repair-reporter-input');
+  if (reporterInput) reporterInput.value = rep.inspector_name || '';
 
-  const execSel = document.getElementById('repair-executor-select');
-  if (execSel && !isPetugasRole() && meta.executor) execSel.value = meta.executor;
+  const assigneeSel = document.getElementById('repair-assignee-select');
+  if (assigneeSel) {
+    const assignedName = meta.executor && meta.executor !== 'Belum Ditugaskan' ? meta.executor : '';
+    if (assignedName && !Array.from(assigneeSel.options).some(o => o.value === assignedName)) {
+      const opt = document.createElement('option');
+      opt.value = assignedName;
+      opt.textContent = assignedName;
+      assigneeSel.appendChild(opt);
+    }
+    assigneeSel.value = assignedName;
+  }
 
   const notesEl = document.getElementById('repair-notes');
   if (notesEl) notesEl.value = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
@@ -1158,17 +1176,25 @@ function openRepairReportInForm(reportId) {
   updateRepairPhotoBoxUI('after', repairPhotos.after);
 
   const badge = document.getElementById('repair-mode-badge');
-  if (badge) badge.textContent = 'Update Perbaikan';
+  if (badge) {
+    badge.textContent = rep.final_status === 'siap' ? 'Sudah Diperbaiki' : 'Proses Perbaikan';
+    badge.className = rep.final_status === 'siap'
+      ? 'shrink-0 text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800'
+      : 'shrink-0 text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-800';
+  }
 
   const banner = document.getElementById('repair-edit-banner');
   const desc = document.getElementById('repair-edit-desc');
   if (banner && desc) {
-    desc.innerHTML = `Memperbarui laporan perbaikan <strong>${rep.unit_name}</strong>. Silakan lengkapi foto sesudah perbaikan & simpan.`;
+    desc.innerHTML = isManagerRole()
+      ? `Mengelola pengajuan <strong>${rep.unit_name}</strong> (Pelapor: ${rep.inspector_name}). Pilih petugas pelaksana di bawah atau klik <strong>Sudah Diperbaiki</strong>.`
+      : `Tugas perbaikan <strong>${rep.unit_name}</strong>${meta.executor && meta.executor !== 'Belum Ditugaskan' ? ` • Ditugaskan ke: <strong>${meta.executor}</strong>` : ''}. Upload foto sesudah lalu klik <strong>Sudah Diperbaiki</strong>.`;
     banner.classList.remove('hidden');
   }
 
-  const btnSubmit = document.getElementById('btn-submit-repair');
-  if (btnSubmit) btnSubmit.textContent = isManagerRole() ? 'Simpan & Verifikasi' : 'Update Perbaikan';
+  const btnReq = document.getElementById('btn-submit-repair-request');
+  if (btnReq) btnReq.innerHTML = '<i data-lucide="save" class="w-4 h-4"></i> Update Pengajuan';
+  lucide.createIcons();
 }
 
 function handleRepairPhoto(e, slot) {
@@ -1188,7 +1214,7 @@ function handleRepairPhoto(e, slot) {
       ctx.fillRect(0, canvas.height - 32, canvas.width, 32);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 12px sans-serif';
-      const actor = isPetugasRole() ? currentUser.full_name : (document.getElementById('repair-executor-select')?.value || currentUser.full_name);
+      const actor = currentUser ? currentUser.full_name : 'Petugas';
       const labelSlot = slot === 'before' ? 'SEBELUM' : 'SESUDAH';
       ctx.fillText(`[${labelSlot}] ${new Date().toLocaleString('id-ID')} • ${actor}`, 10, canvas.height - 12);
       repairPhotos[slot] = canvas.toDataURL('image/jpeg', 0.75);
@@ -1199,93 +1225,27 @@ function handleRepairPhoto(e, slot) {
   reader.readAsDataURL(file);
 }
 
-async function approveRepairRecordById(reportId) {
-  if (!isManagerRole()) return alert('Hanya akun Manajemen yang dapat memverifikasi selesai perbaikan.');
-  const rep = getRepairReports().find(r => String(r.id) === String(reportId));
-  if (!rep) return;
-  if (!confirm(`Verifikasi perbaikan "${rep.unit_name}" sudah selesai?\n\nStatus kamar akan dikembalikan dari Maintenance menjadi KOSONG (siap dibersihkan petugas).`)) return;
-
-  const approverName = currentUser.full_name || 'Supervisor Manajemen';
-  const meta = parseNotesMetadata(rep.notes);
-  const rawNote = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
-  const updatedNotes = composeNotesWithMetadata(
-    meta.executor || rep.inspector_name,
-    `Perbaikan Selesai & Terverifikasi (Approved oleh ${approverName})`,
-    '',
-    `${REPAIR_RECORD_TAG}\n${rawNote}`
-  );
-
-  const { error } = await db.from('room_inspections').update({
-    final_status: 'siap',
-    readiness_score: 100,
-    notes: updatedNotes
-  }).eq('id', rep.id);
-
-  if (error) return alert('Gagal memverifikasi perbaikan: ' + error.message);
-
-  if (rep.unit_id) {
-    await db.from('master_units').update({
-      status: 'kotor',
-      last_checked_by: null,
-      last_checked_at: new Date().toISOString()
-    }).eq('id', rep.unit_id);
-  }
-
-  playNotificationChime();
-  await loadAllData();
-  alert(`Berhasil! Perbaikan ${rep.unit_name} terverifikasi selesai dan kamar siap dibersihkan.`);
-}
-
-async function processRepairSubmit(alsoSendWa = false) {
+async function processRepairRequestSubmit(alsoSendWa = false) {
   const unitId = document.getElementById('repair-unit')?.value;
   const unit = unitsData.find(u => String(u.id) === String(unitId));
   if (!unit) return alert('Pilih unit kamar terlebih dahulu.');
 
   const shiftVal = document.getElementById('repair-shift')?.value || 'Shift Pagi';
   const categoryVal = document.getElementById('repair-category')?.value || 'Lainnya';
-  const statusChoice = document.getElementById('repair-status-select')?.value || 'butuh_perbaikan';
-  const executorVal = isPetugasRole()
-    ? currentUser.full_name
-    : (document.getElementById('repair-executor-select')?.value || currentUser.full_name);
-  const officerVal = document.getElementById('repair-officer-select')?.value || 'Supervisor Manajemen';
+  const reporterVal = document.getElementById('repair-reporter-input')?.value.trim() || currentUser.full_name;
+  const selectedAssignee = isManagerRole() ? (document.getElementById('repair-assignee-select')?.value || '') : '';
   const detailText = document.getElementById('repair-notes')?.value.trim();
 
-  if (!detailText) return alert('Mohon isi detail kerusakan atau tindakan perbaikan.');
+  if (!detailText) return alert('Mohon isi detail kerusakan yang diajukan.');
 
-  let feedbackLabel = 'Butuh Perbaikan (Maintenance)';
-  let finalStatus = 'maintenance';
-  let score = 0;
-  let unitDbStatus = 'maintenance';
-  let unitCheckedBy = `Perbaikan: ${categoryVal}`;
-
-  if (statusChoice === 'proses_perbaikan') {
-    feedbackLabel = 'Sedang Proses Perbaikan';
-    finalStatus = 'maintenance';
-    score = 50;
-  } else if (statusChoice === 'selesai_petugas') {
-    feedbackLabel = isManagerRole()
-      ? `Perbaikan Selesai & Terverifikasi (Approved oleh ${currentUser.full_name})`
-      : 'Selesai Diperbaiki (Menunggu Verifikasi Manajemen)';
-    finalStatus = isManagerRole() ? 'siap' : 'kotor';
-    score = 100;
-    if (isManagerRole()) {
-      unitDbStatus = 'kotor';
-      unitCheckedBy = null;
-    } else {
-      unitDbStatus = 'maintenance';
-      unitCheckedBy = `Selesai Perbaikan (${executorVal}) - Menunggu Verifikasi`;
-    }
-  } else if (statusChoice === 'selesai_approved' && isManagerRole()) {
-    feedbackLabel = `Perbaikan Selesai & Terverifikasi (Approved oleh ${currentUser.full_name})`;
-    finalStatus = 'siap';
-    score = 100;
-    unitDbStatus = 'kotor';
-    unitCheckedBy = null;
-  }
+  const executorStr = selectedAssignee || 'Belum Ditugaskan';
+  const statusStr = selectedAssignee
+    ? `Ditugaskan ke ${selectedAssignee} (Menunggu Perbaikan)`
+    : 'Pengajuan Perbaikan Baru (Menunggu Penugasan Manajemen)';
 
   const composedNotes = composeNotesWithMetadata(
-    executorVal,
-    feedbackLabel,
+    executorStr,
+    statusStr,
     categoryVal,
     `${REPAIR_RECORD_TAG}\n${detailText}`
   );
@@ -1293,25 +1253,25 @@ async function processRepairSubmit(alsoSendWa = false) {
   const payload = {
     unit_id: unit.id,
     unit_name: unit.unit_name,
-    inspector_name: officerVal,
+    inspector_name: reporterVal,
     inspector_role: currentUser.role,
     shift: `Perbaikan • ${shiftVal}`,
-    readiness_score: score,
-    final_status: finalStatus,
+    readiness_score: 0,
+    final_status: 'maintenance',
     duration_seconds: 0,
     checklist_data: [
-      { item: categoryVal, checked: score === 100 },
-      { item: 'Dokumentasi Foto Kondisi Awal', checked: Boolean(repairPhotos.before) },
-      { item: 'Dokumentasi Foto Sesudah Perbaikan', checked: Boolean(repairPhotos.after) }
+      { item: categoryVal, checked: false },
+      { item: 'Foto Kondisi Rusak (Awal)', checked: Boolean(repairPhotos.before) },
+      { item: 'Foto Sesudah Diperbaiki', checked: Boolean(repairPhotos.after) }
     ],
     notes: composedNotes,
     photo_room_url: repairPhotos.before,
     photo_toilet_url: repairPhotos.after
   };
 
-  const btn = document.getElementById('btn-submit-repair');
+  const btnReq = document.getElementById('btn-submit-repair-request');
   const btnWa = document.getElementById('btn-submit-repair-wa');
-  if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan...'; }
+  if (btnReq) btnReq.disabled = true;
   if (btnWa) btnWa.disabled = true;
 
   let savedOk = false;
@@ -1327,27 +1287,35 @@ async function processRepairSubmit(alsoSendWa = false) {
       .update({ ...payload, created_at: new Date().toISOString() })
       .eq('id', activeRepairReportId)
       .select();
-    if (error) alert('Gagal memperbarui laporan perbaikan: ' + error.message);
+    if (error) alert('Gagal memperbarui pengajuan perbaikan: ' + error.message);
     else {
       if (updatedRows?.[0]) savedRecord = updatedRows[0];
-      await db.from('master_units').update({ status: unitDbStatus, last_checked_by: unitCheckedBy, last_checked_at: new Date().toISOString() }).eq('id', unit.id);
+      await db.from('master_units').update({
+        status: 'maintenance',
+        last_checked_by: selectedAssignee ? `Perbaikan (${selectedAssignee})` : `Pengajuan Perbaikan: ${categoryVal}`,
+        last_checked_at: new Date().toISOString()
+      }).eq('id', unit.id);
       savedOk = true;
     }
   } else {
     const { data: insertedRows, error } = await db.from('room_inspections').insert([payload]).select();
-    if (error) alert('Gagal menyimpan laporan perbaikan: ' + error.message);
+    if (error) alert('Gagal mengajukan perbaikan: ' + error.message);
     else {
       if (insertedRows?.[0]) {
         savedRecord = insertedRows[0];
         lastKnownReportId = savedRecord.id;
         localStorage.setItem('ck_last_seen_id', savedRecord.id);
       }
-      await db.from('master_units').update({ status: unitDbStatus, last_checked_by: unitCheckedBy, last_checked_at: new Date().toISOString() }).eq('id', unit.id);
+      await db.from('master_units').update({
+        status: 'maintenance',
+        last_checked_by: selectedAssignee ? `Perbaikan (${selectedAssignee})` : `Pengajuan Perbaikan: ${categoryVal}`,
+        last_checked_at: new Date().toISOString()
+      }).eq('id', unit.id);
       savedOk = true;
     }
   }
 
-  if (btn) { btn.disabled = false; btn.textContent = 'Simpan Perbaikan'; }
+  if (btnReq) btnReq.disabled = false;
   if (btnWa) btnWa.disabled = false;
 
   if (savedOk) {
@@ -1355,12 +1323,214 @@ async function processRepairSubmit(alsoSendWa = false) {
     playNotificationChime();
     await loadAllData();
     if (alsoSendWa) openWaShareModal(savedRecord);
-    else alert('Laporan Cek Perbaikan berhasil disimpan!');
+    else alert(selectedAssignee
+      ? `Pengajuan perbaikan tersimpan & ditugaskan kepada ${selectedAssignee}!`
+      : 'Pengajuan perbaikan berhasil dikirim ke Manajemen!');
   }
 }
 
-async function saveRepairAndSendWa() {
-  await processRepairSubmit(true);
+async function saveRepairRequestAndWa() {
+  await processRepairRequestSubmit(true);
+}
+
+async function assignRepairWorkerFromForm() {
+  if (!isManagerRole()) return alert('Hanya Manajemen yang dapat menunjuk petugas perbaikan.');
+  const chosenWorker = document.getElementById('repair-assignee-select')?.value || '';
+  if (!chosenWorker) return alert('Silakan pilih terlebih dahulu nama petugas / teknisi yang harus memperbaiki.');
+
+  if (!activeRepairReportId) {
+    return processRepairRequestSubmit(false);
+  }
+
+  const rep = getRepairReports().find(r => String(r.id) === String(activeRepairReportId));
+  if (!rep) return;
+
+  const unitId = document.getElementById('repair-unit')?.value || rep.unit_id;
+  const unit = unitsData.find(u => String(u.id) === String(unitId));
+  const categoryVal = document.getElementById('repair-category')?.value || 'Lainnya';
+  const detailText = document.getElementById('repair-notes')?.value.trim() || parseNotesMetadata(rep.notes).cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
+  const managerName = currentUser.full_name || 'Manajemen';
+
+  const composedNotes = composeNotesWithMetadata(
+    chosenWorker,
+    `Ditugaskan ke ${chosenWorker} oleh ${managerName}`,
+    categoryVal,
+    `${REPAIR_RECORD_TAG}\n${detailText}`
+  );
+
+  const { error } = await db.from('room_inspections').update({
+    unit_id: unit ? unit.id : rep.unit_id,
+    unit_name: unit ? unit.unit_name : rep.unit_name,
+    notes: composedNotes,
+    photo_room_url: repairPhotos.before,
+    photo_toilet_url: repairPhotos.after,
+    created_at: new Date().toISOString()
+  }).eq('id', rep.id);
+
+  if (error) return alert('Gagal menugaskan petugas: ' + error.message);
+
+  if (unit) {
+    await db.from('master_units').update({
+      status: 'maintenance',
+      last_checked_by: `Perbaikan (${chosenWorker})`,
+      last_checked_at: new Date().toISOString()
+    }).eq('id', unit.id);
+  }
+
+  resetRepairForm();
+  playNotificationChime();
+  await loadAllData();
+  alert(`Berhasil! Tugas perbaikan telah diberikan kepada ${chosenWorker}.`);
+}
+
+async function quickAssignRepairWorker(reportId, workerName) {
+  if (!isManagerRole() || !workerName) return;
+  const rep = getRepairReports().find(r => String(r.id) === String(reportId));
+  if (!rep) return;
+
+  const meta = parseNotesMetadata(rep.notes);
+  const rawDetail = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
+  const managerName = currentUser.full_name || 'Manajemen';
+
+  const updatedNotes = composeNotesWithMetadata(
+    workerName,
+    `Ditugaskan ke ${workerName} oleh ${managerName}`,
+    meta.feedbackDetail,
+    `${REPAIR_RECORD_TAG}\n${rawDetail}`
+  );
+
+  const { error } = await db.from('room_inspections').update({
+    notes: updatedNotes,
+    created_at: new Date().toISOString()
+  }).eq('id', rep.id);
+
+  if (error) return alert('Gagal menugaskan petugas: ' + error.message);
+
+  if (rep.unit_id) {
+    await db.from('master_units').update({
+      status: 'maintenance',
+      last_checked_by: `Perbaikan (${workerName})`,
+      last_checked_at: new Date().toISOString()
+    }).eq('id', rep.unit_id);
+  }
+
+  playNotificationChime();
+  await loadAllData();
+}
+
+async function markRepairCompletedById(reportId, overrideBefore = null, overrideAfter = null, overrideNotes = null) {
+  const rep = getRepairReports().find(r => String(r.id) === String(reportId));
+  if (!rep) return;
+
+  if (!confirm(`Konfirmasi bahwa "${rep.unit_name}" SUDAH DIPERBAIKI?\n\nStatus kamar akan otomatis keluar dari Maintenance dan siap dibersihkan petugas.`)) return;
+
+  const meta = parseNotesMetadata(rep.notes);
+  const finisherName = currentUser ? currentUser.full_name : (meta.executor || 'Petugas');
+  const rawDetail = overrideNotes !== null
+    ? overrideNotes
+    : meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
+
+  const updatedNotes = composeNotesWithMetadata(
+    meta.executor && meta.executor !== 'Belum Ditugaskan' ? meta.executor : finisherName,
+    `Sudah Diperbaiki (Selesai oleh ${finisherName})`,
+    meta.feedbackDetail,
+    `${REPAIR_RECORD_TAG}\n${rawDetail}`
+  );
+
+  const finalBefore = overrideBefore !== null ? overrideBefore : rep.photo_room_url;
+  const finalAfter = overrideAfter !== null ? overrideAfter : rep.photo_toilet_url;
+
+  const { error } = await db.from('room_inspections').update({
+    final_status: 'siap',
+    readiness_score: 100,
+    checklist_data: [
+      { item: meta.feedbackDetail || 'Perbaikan Fasilitas', checked: true },
+      { item: 'Foto Kondisi Rusak (Awal)', checked: Boolean(finalBefore) },
+      { item: 'Foto Sesudah Diperbaiki', checked: Boolean(finalAfter) }
+    ],
+    notes: updatedNotes,
+    photo_room_url: finalBefore,
+    photo_toilet_url: finalAfter,
+    created_at: new Date().toISOString()
+  }).eq('id', rep.id);
+
+  if (error) return alert('Gagal memperbarui status sudah diperbaiki: ' + error.message);
+
+  const matchedUnit = unitsData.find(u => String(u.id) === String(rep.unit_id) || normalizeText(u.unit_name) === normalizeText(rep.unit_name));
+  const targetUnitId = matchedUnit ? matchedUnit.id : rep.unit_id;
+
+  if (targetUnitId) {
+    await db.from('master_units').update({
+      status: 'kotor',
+      last_checked_by: null,
+      last_checked_at: new Date().toISOString()
+    }).eq('id', targetUnitId);
+  }
+
+  resetRepairForm();
+  playNotificationChime();
+  await loadAllData();
+  alert(`Berhasil! ${rep.unit_name} ditandai SUDAH DIPERBAIKI.`);
+}
+
+async function markActiveRepairAsDone() {
+  if (activeRepairReportId) {
+    const detailText = document.getElementById('repair-notes')?.value.trim() || '';
+    await markRepairCompletedById(activeRepairReportId, repairPhotos.before, repairPhotos.after, detailText);
+    return;
+  }
+
+  const unitId = document.getElementById('repair-unit')?.value;
+  const unit = unitsData.find(u => String(u.id) === String(unitId));
+  if (!unit) return alert('Pilih unit kamar terlebih dahulu.');
+
+  const shiftVal = document.getElementById('repair-shift')?.value || 'Shift Pagi';
+  const categoryVal = document.getElementById('repair-category')?.value || 'Lainnya';
+  const reporterVal = document.getElementById('repair-reporter-input')?.value.trim() || currentUser.full_name;
+  const finisherName = currentUser ? currentUser.full_name : reporterVal;
+  const detailText = document.getElementById('repair-notes')?.value.trim();
+
+  if (!detailText) return alert('Mohon isi keterangan perbaikan yang sudah dikerjakan.');
+
+  const composedNotes = composeNotesWithMetadata(
+    finisherName,
+    `Sudah Diperbaiki (Selesai oleh ${finisherName})`,
+    categoryVal,
+    `${REPAIR_RECORD_TAG}\n${detailText}`
+  );
+
+  const payload = {
+    unit_id: unit.id,
+    unit_name: unit.unit_name,
+    inspector_name: reporterVal,
+    inspector_role: currentUser.role,
+    shift: `Perbaikan • ${shiftVal}`,
+    readiness_score: 100,
+    final_status: 'siap',
+    duration_seconds: 0,
+    checklist_data: [
+      { item: categoryVal, checked: true },
+      { item: 'Foto Kondisi Rusak (Awal)', checked: Boolean(repairPhotos.before) },
+      { item: 'Foto Sesudah Diperbaiki', checked: Boolean(repairPhotos.after) }
+    ],
+    notes: composedNotes,
+    photo_room_url: repairPhotos.before,
+    photo_toilet_url: repairPhotos.after
+  };
+
+  const { error } = await db.from('room_inspections').insert([payload]);
+  if (error) return alert('Gagal menyimpan laporan selesai perbaikan: ' + error.message);
+
+  await db.from('master_units').update({
+    status: 'kotor',
+    last_checked_by: null,
+    last_checked_at: new Date().toISOString()
+  }).eq('id', unit.id);
+
+  resetRepairForm();
+  playNotificationChime();
+  await loadAllData();
+  alert(`Berhasil! Laporan perbaikan ${unit.unit_name} langsung tersimpan sebagai SUDAH DIPERBAIKI.`);
 }
 
 function renderRepairHistoryList() {
@@ -1375,52 +1545,70 @@ function renderRepairHistoryList() {
   if (navBadge) navBadge.classList.toggle('hidden', activeCount === 0);
 
   if (repairs.length === 0) {
-    listEl.innerHTML = '<div class="text-center py-6 text-xs text-slate-400 bg-white/70 rounded-2xl border border-slate-200/70">Belum ada laporan cek perbaikan fasilitas.</div>';
+    listEl.innerHTML = '<div class="text-center py-6 text-xs text-slate-400 bg-white/70 rounded-2xl border border-slate-200/70">Belum ada pengajuan perbaikan fasilitas.</div>';
     return;
   }
 
   listEl.innerHTML = repairs.map(r => {
     const waktuStr = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
     const meta = parseNotesMetadata(r.notes);
-    const isVerified = r.final_status === 'siap';
-    const isDoneWaiting = !isVerified && meta.feedbackStatus.includes('Selesai Diperbaiki');
+    const isDone = r.final_status === 'siap';
+    const hasAssignee = meta.executor && meta.executor !== 'Belum Ditugaskan';
     const cleanDetail = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
 
-    const badgeClass = isVerified
+    const badgeClass = isDone
       ? 'bg-emerald-100 text-emerald-700'
-      : isDoneWaiting
+      : hasAssignee
         ? 'bg-indigo-100 text-indigo-800'
         : 'bg-amber-100 text-amber-800';
-    const badgeText = isVerified
-      ? 'SELESAI & TERVERIFIKASI'
-      : isDoneWaiting
-        ? 'MENUNGGU VERIFIKASI'
-        : 'BUTUH PERBAIKAN';
+    const badgeText = isDone
+      ? 'SUDAH DIPERBAIKI ✅'
+      : hasAssignee
+        ? 'SEDANG DITANGANI 🔧'
+        : 'MENUNGGU PENUGASAN ⏳';
+
+    const staffOptions = ['<option value="">-- Pilih Petugas yang Memperbaiki --</option>']
+      .concat(usersData.map(u => `<option value="${u.full_name}" ${meta.executor === u.full_name ? 'selected' : ''}>${u.full_name} (${u.role})</option>`))
+      .join('');
 
     return `
-      <div class="glass-card rounded-2xl p-4 shadow-sm border ${isVerified ? 'border-emerald-200' : 'border-amber-200'} space-y-2.5">
+      <div class="glass-card rounded-2xl p-4 shadow-sm border ${isDone ? 'border-emerald-200' : 'border-amber-200'} space-y-2.5">
         <div class="flex items-start justify-between gap-2">
           <div>
             <h4 class="text-xs font-extrabold text-slate-900">${r.unit_name}</h4>
-            <p class="text-[11px] text-slate-500">Pelaksana: <strong>${meta.executor || r.inspector_name}</strong> • ${waktuStr}</p>
-            ${meta.feedbackDetail ? `<span class="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">Kategori: ${meta.feedbackDetail}</span>` : ''}
+            <p class="text-[11px] text-slate-500">Pengaju: <strong>${r.inspector_name}</strong> • ${waktuStr}</p>
+            <div class="flex flex-wrap items-center gap-1.5 mt-1">
+              ${meta.feedbackDetail ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">${meta.feedbackDetail}</span>` : ''}
+              <span class="text-[10px] font-extrabold px-2 py-0.5 rounded ${hasAssignee ? 'bg-indigo-50 text-indigo-800 border border-indigo-200' : 'bg-amber-50 text-amber-800 border border-amber-200'}">
+                Pelaksana: ${hasAssignee ? meta.executor : 'Belum Ditugaskan'}
+              </span>
+            </div>
           </div>
           <span class="shrink-0 text-[9px] font-extrabold px-2.5 py-1 rounded-full ${badgeClass}">${badgeText}</span>
         </div>
 
         ${cleanDetail ? `<p class="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-100">${cleanDetail}</p>` : ''}
 
+        ${(isManagerRole() && !isDone) ? `
+          <div class="bg-indigo-50/80 border border-indigo-200 rounded-xl p-2.5 space-y-1.5">
+            <label class="block text-[10px] font-extrabold text-indigo-950">Pilih Petugas / Teknisi yang Memperbaiki:</label>
+            <select onchange="quickAssignRepairWorker('${r.id}', this.value)" class="w-full px-2.5 py-2 rounded-lg bg-white border border-indigo-200 text-xs font-bold text-slate-800 outline-none">
+              ${staffOptions}
+            </select>
+          </div>
+        ` : ''}
+
         ${(r.photo_room_url || r.photo_toilet_url) ? `
           <div class="grid grid-cols-2 gap-2">
             ${r.photo_room_url ? `
               <div class="space-y-1">
-                <span class="text-[9.5px] font-bold text-slate-500 block">Foto Awal / Rusak</span>
+                <span class="text-[9.5px] font-bold text-slate-500 block">Foto Rusak (Awal)</span>
                 <img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />
               </div>
             ` : ''}
             ${r.photo_toilet_url ? `
               <div class="space-y-1">
-                <span class="text-[9.5px] font-bold text-emerald-700 block">Foto Sesudah Perbaikan</span>
+                <span class="text-[9.5px] font-bold text-emerald-700 block">Foto Sesudah Diperbaiki</span>
                 <img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />
               </div>
             ` : ''}
@@ -1428,14 +1616,12 @@ function renderRepairHistoryList() {
         ` : ''}
 
         <div class="pt-1 flex items-center justify-end gap-1.5 flex-wrap">
-          ${!isVerified ? `
+          ${!isDone ? `
             <button type="button" onclick="openRepairReportInForm('${r.id}')" class="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-bold rounded-xl flex items-center gap-1 transition">
-              <i data-lucide="edit-3" class="w-3 h-3"></i> Edit / Upload Sesudah
+              <i data-lucide="camera" class="w-3 h-3"></i> Upload Foto Sesudah
             </button>
-          ` : ''}
-          ${(isManagerRole() && !isVerified && r.id) ? `
-            <button type="button" onclick="approveRepairRecordById('${r.id}')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-extrabold rounded-xl flex items-center gap-1 shadow-sm transition">
-              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Approve Selesai
+            <button type="button" onclick="markRepairCompletedById('${r.id}')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[11px] font-extrabold rounded-xl flex items-center gap-1 shadow-sm transition">
+              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Sudah Diperbaiki
             </button>
           ` : ''}
           <button type="button" onclick="shareHistoryWaById('${r.id}')" class="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-bold rounded-xl flex items-center gap-1 shadow-sm transition">
@@ -1465,7 +1651,7 @@ function sendAppInviteWa(targetRole) {
     '--------------------------------',
     'Yth. Bapak/Ibu Tim Manajemen,',
     '',
-    'Berikut tautan aplikasi resmi untuk memantau status kesiapan kamar rawat inap, menerima notifikasi laporan masuk secara real-time, serta mengunduh rekap laporan (PDF/Excel):',
+    'Berikut tautan aplikasi resmi untuk memantau status kesiapan kamar rawat inap, menugaskan perbaikan fasilitas, serta mengunduh rekap laporan (PDF/Excel):',
     '',
     '🔗 *Link Aplikasi:*',
     appUrl,
@@ -1478,7 +1664,7 @@ function sendAppInviteWa(targetRole) {
     '--------------------------------',
     'Halo Rekan-Rekan Petugas,',
     '',
-    'Silakan akses aplikasi di bawah ini untuk melakukan pengecekan kesiapan kamar, cek perbaikan, scan QR pintu, dan dokumentasi foto:',
+    'Silakan akses aplikasi di bawah ini untuk melakukan pengecekan kesiapan kamar, pengajuan & penyelesaian perbaikan, scan QR pintu, dan dokumentasi foto:',
     '',
     '🔗 *Link Aplikasi:*',
     appUrl,
@@ -1799,9 +1985,9 @@ function showInAppBanner(report) {
   let bodyLabel = `Oleh ${actorName} • Klik untuk cek form & approve`;
 
   if (isRepair) {
-    statusLabel = report.final_status === 'siap' ? 'PERBAIKAN SELESAI ✅' : 'CEK PERBAIKAN 🔧';
-    badgeLabel = 'Laporan Perbaikan Fasilitas • Baru Saja';
-    bodyLabel = `Oleh ${actorName} • ${meta.feedbackDetail || 'Perbaikan Kamar'}`;
+    statusLabel = report.final_status === 'siap' ? 'SUDAH DIPERBAIKI ✅' : 'PENGAJUAN PERBAIKAN 🔧';
+    badgeLabel = 'Cek Perbaikan Fasilitas • Baru Saja';
+    bodyLabel = `Pelaksana: ${actorName} • ${meta.feedbackDetail || 'Perbaikan Kamar'}`;
   } else if (isApproved) {
     statusLabel = 'SIAP PAKAI ✅';
     badgeLabel = 'Laporan Kesiapan Kamar • Baru Saja';
@@ -1872,8 +2058,8 @@ function handleIncomingNewReport(report) {
     let notifBody = `Petugas ${actorName} selesai cek (${report.readiness_score}%). Mohon cek form & approve.`;
 
     if (isRepair) {
-      notifTitle = `Laporan Perbaikan: ${report.unit_name}`;
-      notifBody = `Oleh ${actorName} • ${meta.feedbackStatus}`;
+      notifTitle = report.final_status === 'siap' ? `Sudah Diperbaiki: ${report.unit_name}` : `Pengajuan Perbaikan: ${report.unit_name}`;
+      notifBody = `Pelaksana: ${actorName} • ${meta.feedbackStatus}`;
     } else if (isApproved) {
       notifTitle = `Kamar Siap Pakai: ${report.unit_name}`;
       notifBody = `Oleh ${actorName} (${report.readiness_score}%).`;
@@ -1919,14 +2105,14 @@ function openNotificationDrawer() {
             ? 'bg-rose-50/80 border-rose-200'
             : 'bg-indigo-50/70 border-indigo-200';
       const badgeStyle = isRepair
-        ? 'bg-amber-100 text-amber-800'
+        ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')
         : isApproved
           ? 'bg-emerald-100 text-emerald-700'
           : isRev
             ? 'bg-rose-100 text-rose-800'
             : 'bg-indigo-100 text-indigo-800';
       const badgeLabel = isRepair
-        ? (r.final_status === 'siap' ? 'PERBAIKAN SELESAI' : 'CEK PERBAIKAN')
+        ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI' : 'CEK PERBAIKAN')
         : isApproved ? 'SIAP PAKAI' : isRev ? 'PERLU PERBAIKAN' : 'MENUNGGU APPROVAL';
 
       return `
@@ -1937,7 +2123,7 @@ function openNotificationDrawer() {
               <span class="shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full ${badgeStyle}">${badgeLabel}</span>
             </div>
             <div class="flex items-center justify-between text-[11px] text-slate-500">
-              <span class="truncate">Petugas: <strong>${actorName}</strong></span>
+              <span class="truncate">Pelaksana: <strong>${actorName}</strong></span>
               <span class="shrink-0 text-[10px]">${waktu}</span>
             </div>
             ${isRev && meta.feedbackDetail ? `<p class="text-[11px] font-bold text-rose-700">Komplain: ${meta.feedbackDetail}</p>` : ''}
@@ -1949,7 +2135,7 @@ function openNotificationDrawer() {
           ` : ''}
           ${(isRepair && r.final_status !== 'siap' && r.id) ? `
             <button type="button" onclick="closeActiveModal('modal-notifications'); openRepairReportInForm('${r.id}');" class="w-full py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-              <i data-lucide="wrench" class="w-3.5 h-3.5"></i> Buka Laporan Perbaikan
+              <i data-lucide="wrench" class="w-3.5 h-3.5"></i> Kelola / Tandai Sudah Diperbaiki
             </button>
           ` : ''}
           ${(isPetugasRole() && isRev && !isRepair && r.id) ? `
@@ -2034,15 +2220,15 @@ function renderPublicReportView(r) {
         ? 'bg-rose-100 text-rose-800'
         : 'bg-indigo-100 text-indigo-800';
   const badgeText = isRepair
-    ? (r.final_status === 'siap' ? 'PERBAIKAN SELESAI ✅' : 'BUTUH PERBAIKAN 🔧')
+    ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI ✅' : 'PENGAJUAN PERBAIKAN 🔧')
     : isApproved
       ? 'SIAP PAKAI ✅'
       : isRev
         ? 'PERLU PERBAIKAN ⚠️'
         : 'MENUNGGU APPROVAL ⏳';
 
-  const photo1Label = isRepair ? 'Kondisi Awal / Rusak' : 'Area Kamar';
-  const photo2Label = isRepair ? 'Hasil Sesudah Perbaikan' : 'Kamar Mandi';
+  const photo1Label = isRepair ? 'Foto Rusak (Awal)' : 'Area Kamar';
+  const photo2Label = isRepair ? 'Foto Sesudah Diperbaiki' : 'Kamar Mandi';
 
   container.innerHTML = `
     <div id="public-pdf-area" class="bg-white rounded-3xl p-5 shadow-sm border border-slate-200 space-y-4">
@@ -2058,9 +2244,9 @@ function renderPublicReportView(r) {
         </div>
       </div>
       <div class="grid grid-cols-2 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs">
-        <div><span class="text-[10px] text-slate-400 font-bold block">PETUGAS PEMERIKSA</span><span class="font-extrabold text-slate-800">${r.inspector_name}</span></div>
+        <div><span class="text-[10px] text-slate-400 font-bold block">${isRepair ? 'PETUGAS PENGAJU' : 'PETUGAS PEMERIKSA'}</span><span class="font-extrabold text-slate-800">${r.inspector_name}</span></div>
         <div><span class="text-[10px] text-slate-400 font-bold block">SHIFT KERJA</span><span class="font-extrabold text-slate-800">${r.shift}</span></div>
-        ${meta.executor ? `<div class="col-span-2 pt-1 border-t border-slate-200/70"><span class="text-[10px] text-indigo-600 font-bold block">PETUGAS PELAKSANA</span><span class="font-extrabold text-slate-800">${meta.executor}</span></div>` : ''}
+        ${meta.executor ? `<div class="col-span-2 pt-1 border-t border-slate-200/70"><span class="text-[10px] text-indigo-600 font-bold block">${isRepair ? 'PETUGAS YANG DITUGASKAN' : 'PETUGAS PELAKSANA'}</span><span class="font-extrabold text-slate-800">${meta.executor}</span></div>` : ''}
       </div>
       ${meta.feedbackStatus ? `<div class="${isApproved || r.final_status === 'siap' ? 'bg-emerald-50/80 border-emerald-200' : isRev ? 'bg-rose-50/80 border-rose-200' : 'bg-amber-50/80 border-amber-200'} border rounded-2xl p-3 space-y-1"><span class="text-[10px] font-extrabold uppercase ${isApproved || r.final_status === 'siap' ? 'text-emerald-800' : isRev ? 'text-rose-800' : 'text-amber-800'} block">Status & Tanggapan</span><p class="text-xs font-extrabold text-slate-800">${meta.feedbackStatus}</p>${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">${isRepair ? 'Kategori' : 'Bagian Ditandai Perbaikan'}: ${meta.feedbackDetail}</p>` : ''}</div>` : ''}
       ${(r.photo_room_url || r.photo_toilet_url) ? `<div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Dokumentasi Foto</h3><div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${r.photo_room_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">${photo1Label}</span><img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}${r.photo_toilet_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">${photo2Label}</span><img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}</div></div>` : ''}
@@ -2833,7 +3019,7 @@ function buildWaMessage(data, includeChecklist, includeFullLink) {
   const isApproved = isInspectionOfficiallyApproved(data);
   const isRev = isRevisionRequested(data);
   const statusText = isRepair
-    ? (data.final_status === 'siap' ? 'PERBAIKAN SELESAI ✅' : 'BUTUH PERBAIKAN / MAINTENANCE 🔧')
+    ? (data.final_status === 'siap' ? 'SUDAH DIPERBAIKI ✅' : 'PENGAJUAN PERBAIKAN FASILITAS 🔧')
     : isApproved
       ? 'SIAP PAKAI ✅'
       : isRev
@@ -2843,8 +3029,8 @@ function buildWaMessage(data, includeChecklist, includeFullLink) {
   const cleanNotesText = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
   const titleText = isRepair ? '*LAPORAN CEK PERBAIKAN FASILITAS*' : '*LAPORAN CEK KESIAPAN KAMAR*';
 
-  const lines = [titleText, '*RS Khusus Bedah SS Medika*', '--------------------------------', `• *Kamar:* ${data.unit_name}`, `• *Shift:* ${data.shift}`, `• *Pemeriksa:* ${data.inspector_name}`];
-  if (meta.executor) lines.push(`• *Pelaksana:* ${meta.executor}`);
+  const lines = [titleText, '*RS Khusus Bedah SS Medika*', '--------------------------------', `• *Kamar:* ${data.unit_name}`, `• *Shift:* ${data.shift}`, `• *${isRepair ? 'Pengaju' : 'Pemeriksa'}:* ${data.inspector_name}`];
+  if (meta.executor) lines.push(`• *${isRepair ? 'Petugas Ditugaskan' : 'Pelaksana'}:* ${meta.executor}`);
   if (!isRepair) lines.push(`• *Skor Kesiapan:* ${data.readiness_score}%`);
   lines.push(`• *Status:* ${statusText}`, `• *Waktu:* ${waktu}`);
   if (meta.feedbackStatus) {
@@ -3322,7 +3508,7 @@ function renderAnalytics() {
           ? 'bg-indigo-100 text-indigo-800'
           : 'bg-rose-100 text-rose-800';
     const pillText = isRepair
-      ? (r.final_status === 'siap' ? 'PERBAIKAN SELESAI' : 'CEK PERBAIKAN')
+      ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI' : 'CEK PERBAIKAN')
       : isApproved
         ? `SIAP PAKAI (${r.readiness_score}%)`
         : isPendingApproval
@@ -3334,8 +3520,8 @@ function renderAnalytics() {
         <div class="flex items-start justify-between gap-2">
           <div>
             <h4 class="text-xs font-extrabold text-slate-900">${r.unit_name}</h4>
-            <p class="text-[11px] text-slate-500">Pemeriksa: <strong>${r.inspector_name}</strong> • ${r.shift}</p>
-            ${meta.executor ? `<p class="text-[11px] text-indigo-700 font-semibold">Pelaksana: <strong>${meta.executor}</strong></p>` : ''}
+            <p class="text-[11px] text-slate-500">${isRepair ? 'Pengaju' : 'Pemeriksa'}: <strong>${r.inspector_name}</strong> • ${r.shift}</p>
+            ${meta.executor ? `<p class="text-[11px] text-indigo-700 font-semibold">${isRepair ? 'Ditugaskan ke' : 'Pelaksana'}: <strong>${meta.executor}</strong></p>` : ''}
             <p class="text-[10px] text-slate-400 mt-0.5">${waktuStr}</p>
           </div>
           <span class="shrink-0 text-[9.5px] font-extrabold px-2.5 py-1 rounded-full ${pillClass}">${pillText}</span>
@@ -3363,13 +3549,11 @@ function renderAnalytics() {
           ${(isRepair && r.final_status !== 'siap' && r.id) ? `
             <div class="grid grid-cols-2 gap-1.5">
               <button type="button" onclick="openRepairReportInForm('${r.id}')" class="py-2 px-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
-                <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Update Perbaikan
+                <i data-lucide="wrench" class="w-3.5 h-3.5"></i> Kelola Perbaikan
               </button>
-              ${isManagerRole() ? `
-                <button type="button" onclick="approveRepairRecordById('${r.id}')" class="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
-                  <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Approve Selesai
-                </button>
-              ` : ''}
+              <button type="button" onclick="markRepairCompletedById('${r.id}')" class="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+                <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Sudah Diperbaiki
+              </button>
             </div>
           ` : ''}
         </div>
@@ -3430,6 +3614,6 @@ function exportPdf() {
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=6.0').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=6.1').catch(() => {});
   });
 }
