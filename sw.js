@@ -18,7 +18,7 @@ self.addEventListener('fetch', (e) => {
     fetch(e.request).catch(() => caches.match(e.request))
   );
 });
-const CACHE_NAME = 'cek-kamar-v5.8';
+const CACHE_NAME = 'cek-kamar-v6.4';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
