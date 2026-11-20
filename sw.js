@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cek-kamar-ssmedika-v6.5';
+const CACHE_NAME = 'cek-kamar-v6.5';
 const ASSETS = [
   './',
   './index.html',
