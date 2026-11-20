@@ -1,49 +1,40 @@
 /* ==========================================================================
    CEK KESIAPAN KAMAR v6.5 — RS KHUSUS BEDAH SS MEDIKA
-   - Layar HP Presisi Anti Geser Kiri-Kanan
-   - Alur Petugas tanpa tab Cek Kamar (Form muncul dari Permintaan Perawat)
-   - 4 Mode Approval: off | perawat | manajemen | all
-   - Tombol Siapkan Kamar terkunci otomatis sampai Pasien Pulang
-   - Role Baru: Teknisi (Otomatis dapat tugas saat Perawat minta siapkan/bersihkan)
-   - Notifikasi Latar Belakang & Pengingat Suara Berulang (Kamar + Lantai)
-   - Rekap PDF & Excel (CSV) dengan Okupansi Kamar & Kedisiplinan Tiap Petugas
+   Terhubung penuh ke database asli Supabase (master_units, master_items,
+   room_inspections, app_users) tanpa mengubah atau menghapus data lama.
    ========================================================================== */
 
 const APP_VERSION = 'v6.5';
-const SUPABASE_URL = 'https://komdvmccltnyzofmoxsr.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvbWR2bWNjbHRueXpvZm1veHNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MzU2MjgsImV4cCI6MjA4OTUxMTYyOH0.w42014c_1P8J732fS4k_L7L5fS7S5s_L7L5fS7S5s_w';
+const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteHB4cnJqeG51anlnYWJyaHNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MDk0MjAsImV4cCI6MjExMDQ4NTQyMH0.tFMCbg1_R-I08KEIs-h6wwxXhYLP2Z0oYgnDGC7T2YU';
 
-// Ambil konfigurasi tersimpan bila user sebelumnya memakai kredensial lokal
-const savedSbUrl = localStorage.getItem('ss_sb_url') || SUPABASE_URL;
-const savedSbKey = localStorage.getItem('ss_sb_key') || SUPABASE_ANON_KEY;
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-let sb = null;
-try {
-  if (window.supabase && savedSbUrl && savedSbKey) {
-    sb = window.supabase.createClient(savedSbUrl, savedSbKey);
-  }
-} catch (e) {
-  console.warn('Supabase init fallback:', e);
-}
+// Bersihkan otomatis cache Service Worker versi lama saat pertama kali naik ke v6.5
+(async function autoClearOldCache() {
+  try {
+    if (localStorage.getItem('ck_ver') !== APP_VERSION) {
+      localStorage.setItem('ck_ver', APP_VERSION);
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        for (const k of keys) await caches.delete(k);
+      }
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const r of regs) await r.update();
+      }
+    }
+  } catch (e) {}
+})();
 
-const DEFAULT_UNITS = [
-  { unit_code: 'KMR-201', unit_name: 'Kamar 201 - SVIP', floor: 'Lantai 2', room_type: 'SVIP' },
-  { unit_code: 'KMR-202', unit_name: 'Kamar 202 - VIP', floor: 'Lantai 2', room_type: 'VIP' },
-  { unit_code: 'KMR-203', unit_name: 'Kamar 203 - Kelas 1', floor: 'Lantai 2', room_type: 'Kelas 1' },
-  { unit_code: 'KMR-205', unit_name: 'Kamar 205 - SVIP', floor: 'Lantai 2', room_type: 'SVIP' },
-  { unit_code: 'KMR-207', unit_name: 'Kamar 207 - Kelas 1', floor: 'Lantai 2', room_type: 'Kelas 1' }
-];
+const SHIFT_CATEGORY_KEY = '__SHIFT__';
+const APPROVAL_CONFIG_KEY = '__CONFIG_APPROVAL__';
+const REPAIR_RECORD_TAG = '[JENIS_LAPORAN: CEK_PERBAIKAN]';
+const CHECKOUT_RECORD_TAG = '[JENIS_LAPORAN: PASIEN_PULANG]';
+const NURSE_REQ_TAG = '[JENIS_LAPORAN: PERMINTAAN_PERAWAT]';
+const TEKNISI_REQ_TAG = '[JENIS_LAPORAN: TUGAS_TEKNISI]';
 
-const DEFAULT_ITEMS = [
-  { id: 'itm-1', category: 'Kebersihan Umum', item_name: 'Lantai disapu, dipel bersih & kering tanpa bau' },
-  { id: 'itm-2', category: 'Tempat Tidur', item_name: 'Bed pasien rapi, sprei & sarung bantal baru bersih' },
-  { id: 'itm-3', category: 'Kamar Mandi', item_name: 'Toilet, wastafel & lantai kamar mandi bersih kesat' },
-  { id: 'itm-4', category: 'Fasilitas Medis', item_name: 'Oksigen dinding, suction & nurse call berfungsi' },
-  { id: 'itm-5', category: 'Elektronik & AC', item_name: 'AC dingin normal, TV & lampu menyala baik' },
-  { id: 'itm-6', category: 'Perlengkapan Pasien', item_name: 'Tisu, sabun, handuk & tempat sampah siap' }
-];
-
-const TEKNISI_ITEMS = [
+const TEKNISI_CHECKLIST_ITEMS = [
   { id: 'tek-1', category: 'Tata Udara', item_name: 'AC berfungsi baik, suhu dingin stabil & tidak bocor' },
   { id: 'tek-2', category: 'Hiburan', item_name: 'TV menyala jernih, saluran normal & remote berfungsi' },
   { id: 'tek-3', category: 'Kelistrikan', item_name: 'Lampu kamar, lampu baca & stopkontak berfungsi normal' },
@@ -51,69 +42,68 @@ const TEKNISI_ITEMS = [
   { id: 'tek-5', category: 'Sistem Panggil', item_name: 'Bel perawat (Nurse Call) & telepon kamar berfungsi' }
 ];
 
-const DEFAULT_USERS = [
-  { id: 'u-1', name: 'Manajemen', role: 'manajemen', pin: '1234', active: true },
-  { id: 'u-2', name: 'Azis Munandar', role: 'petugas', pin: '1111', active: true },
-  { id: 'u-3', name: 'Tim Perawat', role: 'perawat', pin: '2222', active: true },
-  { id: 'u-4', name: 'St Nining', role: 'perawat', pin: '2222', active: true },
-  { id: 'u-5', name: 'Tim Teknisi', role: 'teknisi', pin: '3333', active: true }
-];
+// Kompatibel dengan sesi lama (ck_user) maupun baru
+function loadSavedSession() {
+  try {
+    const u = JSON.parse(localStorage.getItem('ck_user') || 'null');
+    if (u && (u.username || u.full_name)) return u;
+  } catch (e) {}
+  return null;
+}
 
 const STATE = {
-  user: JSON.parse(localStorage.getItem('ss_current_user') || 'null'),
+  user: loadSavedSession(),
   online: navigator.onLine,
   loading: false,
   activeTab: 'main', // main | perbaikan | analitik | pengaturan
-  approvalMode: localStorage.getItem('ss_approval_mode') || 'manajemen', // off | perawat | manajemen | all
+  approvalMode: localStorage.getItem('ck_approval_mode') || 'manajemen', // off | perawat | manajemen | all
   units: [],
   items: [],
   users: [],
   inspections: [],
-  // State form petugas
+  // State form petugas kebersihan
   petugasFormOpen: false,
-  petugasFormUnit: '',
+  petugasFormUnitId: '',
   petugasFormOriginReqId: null,
   petugasChecklist: {},
   petugasNotes: '',
-  petugasPhotoData: '',
+  petugasPhotoRoom: '',
+  petugasPhotoToilet: '',
   petugasStartTime: null,
-  petugasElapsedSec: 0,
   // State form manajemen manual
-  mgmtFormUnit: '',
+  mgmtFormUnitId: '',
   mgmtChecklist: {},
   mgmtNotes: '',
-  mgmtPhotoData: '',
-  mgmtStartTime: null,
-  mgmtElapsedSec: 0,
+  mgmtPhotoRoom: '',
   // State form teknisi
   teknisiFormOpen: false,
-  teknisiFormUnit: '',
+  teknisiFormUnitId: '',
   teknisiFormOriginReqId: null,
   teknisiChecklist: {},
   teknisiNotes: '',
   teknisiPhotoData: '',
   teknisiStartTime: null,
-  // State perbaikan
-  repairUnit: '',
-  repairCategory: 'Teknisi (AC / TV / Listrik / Air)',
+  // State perbaikan fasilitas
+  repairUnitId: '',
+  repairCategory: 'AC / Pendingin Ruangan',
   repairDesc: '',
-  repairPhoto: '',
+  repairPhotoBefore: '',
   // State analitik & rekap
   filterPeriod: 'hari', // hari | minggu | bulan | tahun | semua
   filterDate: new Date().toISOString().slice(0, 10),
   filterMonth: new Date().toISOString().slice(0, 7),
   filterYear: String(new Date().getFullYear()),
   // Alarm & notifikasi
-  soundEnabled: localStorage.getItem('ss_sound_enabled') !== 'false',
-  mutedAlarmKeys: JSON.parse(sessionStorage.getItem('ss_muted_alarms') || '[]'),
+  soundEnabled: localStorage.getItem('ck_sound_enabled') !== 'false',
+  mutedAlarmKeys: JSON.parse(sessionStorage.getItem('ck_muted_alarms') || '[]'),
   lastSpokenAt: 0,
   selectedDetailReport: null,
   toastMsg: ''
 };
 
-let timerInterval = null;
 let alarmLoopInterval = null;
 let syncInterval = null;
+let realtimeChannel = null;
 
 /* ==========================================================================
    HELPER & UTILITAS
@@ -154,16 +144,25 @@ function formatTimeShort(iso) {
   return `${pad(d.getHours())}.${pad(d.getMinutes())}`;
 }
 
-function getUnitInfo(unitCodeOrName) {
-  const found = STATE.units.find(
-    (u) => u.unit_code === unitCodeOrName || u.unit_name === unitCodeOrName
-  );
+function getUnitByIdOrName(unitId, unitName) {
+  let found = null;
+  if (unitId) {
+    found = STATE.units.find((u) => String(u.id) === String(unitId));
+  }
+  if (!found && unitName) {
+    found = STATE.units.find(
+      (u) =>
+        String(u.unit_name || '').toLowerCase() === String(unitName).toLowerCase() ||
+        String(u.unit_code || '').toLowerCase() === String(unitName).toLowerCase()
+    );
+  }
   if (found) return found;
   return {
-    unit_code: unitCodeOrName || 'KMR',
-    unit_name: unitCodeOrName || 'Unit Kamar',
+    id: unitId || '',
+    unit_code: 'KMR',
+    unit_name: unitName || 'Unit Kamar',
     floor: 'Lantai 2',
-    room_type: 'Rawat Inap'
+    status: 'kotor'
   };
 }
 
@@ -185,12 +184,20 @@ function getApprovalModeLabel(mode) {
   }
 }
 
+function isSystemMetaCategory(category) {
+  return category === SHIFT_CATEGORY_KEY || category === APPROVAL_CONFIG_KEY;
+}
+
+function getRealChecklistItems() {
+  return STATE.items.filter((i) => !isSystemMetaCategory(i.category));
+}
+
 /* ==========================================================================
    SUARA NOTIFIKASI & BACKGROUND NOTIFICATION
    ========================================================================== */
 
 function speakIndonesian(text) {
-  if (!STATE.soundEnabled) return;
+  if (!STATE.soundEnabled || !text) return;
   try {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
@@ -204,9 +211,7 @@ function speakIndonesian(text) {
       if (idVoice) utter.voice = idVoice;
       window.speechSynthesis.speak(utter);
     }
-  } catch (e) {
-    console.warn('TTS error:', e);
-  }
+  } catch (e) {}
 }
 
 async function triggerSystemNotification(title, body, tag) {
@@ -230,20 +235,18 @@ async function triggerSystemNotification(title, body, tag) {
         requireInteraction: true
       });
     }
-  } catch (e) {
-    console.warn('Notification error:', e);
-  }
+  } catch (e) {}
 }
 
 function getActiveAlarmsForCurrentUser() {
   if (!STATE.user) return [];
-  const role = STATE.user.role;
+  const role = String(STATE.user.role || '').toLowerCase();
   const alarms = [];
 
   if (role === 'petugas') {
     const reqs = getOpenNurseRequestsForPetugas();
     reqs.forEach((r) => {
-      const unit = getUnitInfo(r.unit_code);
+      const unit = getUnitByIdOrName(r.unit_id, r.unit_name);
       const { num, floor } = extractRoomNumberSpeech(unit);
       const reqType = parseNurseActionType(r);
       let speech = `Perhatian petugas, tolong siapkan kamar nomor ${num}, ${floor}, untuk pasien baru.`;
@@ -257,19 +260,19 @@ function getActiveAlarmsForCurrentUser() {
       alarms.push({
         key: `petugas-${r.id}`,
         title: `${reqType} — ${unit.unit_name}`,
-        body: `${unit.floor} • Diminta oleh ${r.inspector_name || 'Tim Perawat'} (${formatTimeShort(r.created_at)})`,
+        body: `${unit.floor || 'Lantai 2'} • Diminta oleh ${r.inspector_name || 'Tim Perawat'} (${formatTimeShort(r.created_at)})`,
         speech
       });
     });
 
     const revisions = getRevisionReportsForPetugas();
     revisions.forEach((r) => {
-      const unit = getUnitInfo(r.unit_code);
+      const unit = getUnitByIdOrName(r.unit_id, r.unit_name);
       const { num, floor } = extractRoomNumberSpeech(unit);
       alarms.push({
         key: `revisi-${r.id}`,
         title: `Perlu Perbaikan Ulang — ${unit.unit_name}`,
-        body: `${unit.floor} • Komplain dari ${r.approved_by || 'Pemeriksa'}`,
+        body: `${unit.floor || 'Lantai 2'} • Komplain perlu diperbaiki`,
         speech: `Perhatian petugas, kamar nomor ${num}, ${floor}, perlu dicek dan diperbaiki kembali.`
       });
     });
@@ -278,12 +281,12 @@ function getActiveAlarmsForCurrentUser() {
   if (role === 'teknisi') {
     const tekTasks = getOpenTasksForTeknisi();
     tekTasks.forEach((t) => {
-      const unit = getUnitInfo(t.unit_code);
+      const unit = getUnitByIdOrName(t.unit_id, t.unit_name);
       const { num, floor } = extractRoomNumberSpeech(unit);
       alarms.push({
         key: `teknisi-${t.id}`,
         title: `Tugas Teknisi — ${unit.unit_name}`,
-        body: `${unit.floor} • Cek AC, TV, Listrik & Air (${formatTimeShort(t.created_at)})`,
+        body: `${unit.floor || 'Lantai 2'} • Cek AC, TV, Listrik & Air (${formatTimeShort(t.created_at)})`,
         speech: `Perhatian teknisi, harap periksa AC, TV, dan fasilitas kamar nomor ${num}, ${floor}.`
       });
     });
@@ -292,12 +295,12 @@ function getActiveAlarmsForCurrentUser() {
   if (role === 'perawat' || role === 'manajemen') {
     const pending = getPendingApprovalsForRole(role);
     pending.forEach((p) => {
-      const unit = getUnitInfo(p.unit_code);
+      const unit = getUnitByIdOrName(p.unit_id, p.unit_name);
       const { num, floor } = extractRoomNumberSpeech(unit);
       alarms.push({
         key: `approve-${role}-${p.id}`,
         title: `Menunggu Approval — ${unit.unit_name}`,
-        body: `${unit.floor} • Selesai disiapkan oleh ${p.staff_name}`,
+        body: `${unit.floor || 'Lantai 2'} • Selesai disiapkan oleh ${p.inspector_name}`,
         speech: `Laporan kesiapan kamar nomor ${num}, ${floor}, menunggu persetujuan ${role === 'perawat' ? 'perawat' : 'manajemen'}.`
       });
     });
@@ -334,37 +337,8 @@ function muteCurrentAlarms() {
 }
 
 /* ==========================================================================
-   SINKRONISASI DATA SUPABASE & LOCAL FALLBACK
+   SINKRONISASI DATA SUPABASE ASLI
    ========================================================================== */
-
-function loadLocalCache() {
-  try {
-    const u = JSON.parse(localStorage.getItem('ss_cache_units') || 'null');
-    const i = JSON.parse(localStorage.getItem('ss_cache_items') || 'null');
-    const usr = JSON.parse(localStorage.getItem('ss_cache_users') || 'null');
-    const ins = JSON.parse(localStorage.getItem('ss_cache_inspections') || 'null');
-    STATE.units = Array.isArray(u) && u.length ? u : [...DEFAULT_UNITS];
-    STATE.items = Array.isArray(i) && i.length ? i : [...DEFAULT_ITEMS];
-    STATE.users = Array.isArray(usr) && usr.length ? usr : [...DEFAULT_USERS];
-    STATE.inspections = Array.isArray(ins) ? ins : [];
-  } catch (e) {
-    STATE.units = [...DEFAULT_UNITS];
-    STATE.items = [...DEFAULT_ITEMS];
-    STATE.users = [...DEFAULT_USERS];
-    STATE.inspections = [];
-  }
-}
-
-function saveLocalCache() {
-  try {
-    localStorage.setItem('ss_cache_units', JSON.stringify(STATE.units));
-    localStorage.setItem('ss_cache_items', JSON.stringify(STATE.items));
-    localStorage.setItem('ss_cache_users', JSON.stringify(STATE.users));
-    localStorage.setItem('ss_cache_inspections', JSON.stringify(STATE.inspections));
-  } catch (e) {
-    console.warn('Cache save warning:', e);
-  }
-}
 
 async function syncAllData(silent = false) {
   if (!silent) {
@@ -372,31 +346,32 @@ async function syncAllData(silent = false) {
     render();
   }
 
-  if (sb && navigator.onLine) {
-    try {
-      const [uRes, iRes, usrRes, insRes] = await Promise.all([
-        sb.from('master_units').select('*').order('unit_code', { ascending: true }),
-        sb.from('master_items').select('*').order('id', { ascending: true }),
-        sb.from('app_users').select('*').order('name', { ascending: true }),
-        sb.from('room_inspections').select('*').order('created_at', { ascending: false }).limit(600)
-      ]);
+  try {
+    const [uRes, iRes, usrRes, insRes] = await Promise.all([
+      sb.from('master_units').select('*').order('unit_code', { ascending: true }),
+      sb.from('master_items').select('*').order('created_at', { ascending: true }),
+      sb.from('app_users').select('*').order('created_at', { ascending: true }),
+      sb.from('room_inspections').select('*').order('created_at', { ascending: false }).limit(500)
+    ]);
 
-      if (!uRes.error && Array.isArray(uRes.data) && uRes.data.length) {
-        STATE.units = uRes.data;
+    if (!uRes.error && Array.isArray(uRes.data)) STATE.units = uRes.data;
+    if (!iRes.error && Array.isArray(iRes.data)) STATE.items = iRes.data;
+    if (!usrRes.error && Array.isArray(usrRes.data)) STATE.users = usrRes.data;
+    if (!insRes.error && Array.isArray(insRes.data)) STATE.inspections = insRes.data;
+
+    // Sinkronkan mode approval dari master_items bila tersimpan di server
+    const cfgRow = STATE.items.find((i) => i.category === APPROVAL_CONFIG_KEY);
+    if (cfgRow && cfgRow.item_name) {
+      const val = String(cfgRow.item_name).toLowerCase();
+      if (['off', 'perawat', 'manajemen', 'all'].includes(val)) {
+        STATE.approvalMode = val;
+        localStorage.setItem('ck_approval_mode', val);
+      } else if (val === 'on') {
+        STATE.approvalMode = 'manajemen';
       }
-      if (!iRes.error && Array.isArray(iRes.data) && iRes.data.length) {
-        STATE.items = iRes.data;
-      }
-      if (!usrRes.error && Array.isArray(usrRes.data) && usrRes.data.length) {
-        STATE.users = usrRes.data;
-      }
-      if (!insRes.error && Array.isArray(insRes.data)) {
-        STATE.inspections = insRes.data;
-      }
-      saveLocalCache();
-    } catch (e) {
-      console.warn('Sync Supabase error, menggunakan data lokal:', e);
     }
+  } catch (e) {
+    console.warn('Sync Supabase:', e);
   }
 
   STATE.loading = false;
@@ -404,81 +379,39 @@ async function syncAllData(silent = false) {
   runAlarmReminderCycle(false);
 }
 
-async function insertInspectionRecord(record) {
-  const newRec = {
-    id: record.id || `loc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    created_at: record.created_at || new Date().toISOString(),
-    ...record
-  };
-
-  // Simpan langsung ke state & localStorage agar respons instan di HP
-  STATE.inspections.unshift(newRec);
-  saveLocalCache();
-
-  if (sb && navigator.onLine) {
-    try {
-      const payload = { ...newRec };
-      if (String(payload.id).startsWith('loc-')) delete payload.id;
-      const { data, error } = await sb.from('room_inspections').insert([payload]).select();
-      if (!error && data && data[0]) {
-        const idx = STATE.inspections.findIndex((x) => x.id === newRec.id);
-        if (idx !== -1) STATE.inspections[idx] = data[0];
-        saveLocalCache();
-      }
-    } catch (e) {
-      console.warn('Insert Supabase fallback lokal:', e);
-    }
-  }
-  return newRec;
-}
-
-async function updateInspectionRecord(id, patch) {
-  const idx = STATE.inspections.findIndex((x) => String(x.id) === String(id));
-  if (idx !== -1) {
-    STATE.inspections[idx] = { ...STATE.inspections[idx], ...patch };
-    saveLocalCache();
-  }
-
-  if (sb && navigator.onLine && !String(id).startsWith('loc-')) {
-    try {
-      await sb.from('room_inspections').update(patch).eq('id', id);
-    } catch (e) {
-      console.warn('Update Supabase fallback lokal:', e);
-    }
-  }
-}
-
 /* ==========================================================================
-   LOGIKA STATUS KAMAR, PERMINTAAN PERAWAT, TEKNISI & APPROVAL
+   KLASIFIKASI JENIS RECORD DI TABEL room_inspections ASLI
    ========================================================================== */
 
 function isNurseQuickRequest(rec) {
-  const shiftStr = String(rec.shift || '');
-  const statusStr = String(rec.status || '').toUpperCase();
+  const n = String(rec.notes || '');
+  const s = String(rec.shift || '');
   return (
-    statusStr === 'PERMINTAAN_PERAWAT' ||
-    shiftStr.startsWith('Siapkan Kamar') ||
-    shiftStr.startsWith('Tambahan Extrabed') ||
-    shiftStr.startsWith('Minta Dibersihkan') ||
-    shiftStr.startsWith('Pasien Pulang')
+    n.includes(NURSE_REQ_TAG) ||
+    n.includes(CHECKOUT_RECORD_TAG) ||
+    s.startsWith('Siapkan Kamar') ||
+    s.startsWith('Tambahan Extrabed') ||
+    s.startsWith('Minta Dibersihkan') ||
+    s.startsWith('Pasien Pulang')
   );
 }
 
 function isTeknisiTaskRecord(rec) {
-  const statusStr = String(rec.status || '').toUpperCase();
-  const shiftStr = String(rec.shift || '');
+  const n = String(rec.notes || '');
+  const s = String(rec.shift || '');
   return (
-    statusStr === 'TUGAS_TEKNISI' ||
-    statusStr === 'SELESAI_TEKNISI' ||
-    shiftStr.startsWith('Tugas Teknisi') ||
-    shiftStr.startsWith('Cek Teknisi')
+    n.includes(TEKNISI_REQ_TAG) ||
+    n.includes(REPAIR_RECORD_TAG) ||
+    s.startsWith('Tugas Teknisi') ||
+    s.startsWith('Cek Teknisi') ||
+    s.startsWith('Perbaikan')
   );
 }
 
 function parseNurseActionType(rec) {
-  const s = String(rec.shift || '');
+  const s = String(rec.shift || '') + ' ' + String(rec.notes || '');
   if (s.includes('Siapkan Kamar')) return 'Siapkan Kamar';
-  if (s.includes('Tambahan Extrabed')) return 'Tambah Extrabed';
+  if (s.includes('Tambahan Extrabed') || s.includes('Tambah Extrabed')) return 'Tambah Extrabed';
   if (s.includes('Minta Dibersihkan')) return 'Minta Dibersihkan';
   if (s.includes('Pasien Pulang')) return 'Pasien Pulang';
   return 'Permintaan Perawat';
@@ -487,23 +420,24 @@ function parseNurseActionType(rec) {
 function getOpenNurseRequestsForPetugas() {
   return STATE.inspections.filter((r) => {
     if (!isNurseQuickRequest(r)) return false;
-    const st = String(r.status || '').toUpperCase();
-    // Jika belum ditandai selesai oleh petugas
-    return st !== 'SELESAI_PERMINTAAN' && st !== 'SIAP PAKAI';
+    const n = String(r.notes || '');
+    return !n.includes('[STATUS_PERMINTAAN: SELESAI]') && r.final_status !== 'siap';
   });
 }
 
 function getRevisionReportsForPetugas() {
   return STATE.inspections.filter((r) => {
-    const st = String(r.status || '').toUpperCase();
-    return st === 'PERLU PERBAIKAN' || st === 'REVISI';
+    if (isNurseQuickRequest(r) || isTeknisiTaskRecord(r)) return false;
+    const n = String(r.notes || '');
+    return r.final_status !== 'siap' && (n.includes('Perlu Perbaikan') || n.includes('Revisi'));
   });
 }
 
 function getOpenTasksForTeknisi() {
   return STATE.inspections.filter((r) => {
-    const st = String(r.status || '').toUpperCase();
-    return st === 'TUGAS_TEKNISI';
+    if (!isTeknisiTaskRecord(r)) return false;
+    const n = String(r.notes || '');
+    return r.final_status !== 'siap' && !n.includes('[STATUS_TEKNISI: SELESAI]');
   });
 }
 
@@ -514,26 +448,30 @@ function getPendingApprovalsForRole(role) {
   if (mode === 'manajemen' && role !== 'manajemen') return [];
 
   return STATE.inspections.filter((r) => {
-    const st = String(r.status || '').toUpperCase();
-    return st === 'MENUNGGU APPROVAL';
+    if (isNurseQuickRequest(r) || isTeknisiTaskRecord(r)) return false;
+    const n = String(r.notes || '');
+    return (
+      r.final_status !== 'siap' &&
+      !n.includes('Perlu Perbaikan') &&
+      !n.includes('Revisi')
+    );
   });
 }
 
-function getInfoReportsForRole(role) {
-  // Laporan selesai terbaru untuk dipantau oleh Perawat/Manajemen walau bukan approver
+function getInfoReportsForRole() {
   return STATE.inspections
-    .filter((r) => {
-      if (isNurseQuickRequest(r)) return false;
-      const st = String(r.status || '').toUpperCase();
-      return st === 'SIAP PAKAI' || st === 'MENUNGGU APPROVAL' || st === 'SELESAI_TEKNISI';
-    })
+    .filter((r) => !isNurseQuickRequest(r))
     .slice(0, 8);
 }
 
-function getUnitCurrentState(unitCode) {
-  const unitLogs = STATE.inspections.filter((r) => r.unit_code === unitCode);
+function getUnitCurrentState(unit) {
+  const unitLogs = STATE.inspections.filter(
+    (r) =>
+      (unit.id && String(r.unit_id) === String(unit.id)) ||
+      String(r.unit_name || '').toLowerCase() === String(unit.unit_name || '').toLowerCase()
+  );
 
-  // Cek apakah tombol "Siapkan Kamar" sedang terkunci (sudah dipencet dan belum ada "Pasien Pulang" setelahnya)
+  // Kunci tombol "Siapkan Kamar" jika sudah dipencet dan belum ada "Pasien Pulang" setelahnya
   let siapkanLocked = false;
   for (let i = 0; i < unitLogs.length; i++) {
     const act = parseNurseActionType(unitLogs[i]);
@@ -547,36 +485,43 @@ function getUnitCurrentState(unitCode) {
     }
   }
 
-  // Tentukan badge status kamar terkini
   const latestMain = unitLogs.find((r) => !isTeknisiTaskRecord(r));
   let badge = 'KOSONG';
   let badgeColor = 'bg-slate-100 text-slate-600';
   let subText = 'Belum dicek (Kosong)';
 
-  if (latestMain) {
-    const st = String(latestMain.status || '').toUpperCase();
-    if (isNurseQuickRequest(latestMain) && st !== 'SELESAI_PERMINTAAN') {
+  if (unit.status === 'maintenance') {
+    badge = 'MAINTENANCE';
+    badgeColor = 'bg-rose-100 text-rose-700';
+    subText = unit.last_checked_by || 'Dalam perbaikan fasilitas';
+  } else if (latestMain) {
+    const n = String(latestMain.notes || '');
+    if (isNurseQuickRequest(latestMain) && !n.includes('[STATUS_PERMINTAAN: SELESAI]')) {
       const act = parseNurseActionType(latestMain);
       badge = 'PERMINTAAN PERAWAT';
       badgeColor = 'bg-amber-100 text-amber-800';
       subText = `${act}: ${latestMain.inspector_name || 'Tim Perawat'} (${formatTimeShort(latestMain.created_at)})`;
-    } else if (st === 'MENUNGGU APPROVAL') {
-      badge = 'MENUNGGU APPROVAL';
-      badgeColor = 'bg-blue-100 text-blue-800';
-      subText = `Dicek oleh: ${latestMain.staff_name || '-'}`;
-    } else if (st === 'PERLU PERBAIKAN' || st === 'REVISI') {
+    } else if (n.includes('Perlu Perbaikan') || n.includes('Revisi')) {
       badge = 'PERLU REVISI';
       badgeColor = 'bg-rose-100 text-rose-700';
-      subText = `Catatan: ${latestMain.notes || 'Perlu dicek ulang'}`;
-    } else if (st === 'SIAP PAKAI') {
+      subText = 'Sedang diperbaiki ulang oleh petugas';
+    } else if (latestMain.final_status !== 'siap' && !isNurseQuickRequest(latestMain)) {
+      badge = 'MENUNGGU APPROVAL';
+      badgeColor = 'bg-blue-100 text-blue-800';
+      subText = `Dicek oleh: ${latestMain.inspector_name || '-'}`;
+    } else if (latestMain.final_status === 'siap' || unit.status === 'siap') {
       badge = siapkanLocked ? 'SIAP PAKAI • TERISI' : 'SIAP PAKAI';
       badgeColor = 'bg-emerald-100 text-emerald-800';
-      subText = `Ditangani: ${latestMain.staff_name || '-'}`;
+      subText = unit.last_checked_by || `Siap Pakai (${latestMain.inspector_name || '-'})`;
     } else if (parseNurseActionType(latestMain) === 'Pasien Pulang') {
       badge = 'KOSONG / KOTOR';
       badgeColor = 'bg-orange-100 text-orange-800';
       subText = `Pasien pulang (${formatTimeShort(latestMain.created_at)})`;
     }
+  } else if (unit.status === 'siap') {
+    badge = siapkanLocked ? 'SIAP PAKAI • TERISI' : 'SIAP PAKAI';
+    badgeColor = 'bg-emerald-100 text-emerald-800';
+    subText = unit.last_checked_by || 'Siap Pakai';
   }
 
   return { siapkanLocked, badge, badgeColor, subText };
@@ -586,9 +531,9 @@ function getUnitCurrentState(unitCode) {
    AKSI PERAWAT (4 TOMBOL CEPAT + PEMICU OTOMATIS TEKNISI)
    ========================================================================== */
 
-async function handleNurseQuickAction(unitCode, actionType) {
-  const unit = getUnitInfo(unitCode);
-  const { siapkanLocked } = getUnitCurrentState(unitCode);
+async function handleNurseQuickAction(unitId, actionType) {
+  const unit = getUnitByIdOrName(unitId, '');
+  const { siapkanLocked } = getUnitCurrentState(unit);
 
   if (actionType === 'Siapkan Kamar' && siapkanLocked) {
     showToast('Kamar sudah dipesan/disiapkan. Tombol aktif kembali setelah Pasien Pulang.');
@@ -598,7 +543,7 @@ async function handleNurseQuickAction(unitCode, actionType) {
   const now = new Date();
   const timeStr = formatTimeShort(now.toISOString());
   const { num, floor } = extractRoomNumberSpeech(unit);
-  const nurseName = STATE.user?.name || 'Tim Perawat';
+  const nurseName = STATE.user?.full_name || STATE.user?.username || 'Tim Perawat';
 
   let noteDetail = `Tolong siapkan kamar nomor ${num} (${floor}) untuk pasien baru.`;
   if (actionType === 'Tambah Extrabed') {
@@ -609,59 +554,66 @@ async function handleNurseQuickAction(unitCode, actionType) {
     noteDetail = `Pasien kamar nomor ${num} (${floor}) sudah pulang, tolong dibersihkan.`;
   }
 
+  const nextUnitStatus = actionType === 'Tambah Extrabed' && unit.status === 'siap' ? 'siap' : 'kotor';
+
+  await sb.from('master_units').update({
+    status: nextUnitStatus,
+    last_checked_by: `${actionType}: ${nurseName} (${timeStr})`,
+    last_checked_at: now.toISOString()
+  }).eq('id', unit.id);
+
   // 1. Kirim permintaan ke Petugas Kebersihan
-  await insertInspectionRecord({
-    unit_code: unit.unit_code,
+  await sb.from('room_inspections').insert([{
+    unit_id: unit.id,
     unit_name: unit.unit_name,
     inspector_name: nurseName,
-    staff_name: nurseName,
+    inspector_role: STATE.user?.role || 'perawat',
     shift: `${actionType} • ${timeStr} WIB`,
-    score: 0,
-    status: 'PERMINTAAN_PERAWAT',
-    notes: `${actionType} (Dilaporkan oleh ${nurseName}) • Keterangan: ${noteDetail}`,
-    checklist_data: [],
-    duration_seconds: 0
-  });
+    readiness_score: 0,
+    final_status: nextUnitStatus,
+    duration_seconds: 0,
+    checklist_data: [{ item: actionType, checked: true }],
+    notes: `${NURSE_REQ_TAG}\n${actionType} (Dilaporkan oleh ${nurseName}) • ${noteDetail}`
+  }]);
 
-  // 2. Jika Perawat meminta Siapkan Kamar atau Minta Dibersihkan -> Otomatis kirim tugas pengecekan ke Teknisi
+  // 2. Jika Siapkan Kamar atau Minta Dibersihkan -> Otomatis kirim tugas pengecekan ke Teknisi
   if (actionType === 'Siapkan Kamar' || actionType === 'Minta Dibersihkan') {
-    await insertInspectionRecord({
-      unit_code: unit.unit_code,
+    await sb.from('room_inspections').insert([{
+      unit_id: unit.id,
       unit_name: unit.unit_name,
       inspector_name: nurseName,
-      staff_name: 'Tim Teknisi',
+      inspector_role: 'teknisi',
       shift: `Tugas Teknisi • ${timeStr} WIB`,
-      score: 0,
-      status: 'TUGAS_TEKNISI',
-      notes: `Pengecekan otomatis (${actionType} oleh ${nurseName}): Cek AC, TV & Remote, Lampu, Stopkontak, Air & Nurse Call di ${unit.unit_name} (${floor}).`,
+      readiness_score: 0,
+      final_status: 'kotor',
+      duration_seconds: 0,
       checklist_data: [],
-      duration_seconds: 0
-    });
+      notes: `${TEKNISI_REQ_TAG}\nPengecekan otomatis (${actionType} oleh ${nurseName}): Cek AC, TV & Remote, Lampu, Stopkontak, Air & Nurse Call di ${unit.unit_name} (${floor}).`
+    }]);
   }
 
   speakIndonesian(`Permintaan ${actionType} untuk kamar nomor ${num}, ${floor}, telah dikirim.`);
   showToast(`${actionType} untuk ${unit.unit_name} (${floor}) terkirim!`);
-  render();
+  await syncAllData(true);
 }
 
 /* ==========================================================================
    AKSI PETUGAS KEBERSIHAN (CEK & SIAPKAN KAMAR -> CHECKLIST -> APPROVAL)
    ========================================================================== */
 
-function openPetugasChecklistForm(unitCode, originReqId = null) {
+function openPetugasChecklistForm(unitId, originReqId = null) {
   STATE.petugasFormOpen = true;
-  STATE.petugasFormUnit = unitCode;
+  STATE.petugasFormUnitId = unitId;
   STATE.petugasFormOriginReqId = originReqId;
   STATE.petugasChecklist = {};
-  STATE.items.forEach((it) => {
+  getRealChecklistItems().forEach((it) => {
     STATE.petugasChecklist[it.id] = false;
   });
   STATE.petugasNotes = '';
-  STATE.petugasPhotoData = '';
+  STATE.petugasPhotoRoom = '';
+  STATE.petugasPhotoToilet = '';
   STATE.petugasStartTime = Date.now();
-  STATE.petugasElapsedSec = 0;
 
-  // Matikan pengingat suara untuk item yang sedang dibuka petugas
   if (originReqId) {
     const k1 = `petugas-${originReqId}`;
     const k2 = `revisi-${originReqId}`;
@@ -680,7 +632,7 @@ function openPetugasChecklistForm(unitCode, originReqId = null) {
 
 function closePetugasChecklistForm() {
   STATE.petugasFormOpen = false;
-  STATE.petugasFormUnit = '';
+  STATE.petugasFormUnitId = '';
   STATE.petugasFormOriginReqId = null;
   render();
 }
@@ -695,30 +647,30 @@ function calcChecklistScore(checklistObj, itemsList) {
 }
 
 async function submitPetugasChecklist() {
-  const unit = getUnitInfo(STATE.petugasFormUnit);
-  const score = calcChecklistScore(STATE.petugasChecklist, STATE.items);
+  const unit = getUnitByIdOrName(STATE.petugasFormUnitId, '');
+  const realItems = getRealChecklistItems();
+  const score = calcChecklistScore(STATE.petugasChecklist, realItems);
 
   if (score < 100) {
     showToast('Harap centang seluruh item kesiapan kamar hingga 100% sebelum mengirim.');
     return;
   }
 
-  const staffName = STATE.user?.name || 'Petugas';
+  const staffName = STATE.user?.full_name || STATE.user?.username || 'Petugas';
   const mode = STATE.approvalMode;
-  const finalStatus = mode === 'off' ? 'SIAP PAKAI' : 'MENUNGGU APPROVAL';
-  const approverTarget =
+  const isAutoSiap = mode === 'off';
+  const finalStatus = isAutoSiap ? 'siap' : 'kotor';
+  const targetLabel =
     mode === 'off'
-      ? 'Auto-Approve (Sistem)'
+      ? 'Otomatis Siap Pakai (Approval OFF)'
       : mode === 'perawat'
-      ? 'Tim Perawat'
+      ? 'Menunggu Approval Perawat'
       : mode === 'manajemen'
-      ? 'Manajemen'
-      : 'Perawat & Manajemen';
+      ? 'Menunggu Approval Manajemen'
+      : 'Menunggu Approval Perawat & Manajemen';
 
-  const checklistPayload = STATE.items.map((it) => ({
-    id: it.id,
-    category: it.category,
-    item_name: it.item_name,
+  const checklistPayload = realItems.map((it) => ({
+    item: it.item_name,
     checked: !!STATE.petugasChecklist[it.id]
   }));
 
@@ -726,51 +678,65 @@ async function submitPetugasChecklist() {
     ? Math.max(5, Math.round((Date.now() - STATE.petugasStartTime) / 1000))
     : 30;
 
-  await insertInspectionRecord({
-    unit_code: unit.unit_code,
+  await sb.from('room_inspections').insert([{
+    unit_id: unit.id,
     unit_name: unit.unit_name,
-    inspector_name: approverTarget,
-    staff_name: staffName,
+    inspector_name: staffName,
+    inspector_role: STATE.user?.role || 'petugas',
     shift: `Pengecekan Kamar • ${formatTimeShort(new Date().toISOString())} WIB`,
-    score,
-    status: finalStatus,
-    notes: STATE.petugasNotes || 'Kamar telah dibersihkan dan disiapkan lengkap sesuai standar.',
-    photo_url: STATE.petugasPhotoData || '',
+    readiness_score: score,
+    final_status: finalStatus,
+    duration_seconds: duration,
     checklist_data: checklistPayload,
-    duration_seconds: duration
-  });
+    notes: `[Pelaksana: ${staffName}]\n[Tanggapan Pemeriksa: ${targetLabel}]\n${STATE.petugasNotes || 'Kamar telah dibersihkan dan disiapkan lengkap sesuai standar.'}`,
+    photo_room_url: STATE.petugasPhotoRoom || null,
+    photo_toilet_url: STATE.petugasPhotoToilet || null
+  }]);
 
-  // Tandai permintaan asal / revisi asal sebagai selesai agar hilang dari antrean petugas
+  await sb.from('master_units').update({
+    status: finalStatus,
+    last_checked_by: isAutoSiap ? `Siap Pakai (${staffName})` : `${staffName} (${targetLabel})`,
+    last_checked_at: new Date().toISOString()
+  }).eq('id', unit.id);
+
+  // Tutup permintaan perawat asal agar hilang dari daftar permintaan petugas
   if (STATE.petugasFormOriginReqId) {
-    await updateInspectionRecord(STATE.petugasFormOriginReqId, {
-      status: 'SELESAI_PERMINTAAN'
-    });
+    const orig = STATE.inspections.find((r) => String(r.id) === String(STATE.petugasFormOriginReqId));
+    if (orig) {
+      await sb.from('room_inspections').update({
+        notes: `${orig.notes || ''}\n[STATUS_PERMINTAAN: SELESAI]`,
+        final_status: 'siap'
+      }).eq('id', orig.id);
+    }
   } else {
-    // Tutup permintaan perawat yang terbuka untuk unit ini
-    const openReqs = getOpenNurseRequestsForPetugas().filter((r) => r.unit_code === unit.unit_code);
+    const openReqs = getOpenNurseRequestsForPetugas().filter((r) => String(r.unit_id) === String(unit.id));
     for (const r of openReqs) {
-      await updateInspectionRecord(r.id, { status: 'SELESAI_PERMINTAAN' });
+      await sb.from('room_inspections').update({
+        notes: `${r.notes || ''}\n[STATUS_PERMINTAAN: SELESAI]`,
+        final_status: 'siap'
+      }).eq('id', r.id);
     }
   }
 
   closePetugasChecklistForm();
   showToast(
-    finalStatus === 'SIAP PAKAI'
+    isAutoSiap
       ? `${unit.unit_name} langsung berstatus SIAP PAKAI!`
-      : `Laporan ${unit.unit_name} terkirim ke ${approverTarget} untuk di-Approve.`
+      : `Laporan ${unit.unit_name} terkirim (${targetLabel}).`
   );
+  await syncAllData(true);
 }
 
 /* ==========================================================================
    AKSI TEKNISI (CHECKLIST AC, TV, LISTRIK, AIR, NURSE CALL)
    ========================================================================== */
 
-function openTeknisiForm(unitCode, originReqId = null) {
+function openTeknisiForm(unitId, originReqId = null) {
   STATE.teknisiFormOpen = true;
-  STATE.teknisiFormUnit = unitCode;
+  STATE.teknisiFormUnitId = unitId;
   STATE.teknisiFormOriginReqId = originReqId;
   STATE.teknisiChecklist = {};
-  TEKNISI_ITEMS.forEach((it) => {
+  TEKNISI_CHECKLIST_ITEMS.forEach((it) => {
     STATE.teknisiChecklist[it.id] = false;
   });
   STATE.teknisiNotes = '';
@@ -788,53 +754,56 @@ function openTeknisiForm(unitCode, originReqId = null) {
 
 function closeTeknisiForm() {
   STATE.teknisiFormOpen = false;
-  STATE.teknisiFormUnit = '';
+  STATE.teknisiFormUnitId = '';
   STATE.teknisiFormOriginReqId = null;
   render();
 }
 
 async function submitTeknisiChecklist() {
-  const unit = getUnitInfo(STATE.teknisiFormUnit);
-  const score = calcChecklistScore(STATE.teknisiChecklist, TEKNISI_ITEMS);
+  const unit = getUnitByIdOrName(STATE.teknisiFormUnitId, '');
+  const score = calcChecklistScore(STATE.teknisiChecklist, TEKNISI_CHECKLIST_ITEMS);
   if (score < 100) {
     showToast('Centang semua pengecekan teknis (AC, TV, Listrik, Air, Bel) hingga 100%.');
     return;
   }
 
-  const tekName = STATE.user?.name || 'Tim Teknisi';
+  const tekName = STATE.user?.full_name || STATE.user?.username || 'Tim Teknisi';
   const duration = STATE.teknisiStartTime
     ? Math.max(5, Math.round((Date.now() - STATE.teknisiStartTime) / 1000))
     : 30;
 
-  const checklistPayload = TEKNISI_ITEMS.map((it) => ({
-    id: it.id,
-    category: it.category,
-    item_name: it.item_name,
+  const checklistPayload = TEKNISI_CHECKLIST_ITEMS.map((it) => ({
+    item: it.item_name,
     checked: !!STATE.teknisiChecklist[it.id]
   }));
 
-  await insertInspectionRecord({
-    unit_code: unit.unit_code,
+  await sb.from('room_inspections').insert([{
+    unit_id: unit.id,
     unit_name: unit.unit_name,
-    inspector_name: 'Teknisi Lapangan',
-    staff_name: tekName,
+    inspector_name: tekName,
+    inspector_role: 'teknisi',
     shift: `Cek Teknisi • ${formatTimeShort(new Date().toISOString())} WIB`,
-    score,
-    status: 'SELESAI_TEKNISI',
-    notes: STATE.teknisiNotes || 'AC, TV, kelistrikan, sanitasi & nurse call dalam kondisi baik.',
-    photo_url: STATE.teknisiPhotoData || '',
+    readiness_score: score,
+    final_status: 'siap',
+    duration_seconds: duration,
     checklist_data: checklistPayload,
-    duration_seconds: duration
-  });
+    notes: `${TEKNISI_REQ_TAG}\n[STATUS_TEKNISI: SELESAI]\n[Pelaksana: ${tekName}]\n${STATE.teknisiNotes || 'AC, TV, kelistrikan, sanitasi & nurse call berfungsi normal.'}`,
+    photo_room_url: STATE.teknisiPhotoData || null
+  }]);
 
   if (STATE.teknisiFormOriginReqId) {
-    await updateInspectionRecord(STATE.teknisiFormOriginReqId, {
-      status: 'SELESAI_TEKNISI'
-    });
+    const orig = STATE.inspections.find((r) => String(r.id) === String(STATE.teknisiFormOriginReqId));
+    if (orig) {
+      await sb.from('room_inspections').update({
+        final_status: 'siap',
+        notes: `${orig.notes || ''}\n[STATUS_TEKNISI: SELESAI]`
+      }).eq('id', orig.id);
+    }
   }
 
   closeTeknisiForm();
   showToast(`Pengecekan teknis ${unit.unit_name} selesai disimpan.`);
+  await syncAllData(true);
 }
 
 /* ==========================================================================
@@ -842,28 +811,50 @@ async function submitTeknisiChecklist() {
    ========================================================================== */
 
 async function handleApproveInspection(reportId) {
-  const approverName = STATE.user?.name || 'Pemeriksa';
-  const roleLabel = STATE.user?.role === 'perawat' ? 'Perawat' : 'Manajemen';
-  await updateInspectionRecord(reportId, {
-    status: 'SIAP PAKAI',
-    approved_by: `${approverName} (${roleLabel})`,
-    approved_at: new Date().toISOString()
-  });
+  const rep = STATE.inspections.find((r) => String(r.id) === String(reportId));
+  if (!rep) return;
+  const approverName = STATE.user?.full_name || 'Pemeriksa';
+  const roleLabel = String(STATE.user?.role || '').toLowerCase() === 'perawat' ? 'Perawat' : 'Manajemen';
+
+  await sb.from('room_inspections').update({
+    final_status: 'siap',
+    notes: `${rep.notes || ''}\n[Tanggapan Pemeriksa: Sesuai Standar (Approved oleh ${approverName} - ${roleLabel})]`
+  }).eq('id', rep.id);
+
+  if (rep.unit_id) {
+    await sb.from('master_units').update({
+      status: 'siap',
+      last_checked_by: `Approved: ${approverName} (${roleLabel})`,
+      last_checked_at: new Date().toISOString()
+    }).eq('id', rep.unit_id);
+  }
+
   showToast('Kamar berhasil di-Approve menjadi SIAP PAKAI.');
-  render();
+  await syncAllData(true);
 }
 
 async function handleRejectInspection(reportId) {
+  const rep = STATE.inspections.find((r) => String(r.id) === String(reportId));
+  if (!rep) return;
   const reason = prompt('Masukkan catatan bagian mana yang perlu diperbaiki petugas:');
   if (reason === null) return;
-  const approverName = STATE.user?.name || 'Pemeriksa';
-  await updateInspectionRecord(reportId, {
-    status: 'PERLU PERBAIKAN',
-    approved_by: approverName,
-    notes: `Revisi dari ${approverName}: ${reason || 'Mohon cek ulang kebersihan & kelengkapan kamar.'}`
-  });
+  const approverName = STATE.user?.full_name || 'Pemeriksa';
+
+  await sb.from('room_inspections').update({
+    final_status: 'kotor',
+    notes: `${rep.notes || ''}\n[Tanggapan Pemeriksa: Perlu Perbaikan (Komplain oleh ${approverName}) — Bagian Perbaikan: ${reason || 'Mohon cek ulang kebersihan kamar'}]`
+  }).eq('id', rep.id);
+
+  if (rep.unit_id) {
+    await sb.from('master_units').update({
+      status: 'kotor',
+      last_checked_by: `Perlu Perbaikan: ${reason || 'Cek ulang'}`,
+      last_checked_at: new Date().toISOString()
+    }).eq('id', rep.unit_id);
+  }
+
   showToast('Laporan dikembalikan ke Petugas untuk diperbaiki.');
-  render();
+  await syncAllData(true);
 }
 
 /* ==========================================================================
@@ -871,17 +862,18 @@ async function handleRejectInspection(reportId) {
    ========================================================================== */
 
 function getFilteredInspectionsForAnalytics() {
-  const now = new Date();
   return STATE.inspections.filter((r) => {
     const d = new Date(r.created_at);
     if (isNaN(d.getTime())) return true;
+    const pad = (n) => String(n).padStart(2, '0');
+    const localYmd = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
     if (STATE.filterPeriod === 'hari') {
-      return d.toISOString().slice(0, 10) === STATE.filterDate;
+      return localYmd === STATE.filterDate;
     }
     if (STATE.filterPeriod === 'minggu') {
       const target = new Date(STATE.filterDate + 'T00:00:00');
-      const dayOfWeek = target.getDay(); // 0 = Minggu
+      const dayOfWeek = target.getDay();
       const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
       const weekStart = new Date(target);
       weekStart.setDate(target.getDate() + mondayOffset);
@@ -892,7 +884,7 @@ function getFilteredInspectionsForAnalytics() {
       return d >= weekStart && d <= weekEnd;
     }
     if (STATE.filterPeriod === 'bulan') {
-      return d.toISOString().slice(0, 7) === STATE.filterMonth;
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}` === STATE.filterMonth;
     }
     if (STATE.filterPeriod === 'tahun') {
       return String(d.getFullYear()) === String(STATE.filterYear);
@@ -913,30 +905,30 @@ function computeAnalyticsSummary() {
   const rows = getFilteredInspectionsForAnalytics();
   const totalRooms = STATE.units.length || 1;
 
-  // Hitung kamar terpakai dalam periode terpilih (berdasarkan aktivitas Siapkan Kamar / Siap Pakai)
+  // Hitung kamar terpakai dalam periode terpilih
   const usedRoomSet = new Set();
   rows.forEach((r) => {
-    const st = String(r.status || '').toUpperCase();
     const act = parseNurseActionType(r);
-    if (act === 'Siapkan Kamar' || st === 'SIAP PAKAI' || st === 'MENUNGGU APPROVAL') {
-      if (r.unit_code) usedRoomSet.add(r.unit_code);
+    if (act === 'Siapkan Kamar' || r.final_status === 'siap') {
+      const key = r.unit_id || r.unit_name;
+      if (key) usedRoomSet.add(String(key));
     }
   });
 
-  const usedRoomsCount = usedRoomSet.size;
+  const usedRoomsCount = Math.min(totalRooms, usedRoomSet.size);
   const unusedRoomsCount = Math.max(0, totalRooms - usedRoomsCount);
   const occupancyPct = Math.round((usedRoomsCount / totalRooms) * 100);
 
-  // Pisahkan laporan checklist asli (Petugas & Teknisi) dari log tombol cepat Perawat
+  // Laporan kerja murni (Petugas & Teknisi) tanpa log tombol cepat Perawat
   const workReports = rows.filter((r) => !isNurseQuickRequest(r));
   const avgScore = workReports.length
-    ? Math.round(workReports.reduce((acc, r) => acc + (Number(r.score) || 0), 0) / workReports.length)
+    ? Math.round(workReports.reduce((acc, r) => acc + (Number(r.readiness_score) || 0), 0) / workReports.length)
     : 0;
 
   // Hitung kedisiplinan tiap petugas & teknisi
   const staffMap = {};
   workReports.forEach((r) => {
-    const name = r.staff_name || 'Petugas';
+    const name = r.inspector_name || 'Petugas';
     if (!staffMap[name]) {
       staffMap[name] = {
         name,
@@ -948,10 +940,10 @@ function computeAnalyticsSummary() {
     }
     staffMap[name].totalTasks += 1;
     staffMap[name].totalDuration += Number(r.duration_seconds) || 30;
-    const st = String(r.status || '').toUpperCase();
-    if (st === 'PERLU PERBAIKAN' || st === 'REVISI') {
+    const n = String(r.notes || '');
+    if (n.includes('Perlu Perbaikan') || n.includes('Revisi')) {
       staffMap[name].revisionTasks += 1;
-    } else if ((Number(r.score) || 0) >= 100) {
+    } else if ((Number(r.readiness_score) || 0) >= 100) {
       staffMap[name].passedTasks += 1;
     }
   });
@@ -1012,20 +1004,19 @@ function downloadRekapExcelCSV() {
   });
   lines.push([]);
   lines.push(['DETAIL RIWAYAT AKTIVITAS & PENGECEKAN KAMAR']);
-  lines.push(['No', 'Waktu', 'Unit Kamar', 'Lantai', 'Pemeriksa', 'Pelaksana', 'Keterangan Aktivitas', 'Skor', 'Status', 'Catatan']);
+  lines.push(['No', 'Waktu', 'Unit Kamar', 'Lantai', 'Pelaksana / Pemeriksa', 'Aktivitas / Shift', 'Skor', 'Status', 'Catatan']);
 
   summary.rows.forEach((r, idx) => {
-    const unit = getUnitInfo(r.unit_code);
+    const unit = getUnitByIdOrName(r.unit_id, r.unit_name);
     lines.push([
       idx + 1,
       formatDateTimeID(r.created_at),
       unit.unit_name,
-      unit.floor,
+      unit.floor || 'Lantai 2',
       r.inspector_name || '-',
-      r.staff_name || '-',
       r.shift || '-',
-      `${r.score || 0}%`,
-      r.status || '-',
+      `${r.readiness_score || 0}%`,
+      String(r.final_status || '-').toUpperCase(),
       (r.notes || '-').replace(/[\r\n]+/g, ' ')
     ]);
   });
@@ -1074,18 +1065,17 @@ function openPrintRekapWindow() {
 
   const detailRowsHtml = summary.rows
     .map((r, i) => {
-      const unit = getUnitInfo(r.unit_code);
+      const unit = getUnitByIdOrName(r.unit_id, r.unit_name);
       return `
       <tr>
         <td>${i + 1}</td>
         <td>${escapeHtml(formatDateTimeID(r.created_at))}</td>
-        <td><strong>${escapeHtml(unit.unit_name)}</strong><br><small>${escapeHtml(unit.floor)}</small></td>
+        <td><strong>${escapeHtml(unit.unit_name)}</strong><br><small>${escapeHtml(unit.floor || 'Lantai 2')}</small></td>
         <td>${escapeHtml(r.inspector_name || '-')}</td>
-        <td>${escapeHtml(r.staff_name || '-')}</td>
         <td>${escapeHtml(r.shift || '-')}</td>
-        <td style="text-align:center;">${r.score || 0}%</td>
-        <td><strong>${escapeHtml(r.status || '-')}</strong></td>
-        <td>${escapeHtml(r.notes || '-')}</td>
+        <td style="text-align:center;">${r.readiness_score || 0}%</td>
+        <td><strong>${escapeHtml(String(r.final_status || '-').toUpperCase())}</strong></td>
+        <td>${escapeHtml((r.notes || '-').replace(/\n/g, ' • '))}</td>
       </tr>`;
     })
     .join('');
@@ -1151,7 +1141,6 @@ function openPrintRekapWindow() {
         <th>No</th>
         <th>Waktu</th>
         <th>Unit Kamar</th>
-        <th>Pemeriksa</th>
         <th>Pelaksana</th>
         <th>Aktivitas / Shift</th>
         <th style="text-align:center;">Skor</th>
@@ -1175,7 +1164,7 @@ function openPrintRekapWindow() {
 }
 
 /* ==========================================================================
-   HANDLER FOTO & LOGIN / LOGOUT
+   HANDLER FOTO & LOGIN / LOGOUT (MENGGUNAKAN TABEL app_users ASLI ANDA)
    ========================================================================== */
 
 function handlePhotoUpload(event, targetField) {
@@ -1200,30 +1189,58 @@ function handlePhotoUpload(event, targetField) {
   reader.readAsDataURL(file);
 }
 
-function handleLoginSubmit(e) {
+async function handleLoginSubmit(e) {
   e.preventDefault();
-  const selId = document.getElementById('loginUserSelect')?.value;
-  const pinVal = document.getElementById('loginPinInput')?.value || '';
-  const found = STATE.users.find((u) => String(u.id) === String(selId));
-  if (!found) {
-    showToast('Pilih akun terlebih dahulu.');
-    return;
-  }
-  if (found.pin && String(found.pin) !== String(pinVal)) {
-    showToast('PIN salah. Silakan coba kembali.');
+  const username = (document.getElementById('loginUsernameInput')?.value || '').trim();
+  const password = (document.getElementById('loginPasswordInput')?.value || '').trim();
+
+  if (!username || !password) {
+    showToast('Masukkan username dan password.');
     return;
   }
 
-  STATE.user = found;
+  let matchedUser = STATE.users.find(
+    (u) => String(u.username || '').toLowerCase() === username.toLowerCase() && String(u.password || '') === password
+  );
+
+  if (!matchedUser && navigator.onLine) {
+    const { data } = await sb
+      .from('app_users')
+      .select('*')
+      .eq('username', username)
+      .eq('password', password)
+      .maybeSingle();
+    if (data) matchedUser = data;
+  }
+
+  // Akun cadangan bawaan jika offline
+  if (!matchedUser) {
+    if (username === 'admin' && password === 'azis123') {
+      matchedUser = { username: 'admin', full_name: 'Supervisor Manajemen', role: 'manajemen' };
+    } else if (username === 'petugas1' && password === 'petugas123') {
+      matchedUser = { username: 'petugas1', full_name: 'Petugas Kebersihan', role: 'petugas' };
+    } else if (username === 'perawat1' && password === 'perawat123') {
+      matchedUser = { username: 'perawat1', full_name: 'Tim Perawat', role: 'perawat' };
+    } else if (username === 'teknisi1' && password === 'teknisi123') {
+      matchedUser = { username: 'teknisi1', full_name: 'Tim Teknisi', role: 'teknisi' };
+    }
+  }
+
+  if (!matchedUser) {
+    showToast('Username atau password salah.');
+    return;
+  }
+
+  STATE.user = matchedUser;
   STATE.activeTab = 'main';
   STATE.petugasFormOpen = false;
   STATE.teknisiFormOpen = false;
-  localStorage.setItem('ss_current_user', JSON.stringify(found));
+  localStorage.setItem('ck_user', JSON.stringify(matchedUser));
 
   if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission().catch(() => {});
   }
-  speakIndonesian(`Selamat bertugas, ${found.name}.`);
+  speakIndonesian(`Selamat bertugas, ${matchedUser.full_name || matchedUser.username}.`);
   render();
   setTimeout(() => runAlarmReminderCycle(true), 1200);
 }
@@ -1233,7 +1250,7 @@ function handleLogout() {
   STATE.user = null;
   STATE.petugasFormOpen = false;
   STATE.teknisiFormOpen = false;
-  localStorage.removeItem('ss_current_user');
+  localStorage.removeItem('ck_user');
   render();
 }
 
@@ -1242,12 +1259,14 @@ function handleLogout() {
    ========================================================================== */
 
 function renderHeader() {
+  const role = String(STATE.user.role || '').toLowerCase();
+  const displayName = STATE.user.full_name || STATE.user.username || 'Staf';
   const roleBadgeColor =
-    STATE.user.role === 'manajemen'
+    role === 'manajemen'
       ? 'bg-purple-100 text-purple-800'
-      : STATE.user.role === 'perawat'
+      : role === 'perawat'
       ? 'bg-amber-100 text-amber-800'
-      : STATE.user.role === 'teknisi'
+      : role === 'teknisi'
       ? 'bg-sky-100 text-sky-800'
       : 'bg-teal-100 text-teal-800';
 
@@ -1266,8 +1285,8 @@ function renderHeader() {
             <span class="px-1.5 py-0.5 text-[10px] font-bold rounded bg-teal-50 text-teal-700 border border-teal-200 shrink-0">${APP_VERSION}</span>
           </div>
           <div class="flex items-center gap-1.5 mt-0.5">
-            <span class="px-1.5 py-0.5 text-[9px] font-extrabold uppercase rounded ${roleBadgeColor} shrink-0">${escapeHtml(STATE.user.role)}</span>
-            <p class="text-[11px] font-medium text-slate-600 truncate">Halo, ${escapeHtml(STATE.user.name)}</p>
+            <span class="px-1.5 py-0.5 text-[9px] font-extrabold uppercase rounded ${roleBadgeColor} shrink-0">${escapeHtml(role)}</span>
+            <p class="text-[11px] font-medium text-slate-600 truncate">Halo, ${escapeHtml(displayName)}</p>
           </div>
         </div>
       </div>
@@ -1307,7 +1326,7 @@ function renderHeader() {
 
 function toggleSoundSetting() {
   STATE.soundEnabled = !STATE.soundEnabled;
-  localStorage.setItem('ss_sound_enabled', String(STATE.soundEnabled));
+  localStorage.setItem('ck_sound_enabled', String(STATE.soundEnabled));
   if (STATE.soundEnabled) {
     speakIndonesian('Notifikasi suara diaktifkan.');
     runAlarmReminderCycle(true);
@@ -1319,12 +1338,12 @@ function toggleSoundSetting() {
 }
 
 /* ==========================================================================
-   TAMPILAN KHUSUS PERAWAT (4 TOMBOL CEPAT + PENGUNCIAN SIAPKAN KAMAR + APPROVAL)
+   TAMPILAN KHUSUS PERAWAT (4 TOMBOL CEPAT + KUNCI SIAPKAN KAMAR + APPROVAL)
    ========================================================================== */
 
 function renderPerawatMainView() {
   const pendingApprovals = getPendingApprovalsForRole('perawat');
-  const infoReports = getInfoReportsForRole('perawat');
+  const infoReports = getInfoReportsForRole();
 
   return `
   <div class="w-full px-3 pt-3 pb-24 space-y-3">
@@ -1354,17 +1373,16 @@ function renderPerawatMainView() {
             </div>
             ${pendingApprovals
               .map((rep) => {
-                const u = getUnitInfo(rep.unit_code);
+                const u = getUnitByIdOrName(rep.unit_id, rep.unit_name);
                 return `
                 <div class="w-full rounded-xl bg-white border border-blue-200 p-3 space-y-2 shadow-sm">
                   <div class="flex items-start justify-between gap-2">
                     <div class="min-w-0 flex-1">
                       <p class="text-xs font-extrabold text-slate-900 break-words">${escapeHtml(u.unit_code)} - ${escapeHtml(u.unit_name)}</p>
-                      <p class="text-[11px] text-slate-500">${escapeHtml(u.floor)} • Petugas: <strong>${escapeHtml(rep.staff_name)}</strong> (${formatTimeShort(rep.created_at)})</p>
+                      <p class="text-[11px] text-slate-500">${escapeHtml(u.floor || 'Lantai 2')} • Petugas: <strong>${escapeHtml(rep.inspector_name)}</strong> (${formatTimeShort(rep.created_at)})</p>
                     </div>
-                    <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold shrink-0">Skor ${rep.score}%</span>
+                    <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold shrink-0">Skor ${rep.readiness_score}%</span>
                   </div>
-                  <p class="text-[11px] text-slate-600 bg-slate-50 rounded-lg p-2 break-words">${escapeHtml(rep.notes || '-')}</p>
                   <div class="grid grid-cols-3 gap-1.5 pt-1">
                     <button onclick="openReportDetail('${rep.id}')" class="py-2 px-2 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-bold">
                       Detail
@@ -1384,11 +1402,11 @@ function renderPerawatMainView() {
     }
 
     <div class="pt-1">
-      <h3 class="text-sm font-extrabold text-slate-900 mb-2">Status Unit Kamar</h3>
+      <h3 class="text-sm font-extrabold text-slate-900 mb-2">Status Unit Kamar (${STATE.units.length} Kamar)</h3>
       <div class="space-y-3">
         ${STATE.units
           .map((u) => {
-            const st = getUnitCurrentState(u.unit_code);
+            const st = getUnitCurrentState(u);
             return `
             <div class="w-full rounded-2xl bg-white border border-slate-200 p-3.5 shadow-sm space-y-3">
               <div class="flex items-start justify-between gap-2">
@@ -1404,7 +1422,7 @@ function renderPerawatMainView() {
 
               <div class="grid grid-cols-2 gap-2">
                 <button
-                  onclick="handleNurseQuickAction('${escapeHtml(u.unit_code)}', 'Siapkan Kamar')"
+                  onclick="handleNurseQuickAction('${escapeHtml(u.id)}', 'Siapkan Kamar')"
                   ${st.siapkanLocked ? 'disabled' : ''}
                   class="py-2.5 px-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition ${
                     st.siapkanLocked
@@ -1415,19 +1433,19 @@ function renderPerawatMainView() {
                 </button>
 
                 <button
-                  onclick="handleNurseQuickAction('${escapeHtml(u.unit_code)}', 'Tambah Extrabed')"
+                  onclick="handleNurseQuickAction('${escapeHtml(u.id)}', 'Tambah Extrabed')"
                   class="py-2.5 px-2.5 rounded-xl bg-purple-600 text-white text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm active:scale-95">
                   <span>➕ Tambah Extrabed</span>
                 </button>
 
                 <button
-                  onclick="handleNurseQuickAction('${escapeHtml(u.unit_code)}', 'Minta Dibersihkan')"
+                  onclick="handleNurseQuickAction('${escapeHtml(u.id)}', 'Minta Dibersihkan')"
                   class="py-2.5 px-2.5 rounded-xl bg-amber-600 text-white text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm active:scale-95">
                   <span>🧹 Minta Dibersihkan</span>
                 </button>
 
                 <button
-                  onclick="handleNurseQuickAction('${escapeHtml(u.unit_code)}', 'Pasien Pulang')"
+                  onclick="handleNurseQuickAction('${escapeHtml(u.id)}', 'Pasien Pulang')"
                   class="py-2.5 px-2.5 rounded-xl bg-orange-600 text-white text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm active:scale-95">
                   <span>🚪 Pasien Pulang</span>
                 </button>
@@ -1446,16 +1464,16 @@ function renderPerawatMainView() {
               ${infoReports
                 .slice(0, 5)
                 .map((r) => {
-                  const u = getUnitInfo(r.unit_code);
+                  const u = getUnitByIdOrName(r.unit_id, r.unit_name);
                   return `
                   <div onclick="openReportDetail('${r.id}')" class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2 cursor-pointer">
                     <div class="min-w-0 flex-1">
-                      <p class="text-xs font-bold text-slate-800 truncate">${escapeHtml(u.unit_name)} (${escapeHtml(u.floor)})</p>
-                      <p class="text-[11px] text-slate-500 truncate">Oleh: ${escapeHtml(r.staff_name)} • ${formatTimeShort(r.created_at)}</p>
+                      <p class="text-xs font-bold text-slate-800 truncate">${escapeHtml(u.unit_name)} (${escapeHtml(u.floor || 'Lantai 2')})</p>
+                      <p class="text-[11px] text-slate-500 truncate">Oleh: ${escapeHtml(r.inspector_name)} • ${formatTimeShort(r.created_at)}</p>
                     </div>
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold shrink-0 ${
-                      r.status === 'SIAP PAKAI' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
-                    }">${escapeHtml(r.status)}</span>
+                      r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
+                    }">${r.final_status === 'siap' ? 'SIAP PAKAI' : 'PROSES'}</span>
                   </div>`;
                 })
                 .join('')}
@@ -1467,13 +1485,14 @@ function renderPerawatMainView() {
 }
 
 /* ==========================================================================
-   TAMPILAN KHUSUS PETUGAS (TANPA TAB CEK KAMAR — FORM MUNCUL DARI TOMBOL PERMINTAAN)
+   TAMPILAN KHUSUS PETUGAS (TANPA TAB CEK KAMAR — FORM MUNCUL DARI PERMINTAAN)
    ========================================================================== */
 
 function renderPetugasMainView() {
   const openReqs = getOpenNurseRequestsForPetugas();
   const revisions = getRevisionReportsForPetugas();
-  const currentScore = calcChecklistScore(STATE.petugasChecklist, STATE.items);
+  const realItems = getRealChecklistItems();
+  const currentScore = calcChecklistScore(STATE.petugasChecklist, realItems);
 
   return `
   <div class="w-full px-3 pt-3 pb-24 space-y-3">
@@ -1486,13 +1505,13 @@ function renderPetugasMainView() {
             </div>
             ${revisions
               .map((rev) => {
-                const u = getUnitInfo(rev.unit_code);
+                const u = getUnitByIdOrName(rev.unit_id, rev.unit_name);
                 return `
                 <div class="w-full rounded-xl bg-white border border-rose-200 p-3 space-y-2">
-                  <p class="text-xs font-extrabold text-slate-900 break-words">${escapeHtml(u.unit_code)} - ${escapeHtml(u.unit_name)} (${escapeHtml(u.floor)})</p>
-                  <p class="text-xs text-rose-700 break-words">${escapeHtml(rev.notes || 'Mohon periksa kembali kamar ini.')}</p>
+                  <p class="text-xs font-extrabold text-slate-900 break-words">${escapeHtml(u.unit_code)} - ${escapeHtml(u.unit_name)} (${escapeHtml(u.floor || 'Lantai 2')})</p>
+                  <p class="text-xs text-rose-700 break-words">${escapeHtml((rev.notes || '').replace(/\n/g, ' • '))}</p>
                   <div class="flex justify-end">
-                    <button onclick="openPetugasChecklistForm('${escapeHtml(u.unit_code)}', '${rev.id}')" class="px-3.5 py-2 rounded-xl bg-rose-600 text-white text-xs font-extrabold shadow-sm active:scale-95">
+                    <button onclick="openPetugasChecklistForm('${escapeHtml(u.id)}', '${rev.id}')" class="px-3.5 py-2 rounded-xl bg-rose-600 text-white text-xs font-extrabold shadow-sm active:scale-95">
                       ✨ Cek & Perbaiki Kamar
                     </button>
                   </div>
@@ -1522,20 +1541,20 @@ function renderPetugasMainView() {
             </div>`
           : openReqs
               .map((req) => {
-                const u = getUnitInfo(req.unit_code);
+                const u = getUnitByIdOrName(req.unit_id, req.unit_name);
                 const act = parseNurseActionType(req);
                 return `
                 <div class="w-full rounded-xl bg-white border border-amber-200 p-3.5 shadow-sm space-y-2.5">
                   <div>
                     <p class="text-sm font-extrabold text-slate-900 break-words">${escapeHtml(u.unit_code)} - ${escapeHtml(u.unit_name)}</p>
-                    <p class="text-[11px] font-semibold text-slate-500">${escapeHtml(u.floor)} • ${escapeHtml(u.room_type || 'Rawat Inap')}</p>
+                    <p class="text-[11px] font-semibold text-slate-500">${escapeHtml(u.floor || 'Lantai 2')}</p>
                     <p class="text-xs font-bold text-amber-700 mt-1">
                       ${escapeHtml(act)}: ${escapeHtml(req.inspector_name || 'Tim Perawat')} (${formatTimeShort(req.created_at)})
                     </p>
                   </div>
                   <div class="flex justify-end">
                     <button
-                      onclick="openPetugasChecklistForm('${escapeHtml(u.unit_code)}', '${req.id}')"
+                      onclick="openPetugasChecklistForm('${escapeHtml(u.id)}', '${req.id}')"
                       class="px-4 py-2.5 rounded-xl bg-teal-700 text-white text-xs font-extrabold flex items-center gap-1.5 shadow-sm active:scale-95">
                       <span>✨ Cek & Siapkan Kamar</span>
                     </button>
@@ -1548,21 +1567,23 @@ function renderPetugasMainView() {
 
     ${
       STATE.petugasFormOpen
-        ? renderPetugasChecklistBox(currentScore)
+        ? renderPetugasChecklistBox(currentScore, realItems)
         : ''
     }
   </div>`;
 }
 
-function renderPetugasChecklistBox(currentScore) {
-  const unit = getUnitInfo(STATE.petugasFormUnit);
+function renderPetugasChecklistBox(currentScore, realItems) {
+  const unit = getUnitByIdOrName(STATE.petugasFormUnitId, '');
+  const staffName = STATE.user?.full_name || STATE.user?.username || 'Petugas';
+
   return `
   <div id="petugasChecklistSection" class="w-full rounded-2xl bg-white border-2 border-teal-600 p-4 shadow-md space-y-3.5">
     <div class="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
       <div class="min-w-0 flex-1">
         <span class="px-2 py-0.5 rounded bg-teal-50 text-teal-800 text-[10px] font-extrabold uppercase">Form Cek Kesiapan Kamar</span>
         <h3 class="text-base font-extrabold text-slate-900 mt-1 break-words">${escapeHtml(unit.unit_code)} - ${escapeHtml(unit.unit_name)}</h3>
-        <p class="text-xs text-slate-500">${escapeHtml(unit.floor)} • Petugas: <strong>${escapeHtml(STATE.user.name)}</strong></p>
+        <p class="text-xs text-slate-500">${escapeHtml(unit.floor || 'Lantai 2')} • Petugas: <strong>${escapeHtml(staffName)}</strong></p>
       </div>
       <div class="flex flex-col items-end gap-1.5 shrink-0">
         <span class="px-2.5 py-1 rounded-full text-xs font-extrabold ${
@@ -1576,7 +1597,7 @@ function renderPetugasChecklistBox(currentScore) {
 
     <div class="space-y-2">
       <p class="text-xs font-extrabold text-slate-700">Checklist Kesiapan Standar Kamar:</p>
-      ${STATE.items
+      ${realItems
         .map((it, idx) => {
           const checked = !!STATE.petugasChecklist[it.id];
           return `
@@ -1586,7 +1607,7 @@ function renderPetugasChecklistBox(currentScore) {
             <input
               type="checkbox"
               ${checked ? 'checked' : ''}
-              onchange="togglePetugasItem('${it.id}')"
+              onchange="STATE.petugasChecklist['${it.id}'] = !STATE.petugasChecklist['${it.id}']; render();"
               class="mt-0.5 w-4 h-4 accent-teal-700 shrink-0" />
             <div class="min-w-0 flex-1">
               <span class="text-[10px] font-bold uppercase text-teal-700">${idx + 1}. ${escapeHtml(it.category)}</span>
@@ -1602,18 +1623,21 @@ function renderPetugasChecklistBox(currentScore) {
       <textarea
         rows="2"
         oninput="STATE.petugasNotes = this.value"
-        placeholder="Contoh: AC sudah dinyalakan suhu 22°C, sprei & handuk baru..."
+        placeholder="Contoh: AC sudah dinyalakan, sprei & handuk baru..."
         class="w-full rounded-xl border border-slate-300 p-2.5 text-xs focus:outline-none focus:border-teal-600">${escapeHtml(STATE.petugasNotes)}</textarea>
     </div>
 
-    <div class="space-y-1.5">
-      <label class="block text-xs font-bold text-slate-700">Foto Bukti Kesiapan Kamar</label>
-      <input type="file" accept="image/*" capture="environment" onchange="handlePhotoUpload(event, 'petugasPhotoData')" class="w-full text-xs text-slate-600" />
-      ${
-        STATE.petugasPhotoData
-          ? `<img src="${STATE.petugasPhotoData}" alt="Preview" class="w-full h-36 object-cover rounded-xl border border-slate-200 mt-1" />`
-          : ''
-      }
+    <div class="grid grid-cols-2 gap-2">
+      <div class="space-y-1">
+        <label class="block text-[11px] font-bold text-slate-700">Foto Area Kamar</label>
+        <input type="file" accept="image/*" capture="environment" onchange="handlePhotoUpload(event, 'petugasPhotoRoom')" class="w-full text-[11px] text-slate-600" />
+        ${STATE.petugasPhotoRoom ? `<img src="${STATE.petugasPhotoRoom}" class="w-full h-24 object-cover rounded-lg border" />` : ''}
+      </div>
+      <div class="space-y-1">
+        <label class="block text-[11px] font-bold text-slate-700">Foto Kamar Mandi</label>
+        <input type="file" accept="image/*" capture="environment" onchange="handlePhotoUpload(event, 'petugasPhotoToilet')" class="w-full text-[11px] text-slate-600" />
+        ${STATE.petugasPhotoToilet ? `<img src="${STATE.petugasPhotoToilet}" class="w-full h-24 object-cover rounded-lg border" />` : ''}
+      </div>
     </div>
 
     <div class="rounded-xl bg-slate-50 border border-slate-200 p-2.5 text-[11px] text-slate-600">
@@ -1628,19 +1652,16 @@ function renderPetugasChecklistBox(currentScore) {
   </div>`;
 }
 
-function togglePetugasItem(itemId) {
-  STATE.petugasChecklist[itemId] = !STATE.petugasChecklist[itemId];
-  render();
-}
-
 /* ==========================================================================
-   TAMPILAN KHUSUS TEKNISI (TUGAS OTOMATIS SAAT PERAWAT MINTA SIAPKAN/BERSIHKAN)
+   TAMPILAN KHUSUS TEKNISI (OTOMATIS DAPAT TUGAS SAAT PERAWAT MINTA SIAPKAN/BERSIHKAN)
    ========================================================================== */
 
 function renderTeknisiMainView() {
   const tekTasks = getOpenTasksForTeknisi();
-  const tekScore = calcChecklistScore(STATE.teknisiChecklist, TEKNISI_ITEMS);
-  const recentTekLogs = STATE.inspections.filter((r) => isTeknisiTaskRecord(r) && r.status === 'SELESAI_TEKNISI').slice(0, 6);
+  const tekScore = calcChecklistScore(STATE.teknisiChecklist, TEKNISI_CHECKLIST_ITEMS);
+  const recentTekLogs = STATE.inspections
+    .filter((r) => isTeknisiTaskRecord(r) && r.final_status === 'siap')
+    .slice(0, 6);
 
   return `
   <div class="w-full px-3 pt-3 pb-24 space-y-3">
@@ -1666,16 +1687,16 @@ function renderTeknisiMainView() {
             </div>`
           : tekTasks
               .map((t) => {
-                const u = getUnitInfo(t.unit_code);
+                const u = getUnitByIdOrName(t.unit_id, t.unit_name);
                 return `
                 <div class="w-full rounded-xl bg-white border border-sky-200 p-3.5 space-y-2 shadow-sm">
                   <div>
                     <p class="text-sm font-extrabold text-slate-900 break-words">${escapeHtml(u.unit_code)} - ${escapeHtml(u.unit_name)}</p>
-                    <p class="text-[11px] font-bold text-sky-700">${escapeHtml(u.floor)} • Masuk pukul ${formatTimeShort(t.created_at)}</p>
-                    <p class="text-xs text-slate-600 mt-1 break-words">${escapeHtml(t.notes || 'Periksa AC, TV, lampu & sanitasi kamar.')}</p>
+                    <p class="text-[11px] font-bold text-sky-700">${escapeHtml(u.floor || 'Lantai 2')} • Masuk pukul ${formatTimeShort(t.created_at)}</p>
+                    <p class="text-xs text-slate-600 mt-1 break-words">${escapeHtml((t.notes || '').replace(TEKNISI_REQ_TAG, '').trim())}</p>
                   </div>
                   <div class="flex justify-end">
-                    <button onclick="openTeknisiForm('${escapeHtml(u.unit_code)}', '${t.id}')" class="px-4 py-2 rounded-xl bg-sky-700 text-white text-xs font-extrabold shadow-sm active:scale-95">
+                    <button onclick="openTeknisiForm('${escapeHtml(u.id)}', '${t.id}')" class="px-4 py-2 rounded-xl bg-sky-700 text-white text-xs font-extrabold shadow-sm active:scale-95">
                       🔧 Cek & Tangani Kamar
                     </button>
                   </div>
@@ -1688,13 +1709,13 @@ function renderTeknisiMainView() {
     ${
       STATE.teknisiFormOpen
         ? (() => {
-            const u = getUnitInfo(STATE.teknisiFormUnit);
+            const u = getUnitByIdOrName(STATE.teknisiFormUnitId, '');
             return `
             <div class="w-full rounded-2xl bg-white border-2 border-sky-600 p-4 shadow-md space-y-3">
               <div class="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5">
                 <div class="min-w-0 flex-1">
                   <span class="px-2 py-0.5 rounded bg-sky-50 text-sky-800 text-[10px] font-extrabold uppercase">Checklist Teknisi</span>
-                  <h3 class="text-sm font-extrabold text-slate-900 mt-1 break-words">${escapeHtml(u.unit_name)} (${escapeHtml(u.floor)})</h3>
+                  <h3 class="text-sm font-extrabold text-slate-900 mt-1 break-words">${escapeHtml(u.unit_name)} (${escapeHtml(u.floor || 'Lantai 2')})</h3>
                 </div>
                 <div class="text-right shrink-0">
                   <span class="px-2.5 py-1 rounded-full bg-sky-100 text-sky-800 text-xs font-extrabold">Skor: ${tekScore}%</span>
@@ -1703,7 +1724,7 @@ function renderTeknisiMainView() {
               </div>
 
               <div class="space-y-2">
-                ${TEKNISI_ITEMS.map((it, idx) => {
+                ${TEKNISI_CHECKLIST_ITEMS.map((it, idx) => {
                   const checked = !!STATE.teknisiChecklist[it.id];
                   return `
                   <label class="w-full flex items-start gap-2.5 p-3 rounded-xl border ${
@@ -1737,12 +1758,12 @@ function renderTeknisiMainView() {
             <h3 class="text-xs font-extrabold text-slate-700 uppercase">Riwayat Pengecekan Teknisi Selesai</h3>
             ${recentTekLogs
               .map((r) => {
-                const u = getUnitInfo(r.unit_code);
+                const u = getUnitByIdOrName(r.unit_id, r.unit_name);
                 return `
                 <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
                   <div class="min-w-0 flex-1">
-                    <p class="text-xs font-bold text-slate-800 truncate">${escapeHtml(u.unit_name)} (${escapeHtml(u.floor)})</p>
-                    <p class="text-[11px] text-slate-500 truncate">${escapeHtml(r.staff_name)} • ${formatTimeShort(r.created_at)}</p>
+                    <p class="text-xs font-bold text-slate-800 truncate">${escapeHtml(u.unit_name)} (${escapeHtml(u.floor || 'Lantai 2')})</p>
+                    <p class="text-[11px] text-slate-500 truncate">${escapeHtml(r.inspector_name)} • ${formatTimeShort(r.created_at)}</p>
                   </div>
                   <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold shrink-0">Selesai</span>
                 </div>`;
@@ -1760,11 +1781,12 @@ function renderTeknisiMainView() {
 
 function renderManajemenMainView() {
   const pendingApprovals = getPendingApprovalsForRole('manajemen');
-  const infoReports = getInfoReportsForRole('manajemen');
-  if (!STATE.mgmtFormUnit && STATE.units.length) {
-    STATE.mgmtFormUnit = STATE.units[0].unit_code;
+  const infoReports = getInfoReportsForRole();
+  const realItems = getRealChecklistItems();
+  if (!STATE.mgmtFormUnitId && STATE.units.length) {
+    STATE.mgmtFormUnitId = STATE.units[0].id;
   }
-  const mgmtScore = calcChecklistScore(STATE.mgmtChecklist, STATE.items);
+  const mgmtScore = calcChecklistScore(STATE.mgmtChecklist, realItems);
 
   return `
   <div class="w-full px-3 pt-3 pb-24 space-y-3">
@@ -1787,17 +1809,16 @@ function renderManajemenMainView() {
             </div>
             ${pendingApprovals
               .map((rep) => {
-                const u = getUnitInfo(rep.unit_code);
+                const u = getUnitByIdOrName(rep.unit_id, rep.unit_name);
                 return `
                 <div class="w-full rounded-xl bg-white border border-purple-200 p-3 space-y-2 shadow-sm">
                   <div class="flex items-start justify-between gap-2">
                     <div class="min-w-0 flex-1">
                       <p class="text-xs font-extrabold text-slate-900 break-words">${escapeHtml(u.unit_code)} - ${escapeHtml(u.unit_name)}</p>
-                      <p class="text-[11px] text-slate-500">${escapeHtml(u.floor)} • Petugas: <strong>${escapeHtml(rep.staff_name)}</strong> (${formatTimeShort(rep.created_at)})</p>
+                      <p class="text-[11px] text-slate-500">${escapeHtml(u.floor || 'Lantai 2')} • Petugas: <strong>${escapeHtml(rep.inspector_name)}</strong> (${formatTimeShort(rep.created_at)})</p>
                     </div>
-                    <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold shrink-0">Skor ${rep.score}%</span>
+                    <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold shrink-0">Skor ${rep.readiness_score}%</span>
                   </div>
-                  <p class="text-[11px] text-slate-600 bg-slate-50 rounded-lg p-2 break-words">${escapeHtml(rep.notes || '-')}</p>
                   <div class="grid grid-cols-3 gap-1.5">
                     <button onclick="openReportDetail('${rep.id}')" class="py-2 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-bold">Detail</button>
                     <button onclick="handleApproveInspection('${rep.id}')" class="py-2 rounded-lg bg-emerald-600 text-white text-[11px] font-extrabold">✓ Approve</button>
@@ -1818,16 +1839,16 @@ function renderManajemenMainView() {
           : infoReports
               .slice(0, 6)
               .map((r) => {
-                const u = getUnitInfo(r.unit_code);
+                const u = getUnitByIdOrName(r.unit_id, r.unit_name);
                 return `
                 <div onclick="openReportDetail('${r.id}')" class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2 cursor-pointer">
                   <div class="min-w-0 flex-1">
-                    <p class="text-xs font-bold text-slate-800 truncate">${escapeHtml(u.unit_name)} (${escapeHtml(u.floor)})</p>
-                    <p class="text-[11px] text-slate-500 truncate">Petugas: ${escapeHtml(r.staff_name)} • ${formatTimeShort(r.created_at)}</p>
+                    <p class="text-xs font-bold text-slate-800 truncate">${escapeHtml(u.unit_name)} (${escapeHtml(u.floor || 'Lantai 2')})</p>
+                    <p class="text-[11px] text-slate-500 truncate">Pelaksana: ${escapeHtml(r.inspector_name)} • ${formatTimeShort(r.created_at)}</p>
                   </div>
                   <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold shrink-0 ${
-                    r.status === 'SIAP PAKAI' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
-                  }">${escapeHtml(r.status)}</span>
+                    r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
+                  }">${r.final_status === 'siap' ? 'SIAP PAKAI' : 'PROSES'}</span>
                 </div>`;
               })
               .join('')
@@ -1842,18 +1863,18 @@ function renderManajemenMainView() {
 
       <div>
         <label class="block text-xs font-bold text-slate-700 mb-1">Pilih Unit Kamar</label>
-        <select onchange="STATE.mgmtFormUnit = this.value; render();" class="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-semibold bg-white">
+        <select onchange="STATE.mgmtFormUnitId = this.value; render();" class="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-semibold bg-white">
           ${STATE.units
             .map(
               (u) =>
-                `<option value="${escapeHtml(u.unit_code)}" ${STATE.mgmtFormUnit === u.unit_code ? 'selected' : ''}>${escapeHtml(u.unit_code)} - ${escapeHtml(u.unit_name)} (${escapeHtml(u.floor)})</option>`
+                `<option value="${escapeHtml(u.id)}" ${String(STATE.mgmtFormUnitId) === String(u.id) ? 'selected' : ''}>${escapeHtml(u.unit_code)} - ${escapeHtml(u.unit_name)} (${escapeHtml(u.floor || 'Lantai 2')})</option>`
             )
             .join('')}
         </select>
       </div>
 
       <div class="space-y-2">
-        ${STATE.items
+        ${realItems
           .map((it, idx) => {
             const checked = !!STATE.mgmtChecklist[it.id];
             return `
@@ -1878,27 +1899,35 @@ function renderManajemenMainView() {
 }
 
 async function submitMgmtManualInspection() {
-  const unit = getUnitInfo(STATE.mgmtFormUnit);
-  const score = calcChecklistScore(STATE.mgmtChecklist, STATE.items);
+  const unit = getUnitByIdOrName(STATE.mgmtFormUnitId, '');
+  const realItems = getRealChecklistItems();
+  const score = calcChecklistScore(STATE.mgmtChecklist, realItems);
   if (score < 100) {
     showToast('Centang seluruh checklist hingga 100% terlebih dahulu.');
     return;
   }
-  await insertInspectionRecord({
-    unit_code: unit.unit_code,
+  const actorName = STATE.user?.full_name || 'Manajemen';
+  await sb.from('room_inspections').insert([{
+    unit_id: unit.id,
     unit_name: unit.unit_name,
-    inspector_name: STATE.user.name,
-    staff_name: STATE.user.name,
+    inspector_name: actorName,
+    inspector_role: 'manajemen',
     shift: `Inspeksi Manajemen • ${formatTimeShort(new Date().toISOString())} WIB`,
-    score,
-    status: 'SIAP PAKAI',
-    notes: 'Diperiksa langsung oleh Manajemen.',
-    checklist_data: STATE.items.map((it) => ({ ...it, checked: true })),
-    duration_seconds: 30
-  });
+    readiness_score: score,
+    final_status: 'siap',
+    duration_seconds: 30,
+    checklist_data: realItems.map((it) => ({ item: it.item_name, checked: true })),
+    notes: `[Pelaksana: ${actorName}]\n[Tanggapan Pemeriksa: Sesuai Standar (Approved oleh ${actorName})]`
+  }]);
+  await sb.from('master_units').update({
+    status: 'siap',
+    last_checked_by: `Approved: ${actorName}`,
+    last_checked_at: new Date().toISOString()
+  }).eq('id', unit.id);
+
   STATE.mgmtChecklist = {};
   showToast(`Inspeksi ${unit.unit_name} tersimpan sebagai SIAP PAKAI.`);
-  render();
+  await syncAllData(true);
 }
 
 /* ==========================================================================
@@ -1906,7 +1935,7 @@ async function submitMgmtManualInspection() {
    ========================================================================== */
 
 function renderPerbaikanView() {
-  if (!STATE.repairUnit && STATE.units.length) STATE.repairUnit = STATE.units[0].unit_code;
+  if (!STATE.repairUnitId && STATE.units.length) STATE.repairUnitId = STATE.units[0].id;
   const repairLogs = STATE.inspections.filter((r) => isTeknisiTaskRecord(r)).slice(0, 12);
 
   return `
@@ -1919,11 +1948,11 @@ function renderPerbaikanView() {
 
       <div>
         <label class="block text-xs font-bold text-slate-700 mb-1">Unit Kamar</label>
-        <select onchange="STATE.repairUnit = this.value" class="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-semibold bg-white">
+        <select onchange="STATE.repairUnitId = this.value" class="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-semibold bg-white">
           ${STATE.units
             .map(
               (u) =>
-                `<option value="${escapeHtml(u.unit_code)}" ${STATE.repairUnit === u.unit_code ? 'selected' : ''}>${escapeHtml(u.unit_code)} - ${escapeHtml(u.unit_name)} (${escapeHtml(u.floor)})</option>`
+                `<option value="${escapeHtml(u.id)}" ${String(STATE.repairUnitId) === String(u.id) ? 'selected' : ''}>${escapeHtml(u.unit_code)} - ${escapeHtml(u.unit_name)} (${escapeHtml(u.floor || 'Lantai 2')})</option>`
             )
             .join('')}
         </select>
@@ -1957,17 +1986,17 @@ function renderPerbaikanView() {
           ? `<p class="text-xs text-slate-400">Belum ada tiket perbaikan.</p>`
           : repairLogs
               .map((r) => {
-                const u = getUnitInfo(r.unit_code);
-                const done = r.status === 'SELESAI_TEKNISI';
+                const u = getUnitByIdOrName(r.unit_id, r.unit_name);
+                const done = r.final_status === 'siap';
                 return `
                 <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
                   <div class="flex items-center justify-between gap-2">
-                    <p class="text-xs font-extrabold text-slate-900 truncate">${escapeHtml(u.unit_name)} (${escapeHtml(u.floor)})</p>
+                    <p class="text-xs font-extrabold text-slate-900 truncate">${escapeHtml(u.unit_name)} (${escapeHtml(u.floor || 'Lantai 2')})</p>
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold shrink-0 ${
                       done ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                     }">${done ? 'SELESAI' : 'PROSES TEKNISI'}</span>
                   </div>
-                  <p class="text-[11px] text-slate-600 break-words">${escapeHtml(r.notes || '-')}</p>
+                  <p class="text-[11px] text-slate-600 break-words">${escapeHtml((r.notes || '-').replace(TEKNISI_REQ_TAG, '').replace(REPAIR_RECORD_TAG, '').trim())}</p>
                 </div>`;
               })
               .join('')
@@ -1977,28 +2006,31 @@ function renderPerbaikanView() {
 }
 
 async function submitRepairTicket() {
-  const unit = getUnitInfo(STATE.repairUnit);
+  const unit = getUnitByIdOrName(STATE.repairUnitId, '');
   if (!STATE.repairDesc.trim()) {
     showToast('Isi keterangan kerusakan terlebih dahulu.');
     return;
   }
   const { num, floor } = extractRoomNumberSpeech(unit);
-  await insertInspectionRecord({
-    unit_code: unit.unit_code,
+  const reporter = STATE.user?.full_name || 'Staf';
+
+  await sb.from('room_inspections').insert([{
+    unit_id: unit.id,
     unit_name: unit.unit_name,
-    inspector_name: STATE.user?.name || 'Pelapor',
-    staff_name: 'Tim Teknisi',
+    inspector_name: reporter,
+    inspector_role: STATE.user?.role || 'petugas',
     shift: `Tugas Teknisi • ${formatTimeShort(new Date().toISOString())} WIB`,
-    score: 0,
-    status: 'TUGAS_TEKNISI',
-    notes: `[${STATE.repairCategory}] ${STATE.repairDesc.trim()} (Dilaporkan oleh ${STATE.user?.name || 'Staf'})`,
-    checklist_data: [],
-    duration_seconds: 0
-  });
+    readiness_score: 0,
+    final_status: 'kotor',
+    duration_seconds: 0,
+    checklist_data: [{ item: STATE.repairCategory, checked: false }],
+    notes: `${TEKNISI_REQ_TAG}\n[${STATE.repairCategory}] ${STATE.repairDesc.trim()} (Dilaporkan oleh ${reporter})`
+  }]);
+
   STATE.repairDesc = '';
   speakIndonesian(`Laporan perbaikan ${STATE.repairCategory} kamar nomor ${num}, ${floor}, telah dikirim ke teknisi.`);
   showToast('Tiket perbaikan berhasil dikirim ke Teknisi.');
-  render();
+  await syncAllData(true);
 }
 
 /* ==========================================================================
@@ -2011,11 +2043,9 @@ function renderAnalitikView() {
   return `
   <div class="w-full px-3 pt-3 pb-24 space-y-3">
     <div class="w-full rounded-2xl bg-white border border-slate-200 p-4 space-y-3 shadow-sm">
-      <div class="flex items-center justify-between gap-2">
-        <div>
-          <h2 class="text-base font-extrabold text-slate-900">Rekap Okupansi & Kedisiplinan</h2>
-          <p class="text-[11px] text-slate-500">Filter Harian, Mingguan, Bulanan & Tahunan</p>
-        </div>
+      <div>
+        <h2 class="text-base font-extrabold text-slate-900">Rekap Okupansi & Kedisiplinan</h2>
+        <p class="text-[11px] text-slate-500">Filter Harian, Mingguan, Bulanan & Tahunan</p>
       </div>
 
       <div class="grid grid-cols-5 gap-1">
@@ -2126,7 +2156,7 @@ function renderAnalitikView() {
 }
 
 /* ==========================================================================
-   TAB PENGATURAN MANAJEMEN (4 PILIHAN APPROVAL, MASTER KAMAR, AKUN & PANDUAN HP)
+   TAB PENGATURAN MANAJEMEN (4 PILIHAN APPROVAL, MASTER KAMAR, AKUN)
    ========================================================================== */
 
 function renderPengaturanView() {
@@ -2185,29 +2215,33 @@ function renderPengaturanView() {
     </div>
 
     <div class="w-full rounded-2xl bg-white border border-slate-200 p-4 space-y-3 shadow-sm">
-      <h3 class="text-sm font-extrabold text-slate-900">Tambah Akun Pengguna Baru</h3>
+      <h3 class="text-sm font-extrabold text-slate-900">Kelola Akun Pengguna (${STATE.users.length} Akun)</h3>
       <div class="space-y-2">
-        <input id="newUserName" type="text" placeholder="Nama Lengkap (misal: Budi Teknisi)" class="w-full rounded-xl border border-slate-300 p-2.5 text-xs" />
+        <input id="newUserFullName" type="text" placeholder="Nama Lengkap (misal: Budi Teknisi)" class="w-full rounded-xl border border-slate-300 p-2.5 text-xs" />
         <div class="grid grid-cols-2 gap-2">
-          <select id="newUserRole" class="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-semibold bg-white">
-            <option value="petugas">Petugas Kebersihan</option>
-            <option value="teknisi">Teknisi</option>
-            <option value="perawat">Perawat</option>
-            <option value="manajemen">Manajemen</option>
-          </select>
-          <input id="newUserPin" type="text" maxlength="6" placeholder="PIN (misal: 1234)" class="w-full rounded-xl border border-slate-300 p-2.5 text-xs" />
+          <input id="newUserUsername" type="text" placeholder="Username login" class="w-full rounded-xl border border-slate-300 p-2.5 text-xs" />
+          <input id="newUserPassword" type="text" placeholder="Password login" class="w-full rounded-xl border border-slate-300 p-2.5 text-xs" />
         </div>
+        <select id="newUserRole" class="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-semibold bg-white">
+          <option value="petugas">Petugas Kebersihan</option>
+          <option value="teknisi">Teknisi</option>
+          <option value="perawat">Perawat</option>
+          <option value="manajemen">Manajemen</option>
+        </select>
         <button onclick="addNewAppUser()" class="w-full py-2.5 rounded-xl bg-teal-700 text-white text-xs font-extrabold">
-          + Tambah Akun
+          + Simpan Akun Baru
         </button>
       </div>
       <div class="space-y-1.5 pt-2 border-t border-slate-100">
         ${STATE.users
           .map(
             (u) => `
-          <div class="flex items-center justify-between p-2 rounded-lg bg-slate-50 text-xs">
-            <span class="font-bold text-slate-800 truncate">${escapeHtml(u.name)}</span>
-            <span class="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] font-extrabold uppercase shrink-0">${escapeHtml(u.role)} • PIN ${escapeHtml(u.pin || '-')}</span>
+          <div class="flex items-center justify-between p-2 rounded-lg bg-slate-50 text-xs gap-2">
+            <div class="min-w-0 flex-1">
+              <p class="font-bold text-slate-800 truncate">${escapeHtml(u.full_name || u.username)}</p>
+              <p class="text-[10px] text-slate-500 font-mono truncate">User: ${escapeHtml(u.username)} • Pass: ${escapeHtml(u.password)}</p>
+            </div>
+            <span class="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] font-extrabold uppercase shrink-0">${escapeHtml(u.role)}</span>
           </div>`
           )
           .join('')}
@@ -2223,31 +2257,47 @@ function renderPengaturanView() {
   </div>`;
 }
 
-function setApprovalMode(mode) {
+async function setApprovalMode(mode) {
   STATE.approvalMode = mode;
-  localStorage.setItem('ss_approval_mode', mode);
+  localStorage.setItem('ck_approval_mode', mode);
   showToast(`Mode approval diubah ke: ${getApprovalModeLabel(mode)}`);
   render();
+
+  try {
+    const existingCfg = STATE.items.find((i) => i.category === APPROVAL_CONFIG_KEY);
+    if (existingCfg) {
+      await sb.from('master_items').update({ item_name: mode }).eq('id', existingCfg.id);
+    } else {
+      await sb.from('master_items').insert([{
+        item_name: mode,
+        category: APPROVAL_CONFIG_KEY,
+        is_critical: false
+      }]);
+    }
+  } catch (e) {}
 }
 
 async function addNewAppUser() {
-  const name = document.getElementById('newUserName')?.value.trim();
+  const fullName = document.getElementById('newUserFullName')?.value.trim();
+  const username = document.getElementById('newUserUsername')?.value.trim();
+  const password = document.getElementById('newUserPassword')?.value.trim();
   const role = document.getElementById('newUserRole')?.value || 'petugas';
-  const pin = document.getElementById('newUserPin')?.value.trim() || '1234';
-  if (!name) {
-    showToast('Masukkan nama akun terlebih dahulu.');
+  if (!fullName || !username || !password) {
+    showToast('Lengkapi Nama, Username, dan Password terlebih dahulu.');
     return;
   }
-  const newUser = { id: `u-${Date.now()}`, name, role, pin, active: true };
-  STATE.users.push(newUser);
-  saveLocalCache();
-  if (sb && navigator.onLine) {
-    try {
-      await sb.from('app_users').insert([{ name, role, pin, active: true }]);
-    } catch (e) {}
+  const { error } = await sb.from('app_users').insert([{
+    full_name: fullName,
+    username,
+    password,
+    role
+  }]);
+  if (error) {
+    showToast('Gagal menyimpan akun: ' + error.message);
+    return;
   }
-  showToast(`Akun ${name} (${role}) berhasil ditambahkan.`);
-  render();
+  showToast(`Akun ${fullName} (${role}) berhasil ditambahkan.`);
+  await syncAllData(true);
 }
 
 /* ==========================================================================
@@ -2255,11 +2305,10 @@ async function addNewAppUser() {
    ========================================================================== */
 
 function renderBottomNav() {
-  const role = STATE.user.role;
+  const role = String(STATE.user.role || '').toLowerCase();
   let tabs = [];
 
   if (role === 'petugas') {
-    // Sesuai permintaan: navigasi Cek Kamar dihilangkan khusus Petugas
     tabs = [
       { id: 'main', icon: '🔔', label: 'Permintaan' },
       { id: 'perbaikan', icon: '🔧', label: 'Perbaikan' },
@@ -2278,7 +2327,6 @@ function renderBottomNav() {
       { id: 'analitik', icon: '📊', label: 'Analitik' }
     ];
   } else {
-    // Manajemen
     tabs = [
       { id: 'main', icon: '📋', label: 'Cek Kamar' },
       { id: 'perbaikan', icon: '🔧', label: 'Perbaikan' },
@@ -2325,7 +2373,7 @@ function closeReportDetail() {
 function renderDetailModal() {
   const rep = STATE.selectedDetailReport;
   if (!rep) return '';
-  const u = getUnitInfo(rep.unit_code);
+  const u = getUnitByIdOrName(rep.unit_id, rep.unit_name);
   const items = Array.isArray(rep.checklist_data) ? rep.checklist_data : [];
 
   return `
@@ -2333,27 +2381,26 @@ function renderDetailModal() {
     <div class="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-2xl bg-white p-4 space-y-3 shadow-2xl">
       <div class="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
         <div class="min-w-0 flex-1">
-          <h3 class="text-sm font-extrabold text-slate-900 break-words">${escapeHtml(u.unit_name)} (${escapeHtml(u.floor)})</h3>
+          <h3 class="text-sm font-extrabold text-slate-900 break-words">${escapeHtml(u.unit_name)} (${escapeHtml(u.floor || 'Lantai 2')})</h3>
           <p class="text-[11px] text-slate-500">${escapeHtml(formatDateTimeID(rep.created_at))}</p>
         </div>
         <button onclick="closeReportDetail()" class="w-7 h-7 rounded-full bg-slate-100 text-slate-700 font-bold shrink-0">✕</button>
       </div>
 
       <div class="text-xs space-y-1 text-slate-700">
-        <p><strong>Pelaksana:</strong> ${escapeHtml(rep.staff_name || '-')}</p>
-        <p><strong>Pemeriksa / Target:</strong> ${escapeHtml(rep.inspector_name || '-')}</p>
-        <p><strong>Status:</strong> ${escapeHtml(rep.status || '-')} (Skor ${rep.score || 0}%)</p>
-        <p class="break-words"><strong>Catatan:</strong> ${escapeHtml(rep.notes || '-')}</p>
+        <p><strong>Pelaksana:</strong> ${escapeHtml(rep.inspector_name || '-')}</p>
+        <p><strong>Skor Kesiapan:</strong> ${rep.readiness_score || 0}%</p>
+        <p class="break-words"><strong>Catatan:</strong> ${escapeHtml((rep.notes || '-').replace(/\n/g, ' • '))}</p>
       </div>
 
       ${
         items.length
           ? `<div class="space-y-1 border-t border-slate-100 pt-2">
-              <p class="text-[11px] font-extrabold text-slate-700">Item Checklist Terverifikasi:</p>
+              <p class="text-[11px] font-extrabold text-slate-700">Item Checklist:</p>
               ${items
                 .map(
                   (it) =>
-                    `<p class="text-[11px] text-slate-600">✅ ${escapeHtml(it.item_name || it.category)}</p>`
+                    `<p class="text-[11px] text-slate-600">${it.checked ? '✅' : '❌'} ${escapeHtml(it.item || '')}</p>`
                 )
                 .join('')}
             </div>`
@@ -2361,8 +2408,13 @@ function renderDetailModal() {
       }
 
       ${
-        rep.photo_url
-          ? `<img src="${rep.photo_url}" alt="Bukti" class="w-full h-44 object-cover rounded-xl border border-slate-200" />`
+        rep.photo_room_url
+          ? `<img src="${rep.photo_room_url}" alt="Bukti Kamar" class="w-full h-40 object-cover rounded-xl border border-slate-200" />`
+          : ''
+      }
+      ${
+        rep.photo_toilet_url
+          ? `<img src="${rep.photo_toilet_url}" alt="Bukti Toilet" class="w-full h-40 object-cover rounded-xl border border-slate-200" />`
           : ''
       }
 
@@ -2387,32 +2439,19 @@ function renderLoginScreen() {
 
       <form onsubmit="handleLoginSubmit(event)" class="space-y-3.5">
         <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">Pilih Akun & Role Bertugas</label>
-          <select id="loginUserSelect" class="w-full rounded-xl border border-slate-300 p-3 text-xs font-bold bg-slate-50">
-            ${STATE.users
-              .map(
-                (u) =>
-                  `<option value="${escapeHtml(u.id)}">${escapeHtml(u.name)} — [${escapeHtml(u.role.toUpperCase())}]</option>`
-              )
-              .join('')}
-          </select>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Username</label>
+          <input id="loginUsernameInput" type="text" required placeholder="Masukkan username akun Anda" class="w-full rounded-xl border border-slate-300 p-3 text-xs font-bold bg-slate-50" />
         </div>
 
         <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">PIN Akses</label>
-          <input id="loginPinInput" type="password" inputmode="numeric" maxlength="6" placeholder="Masukkan PIN (default: 1111 / 2222 / 3333 / 1234)" class="w-full rounded-xl border border-slate-300 p-3 text-xs font-bold tracking-widest" />
+          <label class="block text-xs font-bold text-slate-700 mb-1">Password</label>
+          <input id="loginPasswordInput" type="password" required placeholder="Masukkan password" class="w-full rounded-xl border border-slate-300 p-3 text-xs font-bold bg-slate-50" />
         </div>
 
         <button type="submit" class="w-full py-3.5 rounded-xl bg-teal-700 text-white text-xs font-extrabold shadow-lg active:scale-98">
           Masuk ke Sistem →
         </button>
       </form>
-
-      <div class="rounded-xl bg-slate-50 border border-slate-200 p-3 text-[11px] text-slate-600 space-y-0.5">
-        <p class="font-bold text-slate-800">PIN Default Role:</p>
-        <p>• Manajemen: <strong>1234</strong> | Petugas: <strong>1111</strong></p>
-        <p>• Perawat: <strong>2222</strong> | Teknisi: <strong>3333</strong></p>
-      </div>
     </div>
   </div>`;
 }
@@ -2430,17 +2469,18 @@ function render() {
     return;
   }
 
+  const role = String(STATE.user.role || '').toLowerCase();
   let bodyHtml = '';
   if (STATE.activeTab === 'perbaikan') {
     bodyHtml = renderPerbaikanView();
   } else if (STATE.activeTab === 'analitik') {
     bodyHtml = renderAnalitikView();
-  } else if (STATE.activeTab === 'pengaturan' && STATE.user.role === 'manajemen') {
+  } else if (STATE.activeTab === 'pengaturan' && role === 'manajemen') {
     bodyHtml = renderPengaturanView();
   } else {
-    if (STATE.user.role === 'perawat') bodyHtml = renderPerawatMainView();
-    else if (STATE.user.role === 'petugas') bodyHtml = renderPetugasMainView();
-    else if (STATE.user.role === 'teknisi') bodyHtml = renderTeknisiMainView();
+    if (role === 'perawat') bodyHtml = renderPerawatMainView();
+    else if (role === 'petugas') bodyHtml = renderPetugasMainView();
+    else if (role === 'teknisi') bodyHtml = renderTeknisiMainView();
     else bodyHtml = renderManajemenMainView();
   }
 
@@ -2473,22 +2513,29 @@ window.addEventListener('offline', () => {
 });
 
 (function initApp() {
-  loadLocalCache();
   render();
   syncAllData(true);
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=6.5').catch((err) => {
-      console.warn('SW register warning:', err);
-    });
+    navigator.serviceWorker.register('./sw.js?v=6.5').catch(() => {});
   }
 
-  // Sinkronisasi otomatis setiap 12 detik
-  syncInterval = setInterval(() => {
-    if (STATE.user) syncAllData(true);
-  }, 12000);
+  // Supabase Realtime untuk update instan lintas HP
+  realtimeChannel = sb
+    .channel('cek-kamar-v65-live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'room_inspections' }, () => {
+      if (STATE.user) syncAllData(true);
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'master_units' }, () => {
+      if (STATE.user) syncAllData(true);
+    })
+    .subscribe();
 
-  // Pengulangan notifikasi & suara pengingat setiap 25 detik selama tugas belum dibuka/ditangani
+  syncInterval = setInterval(() => {
+    if (STATE.user && navigator.onLine) syncAllData(true);
+  }, 15000);
+
+  // Pengulangan notifikasi & suara pengingat setiap 25 detik sampai petugas/teknisi merespons
   alarmLoopInterval = setInterval(() => {
     if (STATE.user) runAlarmReminderCycle(false);
   }, 25000);
