@@ -1,4 +1,4 @@
-const APP_VERSION = '6.3';
+const APP_VERSION = '6.4';
 const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteHB4cnJqeG51anlnYWJyaHNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MDk0MjAsImV4cCI6MjExMDQ4NTQyMH0.tFMCbg1_R-I08KEIs-h6wwxXhYLP2Z0oYgnDGC7T2YU';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -28,7 +28,43 @@ const SHIFT_CATEGORY_KEY = '__SHIFT__';
 const APPROVAL_CONFIG_KEY = '__CONFIG_APPROVAL__';
 const REPAIR_RECORD_TAG = '[JENIS_LAPORAN: CEK_PERBAIKAN]';
 const CHECKOUT_RECORD_TAG = '[JENIS_LAPORAN: PASIEN_PULANG]';
+const NURSE_REQ_TAG = '[JENIS_LAPORAN: PERMINTAAN_PERAWAT]';
 let requireApprovalMode = localStorage.getItem('ck_require_approval') !== 'false';
+
+const NURSE_REQUEST_TYPES = {
+  siapkan: {
+    key: 'siapkan',
+    label: 'Siapkan Kamar',
+    shortTag: 'SIAPKAN KAMAR',
+    badgeClass: 'bg-sky-100 text-sky-800 border-sky-300',
+    toastTitle: 'SIAPKAN KAMAR 🛏️',
+    speak: (roomLabel) => `Tolong siapkan kamar ${roomLabel} untuk pasien baru.`
+  },
+  extrabed: {
+    key: 'extrabed',
+    label: 'Tambahan Extrabed',
+    shortTag: 'TAMBAH EXTRABED',
+    badgeClass: 'bg-purple-100 text-purple-800 border-purple-300',
+    toastTitle: 'TAMBAHAN EXTRABED ➕',
+    speak: (roomLabel) => `Tolong tambahkan extrabed di kamar ${roomLabel}.`
+  },
+  bersihkan: {
+    key: 'bersihkan',
+    label: 'Ruangan Minta Dibersihkan',
+    shortTag: 'MINTA DIBERSIHKAN',
+    badgeClass: 'bg-amber-100 text-amber-800 border-amber-300',
+    toastTitle: 'MINTA DIBERSIHKAN 🧹',
+    speak: (roomLabel) => `Ruangan kamar ${roomLabel} minta dibersihkan.`
+  },
+  pulang: {
+    key: 'pulang',
+    label: 'Pasien Pulang',
+    shortTag: 'PASIEN PULANG',
+    badgeClass: 'bg-orange-100 text-orange-800 border-orange-300',
+    toastTitle: 'PASIEN PULANG 🚪',
+    speak: (roomLabel) => `Pasien kamar ${roomLabel} sudah pulang, tolong dibersihkan.`
+  }
+};
 
 const DEFAULT_SHIFTS = [
   { id: 'def-pagi', name: 'Shift Pagi', hours: '07:00 - 14:00', isLocal: true },
@@ -73,6 +109,77 @@ let toastTimeout = null;
 
 if (window.lucide) lucide.createIcons();
 
+// ==================== MESIN SUARA NOTIFIKASI BAHASA INDONESIA ====================
+
+function extractSpokenRoomLabel(unitName) {
+  const raw = String(unitName || '').trim();
+  const numMatch = raw.match(/(?:kamar|kmr|ruang)?\s*(\d+[a-zA-Z]?)/i);
+  if (numMatch && numMatch[1]) {
+    return `nomor ${numMatch[1]}`;
+  }
+  return raw.replace(/^kamar\s*/i, '');
+}
+
+function speakIndonesianAlert(text) {
+  if (!text || !('speechSynthesis' in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'id-ID';
+    utter.rate = 0.96;
+    utter.pitch = 1.04;
+    utter.volume = 1.0;
+
+    const voices = window.speechSynthesis.getVoices();
+    const idVoice = voices.find(v => (v.lang || '').toLowerCase().includes('id'));
+    if (idVoice) utter.voice = idVoice;
+
+    setTimeout(() => {
+      try { window.speechSynthesis.speak(utter); } catch (e) {}
+    }, 350);
+  } catch (e) {}
+}
+
+if ('speechSynthesis' in window) {
+  window.speechSynthesis.onvoiceschanged = () => {
+    try { window.speechSynthesis.getVoices(); } catch (e) {}
+  };
+}
+
+function getSpokenTextForReport(report) {
+  if (!report) return '';
+  const roomLabel = extractSpokenRoomLabel(report.unit_name);
+  const notesStr = String(report.notes || '');
+  const shiftStr = String(report.shift || '');
+
+  if (notesStr.includes('[REQ_TYPE: siapkan]') || shiftStr.startsWith('Siapkan Kamar')) {
+    return NURSE_REQUEST_TYPES.siapkan.speak(roomLabel);
+  }
+  if (notesStr.includes('[REQ_TYPE: extrabed]') || shiftStr.startsWith('Tambahan Extrabed')) {
+    return NURSE_REQUEST_TYPES.extrabed.speak(roomLabel);
+  }
+  if (notesStr.includes('[REQ_TYPE: bersihkan]') || shiftStr.startsWith('Minta Dibersihkan')) {
+    return NURSE_REQUEST_TYPES.bersihkan.speak(roomLabel);
+  }
+  if (notesStr.includes('[REQ_TYPE: pulang]') || notesStr.includes(CHECKOUT_RECORD_TAG) || shiftStr.startsWith('Pasien Pulang')) {
+    return NURSE_REQUEST_TYPES.pulang.speak(roomLabel);
+  }
+  if (isRepairRecord(report)) {
+    return report.final_status === 'siap'
+      ? `Perbaikan fasilitas kamar ${roomLabel} sudah selesai.`
+      : `Ada pengajuan perbaikan fasilitas di kamar ${roomLabel}.`;
+  }
+  if (isInspectionOfficiallyApproved(report)) {
+    return `Kamar ${roomLabel} sudah siap pakai.`;
+  }
+  if (isRevisionRequested(report)) {
+    return `Perhatian, kamar ${roomLabel} perlu perbaikan kebersihan.`;
+  }
+  return `Laporan cek kesiapan kamar ${roomLabel} menunggu approval manajemen.`;
+}
+
+// =================================================================================
+
 function isSystemMetaCategory(category) {
   return category === SHIFT_CATEGORY_KEY || category === APPROVAL_CONFIG_KEY;
 }
@@ -82,21 +189,34 @@ function isRepairRecord(rep) {
   return String(rep.notes || '').includes(REPAIR_RECORD_TAG) || String(rep.shift || '').startsWith('Perbaikan');
 }
 
-function isCheckoutRecord(rep) {
+function isNurseRequestRecord(rep) {
   if (!rep) return false;
-  return String(rep.notes || '').includes(CHECKOUT_RECORD_TAG) || String(rep.shift || '').startsWith('Pasien Pulang');
+  const n = String(rep.notes || '');
+  const s = String(rep.shift || '');
+  return n.includes(NURSE_REQ_TAG) || n.includes(CHECKOUT_RECORD_TAG) ||
+    s.startsWith('Pasien Pulang') || s.startsWith('Siapkan Kamar') ||
+    s.startsWith('Tambahan Extrabed') || s.startsWith('Minta Dibersihkan');
+}
+
+function isCheckoutRecord(rep) {
+  return isNurseRequestRecord(rep);
+}
+
+function getNurseRequestTypeFromString(str) {
+  const s = String(str || '');
+  if (s.includes('[REQ_TYPE: siapkan]') || s.startsWith('Siapkan Kamar')) return NURSE_REQUEST_TYPES.siapkan;
+  if (s.includes('[REQ_TYPE: extrabed]') || s.startsWith('Tambahan Extrabed')) return NURSE_REQUEST_TYPES.extrabed;
+  if (s.includes('[REQ_TYPE: bersihkan]') || s.startsWith('Minta Dibersihkan')) return NURSE_REQUEST_TYPES.bersihkan;
+  if (s.includes('[REQ_TYPE: pulang]') || s.includes(CHECKOUT_RECORD_TAG) || s.startsWith('Pasien Pulang')) return NURSE_REQUEST_TYPES.pulang;
+  return NURSE_REQUEST_TYPES.pulang;
 }
 
 function getRoomChecklistReports() {
-  return inspectionsData.filter(r => !isRepairRecord(r) && !isCheckoutRecord(r));
+  return inspectionsData.filter(r => !isRepairRecord(r) && !isNurseRequestRecord(r));
 }
 
 function getRepairReports() {
   return inspectionsData.filter(r => isRepairRecord(r));
-}
-
-function getCheckoutReports() {
-  return inspectionsData.filter(r => isCheckoutRecord(r));
 }
 
 function syncApprovalConfigFromItems() {
@@ -358,7 +478,7 @@ function ensurePerawatRoleOptionInAccountForm() {
   if (!Array.from(roleSel.options).some(o => o.value === 'perawat')) {
     const opt = document.createElement('option');
     opt.value = 'perawat';
-    opt.textContent = 'Perawat (Lapor Pasien Pulang)';
+    opt.textContent = 'Perawat (Permintaan Kamar & Pasien Pulang)';
     roleSel.appendChild(opt);
   }
 }
@@ -437,6 +557,11 @@ function isInspectionOfficiallyApproved(rep) {
   return rep.final_status === 'siap' && (meta.feedbackStatus.includes('Approved') || meta.feedbackStatus.includes('Otomatis Siap Pakai'));
 }
 
+function isNurseMarkedUnit(checkedByStr) {
+  const s = String(checkedByStr || '');
+  return s.startsWith('Pasien Pulang:') || s.startsWith('Siapkan Kamar:') || s.startsWith('Tambahan Extrabed:') || s.startsWith('Minta Dibersihkan:');
+}
+
 function getEffectiveUnitStatus(u) {
   if (u.status === 'maintenance') return 'maintenance';
 
@@ -448,7 +573,7 @@ function getEffectiveUnitStatus(u) {
 
   const isExplicitlyClearedAfterReport = (
     u.status === 'kotor' &&
-    (!checkedByStr || checkedByStr.startsWith('Pasien Pulang:')) &&
+    (!checkedByStr || isNurseMarkedUnit(checkedByStr)) &&
     unitUpdatedAt > (repCreatedAt + 2000)
   );
   if (isExplicitlyClearedAfterReport) return 'kosong';
@@ -467,7 +592,7 @@ function getEffectiveUnitStatus(u) {
   if (latestRep && isInspectionOfficiallyApproved(latestRep)) return 'siap';
   if (u.status === 'siap' && hasApprovedStampOnUnit) return 'siap';
   if (checkedByStr.includes('Perlu Perbaikan')) return 'perlu_perbaikan';
-  if (checkedByStr && !checkedByStr.startsWith('Pasien Pulang:') && !hasApprovedStampOnUnit) return 'pending_approval';
+  if (checkedByStr && !isNurseMarkedUnit(checkedByStr) && !hasApprovedStampOnUnit) return 'pending_approval';
 
   return 'kosong';
 }
@@ -644,54 +769,65 @@ async function approveActiveFormReport() {
   }
 }
 
-async function confirmPatientCheckout(unitId, unitName) {
-  if (!isManagerRole() && !isPerawatRole()) return;
+// ==================== AKSI CEPAT PERAWAT (4 TOMBOL + SUARA) ====================
 
-  const extraNoteInput = prompt(
-    `Lapor Pasien Pulang di "${unitName}"?\n\nStatus kamar akan otomatis diubah menjadi KOSONG (Minta Dibersihkan Petugas).\n\nCatatan tambahan untuk petugas (opsional, boleh dikosongkan):`,
-    ''
-  );
-  if (extraNoteInput === null) return;
+async function sendNurseRoomAction(unitId, unitName, actionKey) {
+  if (!isManagerRole() && !isPerawatRole()) return;
+  const cfg = NURSE_REQUEST_TYPES[actionKey] || NURSE_REQUEST_TYPES.pulang;
+  const roomLabel = extractSpokenRoomLabel(unitName);
+
+  const ok = confirm(`Kirim permintaan "${cfg.label}" untuk ${unitName} ke Petugas sekarang?`);
+  if (!ok) return;
 
   const nurseName = currentUser?.full_name || 'Perawat';
-  const jamPulang = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-  const cleanExtra = extraNoteInput.trim();
-  const unitStamp = cleanExtra
-    ? `Pasien Pulang: ${nurseName} (${jamPulang}) • ${cleanExtra}`
-    : `Pasien Pulang: ${nurseName} (${jamPulang})`;
+  const jamReq = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+  const prefixMap = {
+    siapkan: 'Siapkan Kamar',
+    extrabed: 'Tambahan Extrabed',
+    bersihkan: 'Minta Dibersihkan',
+    pulang: 'Pasien Pulang'
+  };
+  const prefixTitle = prefixMap[cfg.key] || 'Pasien Pulang';
+  const unitStamp = `${prefixTitle}: ${nurseName} (${jamReq})`;
+
+  // Untuk tambahan extrabed atau minta dibersihkan saat pasien masih dirawat, pertahankan status siap jika sebelumnya siap, selain itu kotor
+  const currentUnit = unitsData.find(u => String(u.id) === String(unitId));
+  const currentEff = currentUnit ? getEffectiveUnitStatus(currentUnit) : 'kosong';
+  const nextDbStatus = (cfg.key === 'extrabed' && currentEff === 'siap') ? 'siap' : 'kotor';
 
   const { error } = await db.from('master_units').update({
-    status: 'kotor',
+    status: nextDbStatus,
     last_checked_by: unitStamp,
     last_checked_at: new Date().toISOString()
   }).eq('id', unitId);
 
-  if (error) return alert('Gagal memperbarui status kamar: ' + error.message);
+  if (error) return alert('Gagal mengirim permintaan kamar: ' + error.message);
 
-  // Kirim log notifikasi real-time ke tabel room_inspections agar HP Petugas berbunyi
   try {
-    const checkoutPayload = {
+    const spokenMessage = cfg.speak(roomLabel);
+    const reqPayload = {
       unit_id: unitId,
       unit_name: unitName,
       inspector_name: nurseName,
       inspector_role: currentUser?.role || 'perawat',
-      shift: `Pasien Pulang • ${jamPulang} WIB`,
+      shift: `${prefixTitle} • ${jamReq} WIB`,
       readiness_score: 0,
-      final_status: 'kotor',
+      final_status: nextDbStatus,
       duration_seconds: 0,
       checklist_data: [
-        { item: 'Pasien Sudah Pulang (Minta Dibersihkan & Dirapikan)', checked: true }
+        { item: cfg.label, checked: true }
       ],
       notes: composeNotesWithMetadata(
         nurseName,
-        `Pasien Pulang — Minta Dibersihkan (Dilaporkan oleh ${nurseName})`,
-        cleanExtra || 'Bersihkan & rapikan kamar bekas pasien',
-        `${CHECKOUT_RECORD_TAG}\n${cleanExtra || 'Pasien sudah pulang, kamar siap dibersihkan dan dirapikan petugas.'}`
+        `${cfg.label} (Dilaporkan oleh ${nurseName})`,
+        spokenMessage,
+        `${NURSE_REQ_TAG}\n[REQ_TYPE: ${cfg.key}]\n${spokenMessage}`
       ),
       photo_room_url: null,
       photo_toilet_url: null
     };
-    const { data: insertedRows } = await db.from('room_inspections').insert([checkoutPayload]).select();
+    const { data: insertedRows } = await db.from('room_inspections').insert([reqPayload]).select();
     if (insertedRows?.[0]) {
       lastKnownReportId = insertedRows[0].id;
       localStorage.setItem('ck_last_seen_id', insertedRows[0].id);
@@ -699,9 +835,16 @@ async function confirmPatientCheckout(unitId, unitName) {
   } catch (e) {}
 
   playNotificationChime();
+  speakIndonesianAlert(`Permintaan ${cfg.label} kamar ${roomLabel} terkirim.`);
   await loadAllData();
-  alert(`Terkirim ke Petugas! ${unitName} kini berstatus KOSONG (Perlu Dibersihkan & Dirapikan).`);
+  alert(`Terkirim ke Petugas! Permintaan "${cfg.label}" untuk ${unitName} sudah masuk ke layar & suara notifikasi petugas.`);
 }
+
+async function confirmPatientCheckout(unitId, unitName) {
+  return sendNurseRoomAction(unitId, unitName, 'pulang');
+}
+
+// ================================================================================
 
 async function quickChangeUnitStatus(unitId, newMode) {
   if (!isManagerRole()) {
@@ -826,6 +969,17 @@ async function markIssueResolvedByOfficer(reportId) {
   }
 }
 
+async function acknowledgeNurseTask(unitId, unitName) {
+  const actorName = currentUser ? currentUser.full_name : 'Petugas';
+  if (!confirm(`Tandai permintaan perawat untuk "${unitName}" sudah dikerjakan?`)) return;
+  const { error } = await db.from('master_units').update({
+    last_checked_by: `Ditangani: ${actorName}`,
+    last_checked_at: new Date().toISOString()
+  }).eq('id', unitId);
+  if (error) return alert('Gagal memperbarui status: ' + error.message);
+  await loadAllData();
+}
+
 function renderOfficerRevisionBanner() {
   const inspectSection = document.getElementById('tab-inspect');
   if (!inspectSection) return;
@@ -844,12 +998,9 @@ function renderOfficerRevisionBanner() {
   }
 
   const revisionReports = getRoomChecklistReports().filter(r => isRevisionRequested(r));
-  const checkoutUnits = unitsData.filter(u =>
-    getEffectiveUnitStatus(u) === 'kosong' &&
-    String(u.last_checked_by || '').startsWith('Pasien Pulang:')
-  );
+  const nurseTaskUnits = unitsData.filter(u => isNurseMarkedUnit(u.last_checked_by));
 
-  if (revisionReports.length === 0 && checkoutUnits.length === 0) {
+  if (revisionReports.length === 0 && nurseTaskUnits.length === 0) {
     container.innerHTML = '';
     container.classList.add('hidden');
     return;
@@ -857,27 +1008,37 @@ function renderOfficerRevisionBanner() {
 
   const resolveBtnLabel = requireApprovalMode ? 'Selesai Perbaikan & Minta Approve' : 'Selesai Perbaikan (Siap Pakai)';
 
-  const checkoutHtml = checkoutUnits.length > 0 ? `
+  const nurseTasksHtml = nurseTaskUnits.length > 0 ? `
     <div class="mb-3 rounded-2xl bg-amber-50 border-2 border-amber-300 p-3.5 shadow-sm space-y-2.5">
       <div class="flex items-center justify-between gap-2">
         <div class="flex items-center gap-2">
           <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></span>
-          <h3 class="text-xs font-extrabold text-amber-950 uppercase tracking-wide">Pasien Pulang — Minta Dibersihkan (${checkoutUnits.length} Kamar)</h3>
+          <h3 class="text-xs font-extrabold text-amber-950 uppercase tracking-wide">Permintaan Perawat (${nurseTaskUnits.length} Kamar)</h3>
         </div>
-        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900">Info Perawat</span>
+        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900">Nurse Station</span>
       </div>
       <div class="space-y-2">
-        ${checkoutUnits.map(u => {
-          const waktu = u.last_checked_at ? new Date(u.last_checked_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '';
+        ${nurseTaskUnits.map(u => {
+          const safeName = (u.unit_name || '').replace(/'/g, "\\'");
+          const isExtraOrCleanOnly = String(u.last_checked_by || '').startsWith('Tambahan Extrabed:') || String(u.last_checked_by || '').startsWith('Minta Dibersihkan:');
           return `
-            <div class="bg-white rounded-xl p-3 border border-amber-200 flex items-center justify-between gap-2">
-              <div class="min-w-0">
-                <p class="text-xs font-extrabold text-slate-900">${u.unit_code} - ${u.unit_name}</p>
-                <p class="text-[11px] font-semibold text-amber-800 truncate">${u.last_checked_by || 'Pasien sudah pulang'}</p>
+            <div class="bg-white rounded-xl p-3 border border-amber-200 space-y-2">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <p class="text-xs font-extrabold text-slate-900">${u.unit_code} - ${u.unit_name}</p>
+                  <p class="text-[11px] font-bold text-amber-800">${u.last_checked_by || ''}</p>
+                </div>
               </div>
-              <button type="button" onclick="quickInspect('${u.id}')" class="shrink-0 py-2 px-3 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold rounded-lg text-[10.5px] flex items-center gap-1 shadow-sm transition">
-                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Bersihkan & Cek
-              </button>
+              <div class="flex items-center gap-1.5 justify-end">
+                ${isExtraOrCleanOnly ? `
+                  <button type="button" onclick="acknowledgeNurseTask('${u.id}', '${safeName}')" class="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-lg text-[10.5px] flex items-center gap-1 shadow-sm transition">
+                    <i data-lucide="check" class="w-3.5 h-3.5"></i> Sudah Dikerjakan
+                  </button>
+                ` : ''}
+                <button type="button" onclick="quickInspect('${u.id}')" class="py-1.5 px-3 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold rounded-lg text-[10.5px] flex items-center gap-1 shadow-sm transition">
+                  <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Cek & Siapkan Kamar
+                </button>
+              </div>
             </div>
           `;
         }).join('')}
@@ -923,7 +1084,7 @@ function renderOfficerRevisionBanner() {
   ` : '';
 
   container.classList.remove('hidden');
-  container.innerHTML = checkoutHtml + revisionHtml;
+  container.innerHTML = nurseTasksHtml + revisionHtml;
   lucide.createIcons();
 }
 
@@ -1777,7 +1938,7 @@ function sendAppInviteWa(targetRole) {
     '--------------------------------',
     'Halo Rekan-Rekan Tim,',
     '',
-    'Silakan akses aplikasi di bawah ini untuk melakukan laporan pasien pulang (Perawat), pengecekan kesiapan kamar, pengajuan perbaikan, dan dokumentasi foto:',
+    'Silakan akses aplikasi di bawah ini untuk melakukan permintaan kamar (Perawat), pengecekan kesiapan kamar, pengajuan perbaikan, dan dokumentasi foto:',
     '',
     '🔗 *Link Aplikasi:*',
     appUrl,
@@ -2087,7 +2248,7 @@ async function triggerNativePhoneNotification(title, body, reportId) {
 function showInAppBanner(report) {
   latestNotifReport = report;
   const banner = document.getElementById('live-toast-banner');
-  const isCheckout = isCheckoutRecord(report);
+  const isNurseReq = isNurseRequestRecord(report);
   const isRepair = isRepairRecord(report);
   const isApproved = isInspectionOfficiallyApproved(report);
   const isRev = isRevisionRequested(report);
@@ -2098,10 +2259,11 @@ function showInAppBanner(report) {
   let badgeLabel = 'Butuh Approval Manajemen • Baru Saja';
   let bodyLabel = `Oleh ${actorName} • Klik untuk cek form & approve`;
 
-  if (isCheckout) {
-    statusLabel = 'PASIEN PULANG 🛏️';
-    badgeLabel = 'Info Perawat • Segera Bersihkan';
-    bodyLabel = `Dilaporkan ${actorName} • ${meta.feedbackDetail || 'Kamar siap dibersihkan'}`;
+  if (isNurseReq) {
+    const reqType = getNurseRequestTypeFromString((report.notes || '') + ' ' + (report.shift || ''));
+    statusLabel = reqType.toastTitle;
+    badgeLabel = `Permintaan Perawat (${actorName})`;
+    bodyLabel = getSpokenTextForReport(report);
   } else if (isRepair) {
     statusLabel = report.final_status === 'siap' ? 'SUDAH DIPERBAIKI ✅' : 'PENGAJUAN PERBAIKAN 🔧';
     badgeLabel = 'Cek Perbaikan Fasilitas • Baru Saja';
@@ -2124,16 +2286,16 @@ function showInAppBanner(report) {
   void banner.offsetWidth;
   banner.classList.add('banner-slide-in');
   clearTimeout(toastTimeout);
-  toastTimeout = setTimeout(hideToastBanner, 8500);
+  toastTimeout = setTimeout(hideToastBanner, 9000);
 }
 
 function hideToastBanner() { document.getElementById('live-toast-banner')?.classList.add('hidden'); }
 
 function openLatestNotifFromBanner() {
   hideToastBanner();
-  if (latestNotifReport && isCheckoutRecord(latestNotifReport)) {
+  if (latestNotifReport && isNurseRequestRecord(latestNotifReport)) {
     if (isPetugasRole() && latestNotifReport.unit_id) quickInspect(latestNotifReport.unit_id);
-    else switchTab('dashboard');
+    else if (!isPerawatRole()) switchTab('dashboard');
   } else if (latestNotifReport && isRepairRecord(latestNotifReport)) {
     openRepairReportInForm(latestNotifReport.id);
   } else if (latestNotifReport && latestNotifReport.id && !isInspectionOfficiallyApproved(latestNotifReport)) {
@@ -2142,7 +2304,7 @@ function openLatestNotifFromBanner() {
     openNotificationDrawer();
   } else if (latestNotifReport && latestNotifReport.id) {
     openReportFullView(latestNotifReport.id);
-  } else {
+  } else if (!isPerawatRole()) {
     switchTab('analytics');
   }
 }
@@ -2157,7 +2319,7 @@ function handleIncomingNewReport(report) {
   lastKnownReportId = report.id;
   localStorage.setItem('ck_last_seen_id', report.id);
 
-  const isCheckout = isCheckoutRecord(report);
+  const isNurseReq = isNurseRequestRecord(report);
   const isRepair = isRepairRecord(report);
   const isApproved = isInspectionOfficiallyApproved(report);
   const isRev = isRevisionRequested(report);
@@ -2170,6 +2332,9 @@ function handleIncomingNewReport(report) {
     if (bell) { bell.classList.remove('bell-animate'); void bell.offsetWidth; bell.classList.add('bell-animate'); }
 
     playNotificationChime();
+    const spokenText = getSpokenTextForReport(report);
+    speakIndonesianAlert(spokenText);
+
     if (navigator.vibrate) navigator.vibrate([250, 100, 250]);
     showInAppBanner(report);
 
@@ -2179,9 +2344,10 @@ function handleIncomingNewReport(report) {
     let notifTitle = `Approval Dibutuhkan: ${report.unit_name}`;
     let notifBody = `Petugas ${actorName} selesai cek (${report.readiness_score}%). Mohon cek form & approve.`;
 
-    if (isCheckout) {
-      notifTitle = `Pasien Pulang: ${report.unit_name}`;
-      notifBody = `Dilaporkan ${actorName}. Segera bersihkan & rapikan kamar bekas pasien.`;
+    if (isNurseReq) {
+      const reqType = getNurseRequestTypeFromString((report.notes || '') + ' ' + (report.shift || ''));
+      notifTitle = `${reqType.label}: ${report.unit_name}`;
+      notifBody = spokenText;
     } else if (isRepair) {
       notifTitle = report.final_status === 'siap' ? `Sudah Diperbaiki: ${report.unit_name}` : `Pengajuan Perbaikan: ${report.unit_name}`;
       notifBody = `Pelaksana: ${actorName} • ${meta.feedbackStatus}`;
@@ -2199,11 +2365,20 @@ function handleIncomingNewReport(report) {
 }
 
 function testNotificationAlert() {
-  const sample = inspectionsData[0] || { id: null, unit_name: 'Kamar 101 - Anggrek', inspector_name: currentUser ? currentUser.full_name : 'Petugas', shift: 'Shift Siang', readiness_score: 100, final_status: 'siap', notes: '[Tanggapan Pemeriksa: Sesuai Standar (Approved)]' };
+  const sample = inspectionsData[0] || {
+    id: null,
+    unit_name: 'Kamar 201 - SVIP',
+    inspector_name: currentUser ? currentUser.full_name : 'Perawat',
+    shift: 'Siapkan Kamar • 08:00 WIB',
+    readiness_score: 0,
+    final_status: 'kotor',
+    notes: '[JENIS_LAPORAN: PERMINTAAN_PERAWAT]\n[REQ_TYPE: siapkan]'
+  };
   playNotificationChime();
+  speakIndonesianAlert('Tes notifikasi suara aktif. Tolong siapkan kamar nomor 201.');
   if (navigator.vibrate) navigator.vibrate([180, 80, 180]);
   showInAppBanner(sample);
-  triggerNativePhoneNotification('Tes Notifikasi Cek Kamar', 'Notifikasi aktif! Laporan petugas & perawat langsung masuk secara real-time.', sample.id);
+  triggerNativePhoneNotification('Tes Notifikasi Suara Cek Kamar', 'Notifikasi suara bahasa Indonesia aktif!', sample.id);
 }
 
 function openNotificationDrawer() {
@@ -2215,15 +2390,16 @@ function openNotificationDrawer() {
   } else {
     const resolveBtnLabel = requireApprovalMode ? 'Selesai Perbaikan & Minta Approve' : 'Selesai Perbaikan (Siap Pakai)';
     listEl.innerHTML = inspectionsData.slice(0, 20).map(r => {
-      const isCheckout = isCheckoutRecord(r);
+      const isNurseReq = isNurseRequestRecord(r);
       const isRepair = isRepairRecord(r);
       const isApproved = isInspectionOfficiallyApproved(r);
       const isRev = isRevisionRequested(r);
       const meta = parseNotesMetadata(r.notes);
       const actorName = meta.executor || r.inspector_name;
       const waktu = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+      const reqType = isNurseReq ? getNurseRequestTypeFromString((r.notes || '') + ' ' + (r.shift || '')) : null;
 
-      const cardStyle = isCheckout
+      const cardStyle = isNurseReq
         ? 'bg-orange-50/80 border-orange-200'
         : isRepair
           ? 'bg-amber-50/80 border-amber-200'
@@ -2232,8 +2408,8 @@ function openNotificationDrawer() {
             : isRev
               ? 'bg-rose-50/80 border-rose-200'
               : 'bg-indigo-50/70 border-indigo-200';
-      const badgeStyle = isCheckout
-        ? 'bg-orange-100 text-orange-800'
+      const badgeStyle = isNurseReq
+        ? reqType.badgeClass
         : isRepair
           ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')
           : isApproved
@@ -2241,15 +2417,15 @@ function openNotificationDrawer() {
             : isRev
               ? 'bg-rose-100 text-rose-800'
               : 'bg-indigo-100 text-indigo-800';
-      const badgeLabel = isCheckout
-        ? 'PASIEN PULANG'
+      const badgeLabel = isNurseReq
+        ? reqType.shortTag
         : isRepair
           ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI' : 'CEK PERBAIKAN')
           : isApproved ? 'SIAP PAKAI' : isRev ? 'PERLU PERBAIKAN' : 'MENUNGGU APPROVAL';
 
       return `
         <div class="p-3 rounded-2xl ${cardStyle} border transition space-y-2">
-          <div onclick="${r.id ? `openReportFullView('${r.id}')` : ''}" class="cursor-pointer space-y-1">
+          <div onclick="${(r.id && !isPerawatRole()) ? `openReportFullView('${r.id}')` : ''}" class="cursor-pointer space-y-1">
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs font-extrabold text-slate-900 truncate">${r.unit_name}</span>
               <span class="shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full ${badgeStyle}">${badgeLabel}</span>
@@ -2259,14 +2435,14 @@ function openNotificationDrawer() {
               <span class="shrink-0 text-[10px]">${waktu}</span>
             </div>
             ${isRev && meta.feedbackDetail ? `<p class="text-[11px] font-bold text-rose-700">Komplain: ${meta.feedbackDetail}</p>` : ''}
-            ${isCheckout && meta.feedbackDetail ? `<p class="text-[11px] font-semibold text-orange-800">Ket: ${meta.feedbackDetail}</p>` : ''}
+            ${isNurseReq ? `<p class="text-[11px] font-semibold text-orange-900">${getSpokenTextForReport(r)}</p>` : ''}
           </div>
-          ${(isPetugasRole() && isCheckout && r.unit_id) ? `
+          ${(isPetugasRole() && isNurseReq && r.unit_id) ? `
             <button type="button" onclick="closeActiveModal('modal-notifications'); quickInspect('${r.unit_id}');" class="w-full py-2.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Bersihkan & Cek Kamar Ini
+              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Cek & Siapkan Kamar Ini
             </button>
           ` : ''}
-          ${(isManagerRole() && !isApproved && !isRepair && !isCheckout && r.id) ? `
+          ${(isManagerRole() && !isApproved && !isRepair && !isNurseReq && r.id) ? `
             <button type="button" onclick="closeActiveModal('modal-notifications'); openReportInForm('${r.id}');" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
               <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek & Approve Form
             </button>
@@ -2276,7 +2452,7 @@ function openNotificationDrawer() {
               <i data-lucide="wrench" class="w-3.5 h-3.5"></i> Kelola / Tandai Sudah Diperbaiki
             </button>
           ` : ''}
-          ${(isPetugasRole() && isRev && !isRepair && !isCheckout && r.id) ? `
+          ${(isPetugasRole() && isRev && !isRepair && !isNurseReq && r.id) ? `
             <button type="button" onclick="closeActiveModal('modal-notifications'); markIssueResolvedByOfficer('${r.id}');" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
               <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> ${resolveBtnLabel}
             </button>
@@ -2308,7 +2484,7 @@ function startRealtimeReportListener() {
       if (!lastKnownReportId) { lastKnownReportId = data[0].id; localStorage.setItem('ck_last_seen_id', data[0].id); }
       else if (data[0].id !== lastKnownReportId) handleIncomingNewReport(data[0]);
     }
-  }, 10000);
+  }, 8000);
 }
 
 function getPublicReportUrl(reportId, withProtocol = true) {
@@ -2340,19 +2516,26 @@ async function loadPublicReport(codeParam) {
 
 function renderPublicReportView(r) {
   const container = document.getElementById('public-report-container');
-  const isCheckout = isCheckoutRecord(r);
+  const isNurseReq = isNurseRequestRecord(r);
   const isRepair = isRepairRecord(r);
   const isApproved = isInspectionOfficiallyApproved(r);
   const isRev = isRevisionRequested(r);
   const waktu = r.created_at ? new Date(r.created_at).toLocaleString('id-ID') : '-';
   const meta = parseNotesMetadata(r.notes);
-  const cleanNotesText = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').replace(CHECKOUT_RECORD_TAG, '').trim();
+  const cleanNotesText = meta.cleanNotes
+    .replace(REPAIR_RECORD_TAG, '')
+    .replace(CHECKOUT_RECORD_TAG, '')
+    .replace(NURSE_REQ_TAG, '')
+    .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
+    .trim();
+  const reqType = isNurseReq ? getNurseRequestTypeFromString((r.notes || '') + ' ' + (r.shift || '')) : null;
+
   const checklistHtml = Array.isArray(r.checklist_data) && r.checklist_data.length > 0
     ? r.checklist_data.map(c => `<div class="flex items-center justify-between py-2 px-3 rounded-xl ${c.checked ? 'bg-emerald-50/70 text-slate-800' : 'bg-rose-50/70 text-rose-800'}"><span class="text-xs font-bold">${c.item}</span><span class="text-xs font-extrabold">${c.checked ? '✅ Sesuai' : '❌ Belum'}</span></div>`).join('')
     : '<p class="text-xs text-slate-400">Tidak ada rincian checklist.</p>';
 
-  const badgeClass = isCheckout
-    ? 'bg-orange-100 text-orange-800'
+  const badgeClass = isNurseReq
+    ? reqType.badgeClass
     : isRepair
       ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')
       : isApproved
@@ -2360,8 +2543,8 @@ function renderPublicReportView(r) {
         : isRev
           ? 'bg-rose-100 text-rose-800'
           : 'bg-indigo-100 text-indigo-800';
-  const badgeText = isCheckout
-    ? 'PASIEN PULANG 🛏️'
+  const badgeText = isNurseReq
+    ? reqType.shortTag
     : isRepair
       ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI ✅' : 'PENGAJUAN PERBAIKAN 🔧')
       : isApproved
@@ -2383,15 +2566,15 @@ function renderPublicReportView(r) {
         </div>
         <div class="text-right shrink-0">
           <span class="inline-block text-xs font-extrabold px-3 py-1 rounded-full ${badgeClass}">${badgeText}</span>
-          ${(!isRepair && !isCheckout) ? `<p class="text-lg font-extrabold text-teal-700 mt-1">Skor: ${r.readiness_score}%</p>` : ''}
+          ${(!isRepair && !isNurseReq) ? `<p class="text-lg font-extrabold text-teal-700 mt-1">Skor: ${r.readiness_score}%</p>` : ''}
         </div>
       </div>
       <div class="grid grid-cols-2 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs">
-        <div><span class="text-[10px] text-slate-400 font-bold block">${isCheckout ? 'PERAWAT PELAPOR' : isRepair ? 'PETUGAS PENGAJU' : 'PETUGAS PEMERIKSA'}</span><span class="font-extrabold text-slate-800">${r.inspector_name}</span></div>
+        <div><span class="text-[10px] text-slate-400 font-bold block">${isNurseReq ? 'PERAWAT PELAPOR' : isRepair ? 'PETUGAS PENGAJU' : 'PETUGAS PEMERIKSA'}</span><span class="font-extrabold text-slate-800">${r.inspector_name}</span></div>
         <div><span class="text-[10px] text-slate-400 font-bold block">WAKTU / SHIFT</span><span class="font-extrabold text-slate-800">${r.shift}</span></div>
-        ${meta.executor ? `<div class="col-span-2 pt-1 border-t border-slate-200/70"><span class="text-[10px] text-indigo-600 font-bold block">${isCheckout ? 'PERAWAT BERTUGAS' : isRepair ? 'PETUGAS YANG DITUGASKAN' : 'PETUGAS PELAKSANA'}</span><span class="font-extrabold text-slate-800">${meta.executor}</span></div>` : ''}
+        ${meta.executor ? `<div class="col-span-2 pt-1 border-t border-slate-200/70"><span class="text-[10px] text-indigo-600 font-bold block">${isNurseReq ? 'PERAWAT BERTUGAS' : isRepair ? 'PETUGAS YANG DITUGASKAN' : 'PETUGAS PELAKSANA'}</span><span class="font-extrabold text-slate-800">${meta.executor}</span></div>` : ''}
       </div>
-      ${meta.feedbackStatus ? `<div class="${isApproved || r.final_status === 'siap' ? 'bg-emerald-50/80 border-emerald-200' : isRev ? 'bg-rose-50/80 border-rose-200' : 'bg-amber-50/80 border-amber-200'} border rounded-2xl p-3 space-y-1"><span class="text-[10px] font-extrabold uppercase ${isApproved || r.final_status === 'siap' ? 'text-emerald-800' : isRev ? 'text-rose-800' : 'text-amber-800'} block">Status & Tanggapan</span><p class="text-xs font-extrabold text-slate-800">${meta.feedbackStatus}</p>${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">${isCheckout ? 'Keterangan' : isRepair ? 'Kategori' : 'Bagian Ditandai Perbaikan'}: ${meta.feedbackDetail}</p>` : ''}</div>` : ''}
+      ${meta.feedbackStatus ? `<div class="${isApproved || r.final_status === 'siap' ? 'bg-emerald-50/80 border-emerald-200' : isRev ? 'bg-rose-50/80 border-rose-200' : 'bg-amber-50/80 border-amber-200'} border rounded-2xl p-3 space-y-1"><span class="text-[10px] font-extrabold uppercase ${isApproved || r.final_status === 'siap' ? 'text-emerald-800' : isRev ? 'text-rose-800' : 'text-amber-800'} block">Status & Tanggapan</span><p class="text-xs font-extrabold text-slate-800">${meta.feedbackStatus}</p>${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">${isNurseReq ? 'Instruksi' : isRepair ? 'Kategori' : 'Bagian Ditandai Perbaikan'}: ${meta.feedbackDetail}</p>` : ''}</div>` : ''}
       ${(r.photo_room_url || r.photo_toilet_url) ? `<div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Dokumentasi Foto</h3><div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${r.photo_room_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">${photo1Label}</span><img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}${r.photo_toilet_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">${photo2Label}</span><img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}</div></div>` : ''}
       <div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Rincian</h3><div class="space-y-1.5">${checklistHtml}</div></div>
       ${cleanNotesText ? `<div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-3"><span class="text-[10px] font-extrabold uppercase text-amber-800 block">Catatan</span><p class="text-xs text-slate-700 mt-0.5">${cleanNotesText}</p></div>` : ''}
@@ -2798,9 +2981,9 @@ function loadExistingInspectionToForm(unitId) {
 function openReportInForm(reportId) {
   const rep = inspectionsData.find(r => String(r.id) === String(reportId));
   if (!rep) return;
-  if (isCheckoutRecord(rep)) {
+  if (isNurseRequestRecord(rep)) {
     if (isPetugasRole() && rep.unit_id) quickInspect(rep.unit_id);
-    else switchTab('dashboard');
+    else if (!isPerawatRole()) switchTab('dashboard');
     return;
   }
   if (isRepairRecord(rep)) {
@@ -2821,6 +3004,7 @@ function handleInspectUnitChange() {
 function configureNavigationByRole() {
   ensureRepairNavigationAndSection();
   const navGrid = document.getElementById('bottom-nav-grid');
+  const bottomNavContainer = navGrid ? navGrid.closest('nav') || navGrid.parentElement : null;
   const btnDash = document.getElementById('nav-item-dashboard');
   const btnInspect = Array.from(document.querySelectorAll('.nav-btn')).find(b => b.dataset.tab === 'inspect');
   const btnRepair = document.getElementById('nav-item-repair');
@@ -2829,17 +3013,13 @@ function configureNavigationByRole() {
   const inviteBox = document.getElementById('invite-box-about');
 
   if (isPerawatRole()) {
-    btnDash?.classList.remove('hidden');
-    btnInspect?.classList.add('hidden');
-    btnRepair?.classList.add('hidden');
-    btnAnalytics?.classList.remove('hidden');
-    btnMaster?.classList.add('hidden');
-    if (navGrid) {
-      navGrid.classList.remove('grid-cols-3', 'grid-cols-4', 'grid-cols-5');
-      navGrid.classList.add('grid-cols-2');
-    }
+    // Sembunyikan seluruh navigasi bawah pada akun Perawat agar layar bersih & fokus
+    if (bottomNavContainer) bottomNavContainer.classList.add('hidden');
+    if (navGrid) navGrid.classList.add('hidden');
     inviteBox?.classList.add('hidden');
   } else if (isPetugasRole()) {
+    if (bottomNavContainer) bottomNavContainer.classList.remove('hidden');
+    if (navGrid) navGrid.classList.remove('hidden');
     btnDash?.classList.add('hidden');
     btnInspect?.classList.remove('hidden');
     btnRepair?.classList.remove('hidden');
@@ -2851,6 +3031,8 @@ function configureNavigationByRole() {
     }
     inviteBox?.classList.add('hidden');
   } else {
+    if (bottomNavContainer) bottomNavContainer.classList.remove('hidden');
+    if (navGrid) navGrid.classList.remove('hidden');
     btnDash?.classList.remove('hidden');
     btnInspect?.classList.remove('hidden');
     btnRepair?.classList.remove('hidden');
@@ -2892,7 +3074,7 @@ async function enterApp() {
   const validTabs = isManagerRole()
     ? ['dashboard', 'inspect', 'repair', 'analytics', 'master']
     : isPerawatRole()
-      ? ['dashboard', 'analytics']
+      ? ['dashboard']
       : ['inspect', 'repair', 'analytics'];
   const startTab = validTabs.includes(savedTab) ? savedTab : ((isManagerRole() || isPerawatRole()) ? 'dashboard' : 'inspect');
   try { window.history.replaceState({ tab: startTab }, ''); } catch (e) {}
@@ -2928,7 +3110,7 @@ async function switchTab(tabName, fromPopState = false, skipAutoPrefill = false)
   if (isPetugasRole() && (tabName === 'dashboard' || tabName === 'master')) {
     tabName = 'inspect';
   }
-  if (isPerawatRole() && !['dashboard', 'analytics'].includes(tabName)) {
+  if (isPerawatRole()) {
     tabName = 'dashboard';
   }
   ensureRepairNavigationAndSection();
@@ -3022,9 +3204,21 @@ async function loadAllData() {
   }
 }
 
-function renderNurseGuideBanner() {
+function applyNurseDashboardVisibility() {
   const dashSection = document.getElementById('tab-dashboard');
   if (!dashSection) return;
+
+  // Sembunyikan 3 kartu statistik atas (Siap Pakai, Kosong/Proses, Maintenance) & tombol Scan QR untuk akun Perawat
+  const statSiapEl = document.getElementById('stat-siap');
+  const statsRow = statSiapEl ? statSiapEl.closest('.grid') : null;
+  if (statsRow) statsRow.classList.toggle('hidden', isPerawatRole());
+
+  dashSection.querySelectorAll('button').forEach(btn => {
+    if ((btn.textContent || '').includes('Scan QR')) {
+      btn.classList.toggle('hidden', isPerawatRole());
+    }
+  });
+
   let banner = document.getElementById('nurse-station-banner');
   if (!banner) {
     banner = document.createElement('div');
@@ -3039,18 +3233,18 @@ function renderNurseGuideBanner() {
   banner.innerHTML = `
     <div class="rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white p-3.5 shadow-sm mb-3 flex items-center justify-between gap-3">
       <div class="space-y-0.5">
-        <span class="text-[9.5px] font-extrabold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full">Mode Nurse Station</span>
-        <h3 class="text-xs sm:text-sm font-extrabold">Lapor Pasien Pulang (1 Ketuk)</h3>
-        <p class="text-[11px] text-orange-50">Ketuk tombol <strong>Pasien Pulang</strong> pada kamar yang pasiennya sudah pulang agar petugas segera membersihkan & merapikan kamar.</p>
+        <span class="text-[9.5px] font-extrabold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full">Nurse Station</span>
+        <h3 class="text-xs sm:text-sm font-extrabold">Permintaan Layanan Kamar (1 Ketuk)</h3>
+        <p class="text-[11px] text-orange-50">Pilih kamar di bawah lalu ketuk tombol sesuai kebutuhan (suara notifikasi otomatis berbunyi di HP Petugas).</p>
       </div>
-      <i data-lucide="bell-ring" class="w-7 h-7 shrink-0 opacity-90"></i>
+      <i data-lucide="volume-2" class="w-7 h-7 shrink-0 opacity-90"></i>
     </div>
   `;
   lucide.createIcons();
 }
 
 function renderDashboard() {
-  renderNurseGuideBanner();
+  applyNurseDashboardVisibility();
   const siap = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
   const kosongOrProses = unitsData.filter(u => ['kosong', 'dibersihkan', 'pending_approval', 'perlu_perbaikan'].includes(getEffectiveUnitStatus(u))).length;
   const maint = unitsData.filter(u => getEffectiveUnitStatus(u) === 'maintenance').length;
@@ -3080,17 +3274,59 @@ function renderDashboard() {
     const latestRep = getLatestInspectionForUnit(u.id, u.unit_name);
     const isWaitingApproval = (eff === 'pending_approval' || eff === 'dibersihkan');
     const isNeedsRevision = (eff === 'perlu_perbaikan');
-    const isCheckoutMarked = eff === 'kosong' && String(u.last_checked_by || '').startsWith('Pasien Pulang:');
+    const isNurseMarked = isNurseMarkedUnit(u.last_checked_by);
+    const safeUnitName = (u.unit_name || '').replace(/'/g, "\\'");
 
     const statusMap = {
       siap: { label: 'SIAP PAKAI', bg: 'bg-emerald-100 text-emerald-700', border: 'border-emerald-200' },
       pending_approval: { label: 'MENUNGGU APPROVAL', bg: 'bg-indigo-100 text-indigo-800', border: 'border-indigo-300' },
       perlu_perbaikan: { label: 'PERLU PERBAIKAN', bg: 'bg-rose-100 text-rose-800', border: 'border-rose-300' },
       dibersihkan: { label: 'SEDANG DIBERSIHKAN', bg: 'bg-amber-100 text-amber-700', border: 'border-amber-200' },
-      kosong: { label: isCheckoutMarked ? 'PASIEN PULANG (KOTOR)' : 'KOSONG', bg: isCheckoutMarked ? 'bg-orange-100 text-orange-800' : 'bg-slate-200 text-slate-700', border: isCheckoutMarked ? 'border-orange-300' : 'border-slate-300' },
+      kosong: { label: isNurseMarked ? 'PERMINTAAN PERAWAT' : 'KOSONG', bg: isNurseMarked ? 'bg-orange-100 text-orange-800' : 'bg-slate-200 text-slate-700', border: isNurseMarked ? 'border-orange-300' : 'border-slate-300' },
       maintenance: { label: 'MAINTENANCE', bg: 'bg-rose-100 text-rose-700', border: 'border-rose-200' }
     };
     const st = statusMap[eff] || statusMap.kosong;
+
+    const actorMeta = latestRep ? parseNotesMetadata(latestRep.notes) : null;
+    const checkedInfo = eff === 'maintenance'
+      ? (u.last_checked_by || 'Dalam Perbaikan / Maintenance')
+      : isNeedsRevision
+        ? `⚠️ Komplain: ${actorMeta?.feedbackDetail || 'Menunggu perbaikan petugas'}`
+        : isWaitingApproval
+          ? `Diajukan: ${actorMeta?.executor || latestRep?.inspector_name || 'Petugas'} (${latestRep?.readiness_score ?? 0}%)`
+          : isNurseMarked
+            ? (u.last_checked_by || 'Permintaan Perawat')
+            : (eff === 'siap' ? (u.last_checked_by || 'Siap Pakai') : 'Belum dicek (Kosong)');
+
+    // Tampilan khusus Perawat: 4 tombol aksi cepat langsung di kartu kamar
+    if (isPerawatRole()) {
+      return `
+        <div class="glass-card rounded-2xl p-4 shadow-sm border ${st.border} flex flex-col justify-between space-y-3">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <span class="text-[10px] font-mono font-bold text-slate-400">${u.unit_code} • ${u.floor || ''}</span>
+              <h3 class="text-sm font-extrabold text-slate-900 truncate">${u.unit_name}</h3>
+            </div>
+            <span class="shrink-0 text-[9px] font-extrabold px-2.5 py-1 rounded-full ${st.bg}">${st.label}</span>
+          </div>
+          <p class="text-[11px] ${isNurseMarked ? 'text-orange-700 font-bold' : 'text-slate-500'} truncate">${checkedInfo}</p>
+          <div class="grid grid-cols-2 gap-1.5 pt-1">
+            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'siapkan')" class="py-2.5 px-2 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+              <span>🛏️</span> Siapkan Kamar
+            </button>
+            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'extrabed')" class="py-2.5 px-2 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+              <span>➕</span> Tambah Extrabed
+            </button>
+            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'bersihkan')" class="py-2.5 px-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+              <span>🧹</span> Minta Dibersihkan
+            </button>
+            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'pulang')" class="py-2.5 px-2 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+              <span>🚪</span> Pasien Pulang
+            </button>
+          </div>
+        </div>
+      `;
+    }
 
     const dropdownOptions = `
       <option value="siap" ${eff === 'siap' ? 'selected' : ''}>SIAP PAKAI</option>
@@ -3101,49 +3337,11 @@ function renderDashboard() {
       <option value="maintenance" ${eff === 'maintenance' ? 'selected' : ''}>MAINTENANCE</option>
     `;
 
-    const actorMeta = latestRep ? parseNotesMetadata(latestRep.notes) : null;
-    const checkedInfo = eff === 'maintenance'
-      ? (u.last_checked_by || 'Dalam Perbaikan / Maintenance')
-      : isNeedsRevision
-        ? `⚠️ Komplain: ${actorMeta?.feedbackDetail || 'Menunggu perbaikan petugas'}`
-        : isWaitingApproval
-          ? `Diajukan: ${actorMeta?.executor || latestRep?.inspector_name || 'Petugas'} (${latestRep?.readiness_score ?? 0}%)`
-          : isCheckoutMarked
-            ? (u.last_checked_by || 'Pasien Pulang — Minta Dibersihkan')
-            : (eff === 'siap' ? (u.last_checked_by || 'Siap Pakai') : 'Belum dicek (Kosong)');
-
     const openAction = (latestRep && !isInspectionOfficiallyApproved(latestRep))
       ? `openReportInForm('${latestRep.id}')`
       : `quickInspect('${u.id}')`;
 
     const showApprovalButtons = isManagerRole() && isWaitingApproval;
-    const safeUnitName = (u.unit_name || '').replace(/'/g, "\\'");
-
-    // Tampilan khusus Perawat: 1 tombol besar Pasien Pulang pada kamar Siap Pakai
-    if (isPerawatRole()) {
-      const canNurseCheckout = eff === 'siap';
-      return `
-        <div class="glass-card rounded-2xl p-4 shadow-sm border ${st.border} flex flex-col justify-between space-y-3">
-          <div class="flex items-start justify-between gap-2">
-            <div class="min-w-0">
-              <span class="text-[10px] font-mono font-bold text-slate-400">${u.unit_code} • ${u.floor || ''}</span>
-              <h3 class="text-sm font-extrabold text-slate-900 truncate">${u.unit_name}</h3>
-            </div>
-            <span class="shrink-0 text-[9px] font-extrabold px-2.5 py-1 rounded-full ${st.bg}">${st.label}</span>
-          </div>
-          <p class="text-[11px] text-slate-500 truncate">${checkedInfo}</p>
-          ${canNurseCheckout ? `
-            <button type="button" onclick="confirmPatientCheckout('${u.id}', '${safeUnitName}')" class="w-full py-2.5 px-3 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
-              <i data-lucide="log-out" class="w-4 h-4"></i> Pasien Pulang / Minta Dibersihkan
-            </button>
-          ` : `
-            <div class="w-full py-2 px-3 rounded-xl bg-slate-100 text-slate-600 text-[11px] font-bold text-center">
-              ${isCheckoutMarked ? '⏳ Menunggu Petugas Membersihkan' : eff === 'maintenance' ? '🔧 Sedang Perbaikan Fasilitas' : '🔄 Sedang Diproses Petugas'}
-            </div>
-          `}
-        </div>
-      `;
-    }
 
     return `
       <div class="glass-card rounded-2xl p-4 shadow-sm border ${st.border} flex flex-col justify-between space-y-3">
@@ -3172,7 +3370,7 @@ function renderDashboard() {
           </div>
         ` : ''}
         <div class="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-100">
-          <span class="text-[10px] ${isNeedsRevision ? 'text-rose-700 font-bold' : isCheckoutMarked ? 'text-orange-700 font-bold' : 'text-slate-500 font-medium'} truncate">${checkedInfo}</span>
+          <span class="text-[10px] ${isNeedsRevision ? 'text-rose-700 font-bold' : isNurseMarked ? 'text-orange-700 font-bold' : 'text-slate-500 font-medium'} truncate">${checkedInfo}</span>
           <div class="flex items-center gap-1.5 shrink-0">
             ${(eff === 'siap' && isManagerRole()) ? `<button type="button" onclick="confirmPatientCheckout('${u.id}', '${safeUnitName}')" title="Konfirmasi Pasien Pulang / Kosongkan" class="px-2 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-lg text-[10px] font-bold">Pasien Pulang</button>` : ''}
             <button type="button" onclick="quickInspect('${u.id}')" class="px-3 py-1 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-[11px] font-bold">Cek Sekarang</button>
@@ -3258,12 +3456,14 @@ function handlePhoto(e, type) {
 
 function buildWaMessage(data, includeChecklist, includeFullLink) {
   const waktu = data.created_at ? new Date(data.created_at).toLocaleString('id-ID') : new Date().toLocaleString('id-ID');
-  const isCheckout = isCheckoutRecord(data);
+  const isNurseReq = isNurseRequestRecord(data);
   const isRepair = isRepairRecord(data);
   const isApproved = isInspectionOfficiallyApproved(data);
   const isRev = isRevisionRequested(data);
-  const statusText = isCheckout
-    ? 'PASIEN PULANG — MINTA DIBERSIHKAN 🛏️'
+  const reqType = isNurseReq ? getNurseRequestTypeFromString((data.notes || '') + ' ' + (data.shift || '')) : null;
+
+  const statusText = isNurseReq
+    ? `${reqType.shortTag} 🛏️`
     : isRepair
       ? (data.final_status === 'siap' ? 'SUDAH DIPERBAIKI ✅' : 'PENGAJUAN PERBAIKAN FASILITAS 🔧')
       : isApproved
@@ -3272,22 +3472,27 @@ function buildWaMessage(data, includeChecklist, includeFullLink) {
           ? 'PERLU PERBAIKAN ⚠️'
           : 'MENUNGGU APPROVAL MANAJEMEN ⏳';
   const meta = parseNotesMetadata(data.notes);
-  const cleanNotesText = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').replace(CHECKOUT_RECORD_TAG, '').trim();
-  const titleText = isCheckout
-    ? '*INFO PASIEN PULANG (MINTA DIBERSIHKAN)*'
+  const cleanNotesText = meta.cleanNotes
+    .replace(REPAIR_RECORD_TAG, '')
+    .replace(CHECKOUT_RECORD_TAG, '')
+    .replace(NURSE_REQ_TAG, '')
+    .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
+    .trim();
+  const titleText = isNurseReq
+    ? `*PERMINTAAN LAYANAN KAMAR (${reqType.shortTag})*`
     : isRepair
       ? '*LAPORAN CEK PERBAIKAN FASILITAS*'
       : '*LAPORAN CEK KESIAPAN KAMAR*';
 
-  const lines = [titleText, '*RS Khusus Bedah SS Medika*', '--------------------------------', `• *Kamar:* ${data.unit_name}`, `• *Waktu / Shift:* ${data.shift}`, `• *${isCheckout ? 'Perawat Pelapor' : isRepair ? 'Pengaju' : 'Pemeriksa'}:* ${data.inspector_name}`];
-  if (meta.executor && !isCheckout) lines.push(`• *${isRepair ? 'Petugas Ditugaskan' : 'Pelaksana'}:* ${meta.executor}`);
-  if (!isRepair && !isCheckout) lines.push(`• *Skor Kesiapan:* ${data.readiness_score}%`);
+  const lines = [titleText, '*RS Khusus Bedah SS Medika*', '--------------------------------', `• *Kamar:* ${data.unit_name}`, `• *Waktu / Shift:* ${data.shift}`, `• *${isNurseReq ? 'Perawat Pelapor' : isRepair ? 'Pengaju' : 'Pemeriksa'}:* ${data.inspector_name}`];
+  if (meta.executor && !isNurseReq) lines.push(`• *${isRepair ? 'Petugas Ditugaskan' : 'Pelaksana'}:* ${meta.executor}`);
+  if (!isRepair && !isNurseReq) lines.push(`• *Skor Kesiapan:* ${data.readiness_score}%`);
   lines.push(`• *Status:* ${statusText}`, `• *Waktu:* ${waktu}`);
   if (meta.feedbackStatus) {
     lines.push('--------------------------------', `• *Tanggapan / Status:* ${meta.feedbackStatus}`);
-    if (meta.feedbackDetail) lines.push(`• *${isCheckout ? 'Keterangan' : isRepair ? 'Kategori' : 'Bagian Perbaikan'}:* ${meta.feedbackDetail}`);
+    if (meta.feedbackDetail) lines.push(`• *${isNurseReq ? 'Instruksi' : isRepair ? 'Kategori' : 'Bagian Perbaikan'}:* ${meta.feedbackDetail}`);
   }
-  if (includeChecklist && Array.isArray(data.checklist_data) && data.checklist_data.length > 0 && !isCheckout) {
+  if (includeChecklist && Array.isArray(data.checklist_data) && data.checklist_data.length > 0 && !isNurseReq) {
     lines.push('--------------------------------', '*Rincian:*');
     data.checklist_data.forEach(c => lines.push(`${c.checked ? '✅' : '❌'} ${c.item}`));
   }
@@ -3754,18 +3959,24 @@ function renderAnalytics() {
   historyBox.innerHTML = filteredRows.map((r) => {
     const waktuStr = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
     const meta = parseNotesMetadata(r.notes);
-    const isCheckout = isCheckoutRecord(r);
+    const isNurseReq = isNurseRequestRecord(r);
     const isRepair = isRepairRecord(r);
     const isApproved = isInspectionOfficiallyApproved(r);
     const needsFix = isRevisionRequested(r);
-    const isPendingApproval = !isApproved && !needsFix && !isRepair && !isCheckout;
+    const isPendingApproval = !isApproved && !needsFix && !isRepair && !isNurseReq;
     const ownerName = meta.executor || r.inspector_name;
-    const canResolveFix = !isRepair && !isCheckout && needsFix && r.id && (isManagerRole() || isPetugasRole() || (currentUser && ownerName === currentUser.full_name));
+    const canResolveFix = !isRepair && !isNurseReq && needsFix && r.id && (isManagerRole() || isPetugasRole() || (currentUser && ownerName === currentUser.full_name));
     const safeUnitName = (r.unit_name || '').replace(/'/g, "\\'");
-    const cleanNotesText = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').replace(CHECKOUT_RECORD_TAG, '').trim();
+    const cleanNotesText = meta.cleanNotes
+      .replace(REPAIR_RECORD_TAG, '')
+      .replace(CHECKOUT_RECORD_TAG, '')
+      .replace(NURSE_REQ_TAG, '')
+      .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
+      .trim();
+    const reqType = isNurseReq ? getNurseRequestTypeFromString((r.notes || '') + ' ' + (r.shift || '')) : null;
 
-    const pillClass = isCheckout
-      ? 'bg-orange-100 text-orange-800'
+    const pillClass = isNurseReq
+      ? reqType.badgeClass
       : isRepair
         ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')
         : isApproved
@@ -3773,8 +3984,8 @@ function renderAnalytics() {
           : isPendingApproval
             ? 'bg-indigo-100 text-indigo-800'
             : 'bg-rose-100 text-rose-800';
-    const pillText = isCheckout
-      ? 'PASIEN PULANG'
+    const pillText = isNurseReq
+      ? reqType.shortTag
       : isRepair
         ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI' : 'CEK PERBAIKAN')
         : isApproved
@@ -3788,23 +3999,23 @@ function renderAnalytics() {
         <div class="flex items-start justify-between gap-2">
           <div>
             <h4 class="text-xs font-extrabold text-slate-900">${r.unit_name}</h4>
-            <p class="text-[11px] text-slate-500">${isCheckout ? 'Perawat' : isRepair ? 'Pengaju' : 'Pemeriksa'}: <strong>${r.inspector_name}</strong> • ${r.shift}</p>
-            ${(meta.executor && !isCheckout) ? `<p class="text-[11px] text-indigo-700 font-semibold">${isRepair ? 'Ditugaskan ke' : 'Pelaksana'}: <strong>${meta.executor}</strong></p>` : ''}
+            <p class="text-[11px] text-slate-500">${isNurseReq ? 'Perawat' : isRepair ? 'Pengaju' : 'Pemeriksa'}: <strong>${r.inspector_name}</strong> • ${r.shift}</p>
+            ${(meta.executor && !isNurseReq) ? `<p class="text-[11px] text-indigo-700 font-semibold">${isRepair ? 'Ditugaskan ke' : 'Pelaksana'}: <strong>${meta.executor}</strong></p>` : ''}
             <p class="text-[10px] text-slate-400 mt-0.5">${waktuStr}</p>
           </div>
           <span class="shrink-0 text-[9.5px] font-extrabold px-2.5 py-1 rounded-full ${pillClass}">${pillText}</span>
         </div>
-        <div class="text-[11px] px-2.5 py-2 rounded-xl border ${isCheckout ? 'bg-orange-50/70 border-orange-200 text-orange-900' : isRepair ? 'bg-amber-50/70 border-amber-200 text-amber-900' : isApproved ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' : isPendingApproval ? 'bg-indigo-50/80 border-indigo-200 text-indigo-900' : 'bg-rose-50/80 border-rose-200 text-rose-900'} space-y-1.5">
+        <div class="text-[11px] px-2.5 py-2 rounded-xl border ${isNurseReq ? 'bg-orange-50/70 border-orange-200 text-orange-900' : isRepair ? 'bg-amber-50/70 border-amber-200 text-amber-900' : isApproved ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' : isPendingApproval ? 'bg-indigo-50/80 border-indigo-200 text-indigo-900' : 'bg-rose-50/80 border-rose-200 text-rose-900'} space-y-1.5">
           <div>
             <p class="font-extrabold">Status: ${meta.feedbackStatus || (isApproved ? 'Sesuai Standar (Approved)' : 'Menunggu Approval Manajemen')}</p>
-            ${meta.feedbackDetail ? `<p class="text-[10.5px] mt-0.5">${isCheckout ? 'Keterangan' : isRepair ? 'Kategori' : 'Bagian Perbaikan'}: <strong>${meta.feedbackDetail}</strong></p>` : ''}
+            ${meta.feedbackDetail ? `<p class="text-[10.5px] mt-0.5">${isNurseReq ? 'Instruksi' : isRepair ? 'Kategori' : 'Bagian Perbaikan'}: <strong>${meta.feedbackDetail}</strong></p>` : ''}
           </div>
           ${canResolveFix ? `
             <button type="button" onclick="markIssueResolvedByOfficer('${r.id}')" class="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
               <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> ${isManagerRole() ? 'Masalah Selesai & Approve Siap Pakai' : resolveBtnLabel}
             </button>
           ` : ''}
-          ${(isManagerRole() && !isApproved && !isRepair && !isCheckout && r.id) ? `
+          ${(isManagerRole() && !isApproved && !isRepair && !isNurseReq && r.id) ? `
             <div class="grid grid-cols-2 gap-1.5">
               <button type="button" onclick="openReportInForm('${r.id}')" class="py-2 px-2 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
                 <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek & Approve
@@ -3849,7 +4060,12 @@ function exportCsv() {
   const headers = ['No,Waktu,Unit Kamar,Pemeriksa,Pelaksana,Shift,Skor (%),Status,Tanggapan Pemeriksa,Bagian Perbaikan,Durasi (Detik),Rincian Checklist,Catatan'];
   const rows = filteredRows.map((r, idx) => {
     const meta = parseNotesMetadata(r.notes);
-    const cleanNotesText = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').replace(CHECKOUT_RECORD_TAG, '').trim();
+    const cleanNotesText = meta.cleanNotes
+      .replace(REPAIR_RECORD_TAG, '')
+      .replace(CHECKOUT_RECORD_TAG, '')
+      .replace(NURSE_REQ_TAG, '')
+      .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
+      .trim();
     const checklistStr = Array.isArray(r.checklist_data) ? r.checklist_data.map(c => `${c.item}: ${c.checked ? 'OK' : 'BELUM'}`).join(' | ') : '';
     return `${idx + 1},"${new Date(r.created_at).toLocaleString('id-ID')}","${r.unit_name}","${r.inspector_name}","${meta.executor || r.inspector_name}","${r.shift}",${r.readiness_score},"${r.final_status.toUpperCase()}","${(meta.feedbackStatus || '-').replace(/"/g, '""')}","${(meta.feedbackDetail || '-').replace(/"/g, '""')}",${r.duration_seconds || 0},"${checklistStr.replace(/"/g, '""')}","${cleanNotesText.replace(/"/g, '""')}"`;
   });
@@ -3871,7 +4087,12 @@ function exportPdf() {
 
   const rowsHtml = filteredRows.map((r, i) => {
     const meta = parseNotesMetadata(r.notes);
-    const cleanNotesText = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').replace(CHECKOUT_RECORD_TAG, '').trim();
+    const cleanNotesText = meta.cleanNotes
+      .replace(REPAIR_RECORD_TAG, '')
+      .replace(CHECKOUT_RECORD_TAG, '')
+      .replace(NURSE_REQ_TAG, '')
+      .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
+      .trim();
     const feedbackFull = [meta.feedbackStatus, meta.feedbackDetail ? `Keterangan: ${meta.feedbackDetail}` : ''].filter(Boolean).join(' • ') || '-';
     return `<tr><td>${i + 1}</td><td>${new Date(r.created_at).toLocaleString('id-ID')}</td><td>${r.unit_name}</td><td>${r.inspector_name}</td><td>${meta.executor || r.inspector_name}</td><td>${r.shift}</td><td>${r.readiness_score}%</td><td>${r.final_status.toUpperCase()}</td><td>${feedbackFull}</td><td>${cleanNotesText || '-'}</td>${includePhotos ? `<td><div style="display:flex;gap:4px;">${r.photo_room_url ? `<img src="${r.photo_room_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}</div></td>` : ''}</tr>`;
   }).join('');
@@ -3882,6 +4103,6 @@ function exportPdf() {
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=6.3').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=6.4').catch(() => {});
   });
 }
