@@ -1,4 +1,4 @@
-const APP_VERSION = '6.1';
+const APP_VERSION = '6.2';
 const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteHB4cnJqeG51anlnYWJyaHNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MDk0MjAsImV4cCI6MjExMDQ4NTQyMH0.tFMCbg1_R-I08KEIs-h6wwxXhYLP2Z0oYgnDGC7T2YU';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -968,7 +968,6 @@ function ensureRepairNavigationAndSection() {
 
           <!-- TOMBOL AKSI FORM PERBAIKAN -->
           <div id="repair-form-actions" class="space-y-2.5 pt-2">
-            <!-- Tombol Pengajuan Perbaikan (Untuk Laporan Baru) -->
             <div id="repair-request-buttons" class="grid grid-cols-2 gap-2.5">
               <button type="submit" id="btn-submit-repair-request" class="py-3.5 px-3 bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
                 <i data-lucide="wrench" class="w-4 h-4"></i> Ajukan Perbaikan
@@ -978,12 +977,10 @@ function ensureRepairNavigationAndSection() {
               </button>
             </div>
 
-            <!-- Tombol Penugasan Manajemen (Muncul saat Manajemen memilih petugas yang harus memperbaiki) -->
             <button type="button" id="btn-assign-repair-worker" onclick="assignRepairWorkerFromForm()" class="hidden w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition">
               <i data-lucide="user-check" class="w-4 h-4"></i> Simpan & Tugaskan Petugas Perbaikan
             </button>
 
-            <!-- Tombol Sudah Diperbaiki (Muncul setelah beres perbaikan) -->
             <button type="button" id="btn-mark-repair-done" onclick="markActiveRepairAsDone()" class="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition">
               <i data-lucide="check-circle-2" class="w-4 h-4"></i> Sudah Diperbaiki (Selesai)
             </button>
@@ -994,7 +991,10 @@ function ensureRepairNavigationAndSection() {
       <div class="space-y-2.5">
         <div class="flex items-center justify-between px-1">
           <h3 class="text-xs font-extrabold text-slate-800 uppercase tracking-wide">Daftar Pengajuan & Tugas Perbaikan</h3>
-          <span id="repair-history-count" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">0 Laporan</span>
+          <div class="flex items-center gap-1.5">
+            <button type="button" onclick="refreshRepairListManual()" class="px-2 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-700">Refresh</button>
+            <span id="repair-history-count" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">0 Laporan</span>
+          </div>
         </div>
         <div id="repair-history-list" class="space-y-3"></div>
       </div>
@@ -1006,6 +1006,12 @@ function ensureRepairNavigationAndSection() {
     });
   }
   lucide.createIcons();
+}
+
+async function refreshRepairListManual() {
+  const listEl = document.getElementById('repair-history-list');
+  if (listEl) listEl.innerHTML = '<div class="text-center py-6 text-xs text-slate-400">Memuat data pengajuan perbaikan...</div>';
+  await loadAllData();
 }
 
 function populateRepairFormDropdowns() {
@@ -1250,6 +1256,7 @@ async function processRepairRequestSubmit(alsoSendWa = false) {
     `${REPAIR_RECORD_TAG}\n${detailText}`
   );
 
+  // Gunakan final_status: 'kotor' agar selalu lolos CHECK constraint database Supabase
   const payload = {
     unit_id: unit.id,
     unit_name: unit.unit_name,
@@ -1257,7 +1264,7 @@ async function processRepairRequestSubmit(alsoSendWa = false) {
     inspector_role: currentUser.role,
     shift: `Perbaikan • ${shiftVal}`,
     readiness_score: 0,
-    final_status: 'maintenance',
+    final_status: 'kotor',
     duration_seconds: 0,
     checklist_data: [
       { item: categoryVal, checked: false },
@@ -1287,8 +1294,9 @@ async function processRepairRequestSubmit(alsoSendWa = false) {
       .update({ ...payload, created_at: new Date().toISOString() })
       .eq('id', activeRepairReportId)
       .select();
-    if (error) alert('Gagal memperbarui pengajuan perbaikan: ' + error.message);
-    else {
+    if (error) {
+      alert('Gagal memperbarui pengajuan perbaikan: ' + error.message);
+    } else {
       if (updatedRows?.[0]) savedRecord = updatedRows[0];
       await db.from('master_units').update({
         status: 'maintenance',
@@ -1299,8 +1307,9 @@ async function processRepairRequestSubmit(alsoSendWa = false) {
     }
   } else {
     const { data: insertedRows, error } = await db.from('room_inspections').insert([payload]).select();
-    if (error) alert('Gagal mengajukan perbaikan: ' + error.message);
-    else {
+    if (error) {
+      alert('Gagal mengajukan perbaikan ke server: ' + error.message);
+    } else {
       if (insertedRows?.[0]) {
         savedRecord = insertedRows[0];
         lastKnownReportId = savedRecord.id;
@@ -2744,7 +2753,7 @@ function updateNetworkStatus() {
   }
 }
 
-function switchTab(tabName, fromPopState = false, skipAutoPrefill = false) {
+async function switchTab(tabName, fromPopState = false, skipAutoPrefill = false) {
   if (isPetugasRole() && (tabName === 'dashboard' || tabName === 'master')) {
     tabName = 'inspect';
   }
@@ -2791,6 +2800,7 @@ function switchTab(tabName, fromPopState = false, skipAutoPrefill = false) {
   if (tabName === 'repair') {
     populateRepairFormDropdowns();
     renderRepairHistoryList();
+    if (navigator.onLine) await loadAllData();
   }
   if (tabName === 'master') {
     renderApprovalToggleCard();
@@ -3614,6 +3624,6 @@ function exportPdf() {
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=6.1').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=6.2').catch(() => {});
   });
 }
