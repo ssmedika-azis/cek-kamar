@@ -1,4 +1,4 @@
-const APP_VERSION = '5.7';
+const APP_VERSION = '5.8';
 const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteHB4cnJqeG51anlnYWJyaHNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MDk0MjAsImV4cCI6MjExMDQ4NTQyMH0.tFMCbg1_R-I08KEIs-h6wwxXhYLP2Z0oYgnDGC7T2YU';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -25,6 +25,9 @@ let secretTapCount = 0;
 let secretTapTimer = null;
 
 const SHIFT_CATEGORY_KEY = '__SHIFT__';
+const APPROVAL_CONFIG_KEY = '__CONFIG_APPROVAL__';
+let requireApprovalMode = localStorage.getItem('ck_require_approval') !== 'false';
+
 const DEFAULT_SHIFTS = [
   { id: 'def-pagi', name: 'Shift Pagi', hours: '07:00 - 14:00', isLocal: true },
   { id: 'def-siang', name: 'Shift Siang', hours: '14:00 - 21:00', isLocal: true },
@@ -65,6 +68,95 @@ let latestNotifReport = null;
 let toastTimeout = null;
 
 if (window.lucide) lucide.createIcons();
+
+function isSystemMetaCategory(category) {
+  return category === SHIFT_CATEGORY_KEY || category === APPROVAL_CONFIG_KEY;
+}
+
+function syncApprovalConfigFromItems() {
+  const cfgRow = itemsData.find(i => i.category === APPROVAL_CONFIG_KEY);
+  if (cfgRow) {
+    requireApprovalMode = String(cfgRow.item_name).toUpperCase() !== 'OFF';
+    localStorage.setItem('ck_require_approval', requireApprovalMode ? 'true' : 'false');
+  }
+  renderApprovalToggleCard();
+}
+
+function renderApprovalToggleCard() {
+  const masterSection = document.getElementById('tab-master');
+  if (!masterSection) return;
+
+  let card = document.getElementById('approval-mode-config-card');
+  if (!card) {
+    card = document.createElement('div');
+    card.id = 'approval-mode-config-card';
+    masterSection.insertBefore(card, masterSection.firstChild);
+  }
+
+  if (!isManagerRole()) {
+    card.classList.add('hidden');
+    return;
+  }
+
+  card.classList.remove('hidden');
+  card.innerHTML = `
+    <div class="glass-card rounded-3xl p-4 sm:p-5 shadow-sm border ${requireApprovalMode ? 'border-indigo-200 bg-indigo-50/40' : 'border-emerald-200 bg-emerald-50/40'} mb-4">
+      <div class="flex items-center justify-between gap-3">
+        <div class="space-y-1">
+          <div class="flex items-center gap-2">
+            <span class="text-xs sm:text-sm font-extrabold text-slate-900">Permintaan Approval Manajemen</span>
+            <span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full ${requireApprovalMode ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'}">
+              ${requireApprovalMode ? 'ON (AKTIF)' : 'OFF (NONAKTIF)'}
+            </span>
+          </div>
+          <p class="text-[11px] text-slate-600 leading-relaxed">
+            ${requireApprovalMode
+              ? 'Laporan petugas harus diperiksa & di-Approve Manajemen terlebih dahulu sebelum kamar berstatus <strong>SIAP PAKAI</strong>.'
+              : 'Mode langsung aktif: Laporan petugas dengan skor 100% langsung otomatis berstatus <strong>SIAP PAKAI</strong> tanpa menunggu Approve.'}
+          </p>
+        </div>
+        <button type="button" id="btn-toggle-approval-mode" onclick="toggleApprovalMode()" aria-label="Toggle Permintaan Approval"
+          class="relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${requireApprovalMode ? 'bg-indigo-600' : 'bg-slate-300'}">
+          <span class="pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${requireApprovalMode ? 'translate-x-6' : 'translate-x-0'}"></span>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+async function toggleApprovalMode() {
+  if (!isManagerRole()) return;
+  const btn = document.getElementById('btn-toggle-approval-mode');
+  if (btn) btn.disabled = true;
+
+  const nextState = !requireApprovalMode;
+  requireApprovalMode = nextState;
+  localStorage.setItem('ck_require_approval', nextState ? 'true' : 'false');
+  renderApprovalToggleCard();
+  populateOfficerDropdown();
+  renderDashboard();
+
+  if (navigator.onLine) {
+    try {
+      const valueStr = nextState ? 'ON' : 'OFF';
+      const existingCfg = itemsData.find(i => i.category === APPROVAL_CONFIG_KEY);
+      if (existingCfg) {
+        await db.from('master_items').update({ item_name: valueStr }).eq('id', existingCfg.id);
+        existingCfg.item_name = valueStr;
+      } else {
+        const { data } = await db.from('master_items').insert([{
+          item_name: valueStr,
+          category: APPROVAL_CONFIG_KEY,
+          is_critical: false
+        }]).select();
+        if (Array.isArray(data) && data[0]) itemsData.push(data[0]);
+      }
+    } catch (e) {}
+  }
+
+  if (btn) btn.disabled = false;
+  playNotificationChime();
+}
 
 async function ensureDefaultShiftsInDb() {
   if (!navigator.onLine) return;
@@ -301,7 +393,7 @@ function getLatestInspectionForUnit(unitId, unitName = '') {
 function isInspectionOfficiallyApproved(rep) {
   if (!rep) return false;
   const meta = parseNotesMetadata(rep.notes);
-  return rep.final_status === 'siap' && meta.feedbackStatus.includes('Approved');
+  return rep.final_status === 'siap' && (meta.feedbackStatus.includes('Approved') || meta.feedbackStatus.includes('Otomatis Siap Pakai'));
 }
 
 function getEffectiveUnitStatus(u) {
@@ -309,7 +401,7 @@ function getEffectiveUnitStatus(u) {
 
   const latestRep = getLatestInspectionForUnit(u.id, u.unit_name);
   const checkedByStr = String(u.last_checked_by || '');
-  const hasApprovedStampOnUnit = checkedByStr.includes('Approved:');
+  const hasApprovedStampOnUnit = checkedByStr.includes('Approved:') || checkedByStr.includes('Siap Pakai');
   const unitUpdatedAt = u.last_checked_at ? new Date(u.last_checked_at).getTime() : 0;
   const repCreatedAt = latestRep?.created_at ? new Date(latestRep.created_at).getTime() : 0;
 
@@ -562,9 +654,9 @@ async function markIssueResolvedByOfficer(reportId) {
   const report = inspectionsData.find(r => String(r.id) === String(reportId));
   if (!report) return;
 
-  const managerDirectApprove = isManagerRole();
-  const confirmMsg = managerDirectApprove
-    ? `Approve perbaikan pada "${report.unit_name}" dan ubah status menjadi SIAP PAKAI?`
+  const autoApprove = isManagerRole() || !requireApprovalMode;
+  const confirmMsg = autoApprove
+    ? `Konfirmasi perbaikan pada "${report.unit_name}" sudah selesai? Status kamar akan langsung menjadi SIAP PAKAI.`
     : `Konfirmasi perbaikan pada "${report.unit_name}" sudah selesai?\n\nNotifikasi akan dikirim ke bagian Manajemen agar segera di-approve menjadi Siap Pakai.`;
 
   if (!confirm(confirmMsg)) return;
@@ -572,8 +664,41 @@ async function markIssueResolvedByOfficer(reportId) {
   const meta = parseNotesMetadata(report.notes);
   const actorName = currentUser ? currentUser.full_name : 'Petugas';
 
-  if (managerDirectApprove) {
+  if (isManagerRole()) {
     await approveReportById(report.id);
+  } else if (!requireApprovalMode) {
+    const autoNote = composeNotesWithMetadata(
+      actorName,
+      `Sesuai Standar (Otomatis Siap Pakai - Selesai Perbaikan oleh ${actorName})`,
+      '',
+      meta.cleanNotes
+    );
+    const { error } = await db.from('room_inspections').update({
+      final_status: 'siap',
+      readiness_score: 100,
+      notes: autoNote,
+      created_at: new Date().toISOString()
+    }).eq('id', report.id);
+
+    if (error) return alert('Gagal memperbarui laporan: ' + error.message);
+
+    const matchedUnit = unitsData.find(u => String(u.id) === String(report.unit_id) || normalizeText(u.unit_name) === normalizeText(report.unit_name));
+    const targetUnitId = matchedUnit ? matchedUnit.id : report.unit_id;
+
+    if (targetUnitId) {
+      await db.from('master_units').update({
+        status: 'siap',
+        last_checked_by: `Siap Pakai (${actorName})`,
+        last_checked_at: new Date().toISOString()
+      }).eq('id', targetUnitId);
+    }
+
+    clearBottomFormReviewBar();
+    activeReviewReportId = null;
+    document.getElementById('prefill-review-banner')?.classList.add('hidden');
+    playNotificationChime();
+    await loadAllData();
+    alert(`Berhasil! Perbaikan pada ${report.unit_name} selesai dan kamar langsung berstatus SIAP PAKAI.`);
   } else {
     const pendingNote = composeNotesWithMetadata(
       actorName,
@@ -634,6 +759,8 @@ function renderOfficerRevisionBanner() {
     return;
   }
 
+  const resolveBtnLabel = requireApprovalMode ? 'Selesai Perbaikan & Minta Approve' : 'Selesai Perbaikan (Siap Pakai)';
+
   container.classList.remove('hidden');
   container.innerHTML = `
     <div class="mb-4 rounded-2xl bg-rose-50 border-2 border-rose-300 p-3.5 shadow-sm space-y-2.5">
@@ -662,7 +789,7 @@ function renderOfficerRevisionBanner() {
                   <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Buka & Perbaiki Form
                 </button>
                 <button type="button" onclick="markIssueResolvedByOfficer('${rep.id}')" class="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-lg text-[10.5px] flex items-center justify-center gap-1 shadow-sm transition">
-                  <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Selesai Perbaikan & Minta Approve
+                  <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> ${resolveBtnLabel}
                 </button>
               </div>
             </div>
@@ -689,7 +816,7 @@ function sendAppInviteWa(targetRole) {
     '--------------------------------',
     'Yth. Bapak/Ibu Tim Manajemen,',
     '',
-    'Berikut tautan aplikasi resmi untuk memantau status kesiapan kamar rawat inap, menerima notifikasi approval laporan masuk secara real-time, serta mengunduh rekap laporan (PDF/Excel):',
+    'Berikut tautan aplikasi resmi untuk memantau status kesiapan kamar rawat inap, menerima notifikasi laporan masuk secara real-time, serta mengunduh rekap laporan (PDF/Excel):',
     '',
     '🔗 *Link Aplikasi:*',
     appUrl,
@@ -773,7 +900,7 @@ function composeNotesWithMetadata(executorName, feedbackStatus, feedbackDetail, 
 
 function handleFeedbackStatusChange() {
   const st = document.getElementById('inspect-feedback-status')?.value || '';
-  if (isPetugasRole() && st.includes('Approved')) {
+  if (isPetugasRole() && requireApprovalMode && st.includes('Approved')) {
     document.getElementById('inspect-feedback-status').value = 'Menunggu Approval Manajemen';
     return;
   }
@@ -1023,8 +1150,8 @@ function showInAppBanner(report) {
 
   if (isApproved) {
     statusLabel = 'SIAP PAKAI ✅';
-    badgeLabel = 'Laporan Disetujui • Baru Saja';
-    bodyLabel = `Approved oleh ${report.inspector_name} • Skor ${report.readiness_score}%`;
+    badgeLabel = 'Laporan Kesiapan Kamar • Baru Saja';
+    bodyLabel = `Oleh ${actorName} • Skor ${report.readiness_score}%`;
   } else if (isRev) {
     statusLabel = 'PERLU PERBAIKAN ⚠️';
     badgeLabel = 'Komplain Manajemen • Baru Saja';
@@ -1089,7 +1216,7 @@ function handleIncomingNewReport(report) {
 
     if (isApproved) {
       notifTitle = `Kamar Siap Pakai: ${report.unit_name}`;
-      notifBody = `Approved oleh ${report.inspector_name} (${report.readiness_score}%).`;
+      notifBody = `Oleh ${actorName} (${report.readiness_score}%).`;
     } else if (isRev) {
       notifTitle = `Perlu Perbaikan: ${report.unit_name}`;
       notifBody = `Komplain Manajemen: ${meta.feedbackDetail || 'Segera lakukan perbaikan kamar.'}`;
@@ -1101,11 +1228,11 @@ function handleIncomingNewReport(report) {
 }
 
 function testNotificationAlert() {
-  const sample = inspectionsData[0] || { id: null, unit_name: 'Kamar 101 - Anggrek', inspector_name: currentUser ? currentUser.full_name : 'Petugas', shift: 'Shift Siang', readiness_score: 100, final_status: 'kotor', notes: '[Tanggapan Pemeriksa: Menunggu Approval Manajemen]' };
+  const sample = inspectionsData[0] || { id: null, unit_name: 'Kamar 101 - Anggrek', inspector_name: currentUser ? currentUser.full_name : 'Petugas', shift: 'Shift Siang', readiness_score: 100, final_status: 'siap', notes: '[Tanggapan Pemeriksa: Sesuai Standar (Approved)]' };
   playNotificationChime();
   if (navigator.vibrate) navigator.vibrate([180, 80, 180]);
   showInAppBanner(sample);
-  triggerNativePhoneNotification('Tes Notifikasi Approval Cek Kamar', 'Notifikasi aktif! Laporan petugas & komplain perbaikan langsung masuk secara real-time.', sample.id);
+  triggerNativePhoneNotification('Tes Notifikasi Cek Kamar', 'Notifikasi aktif! Laporan petugas langsung masuk secara real-time.', sample.id);
 }
 
 function openNotificationDrawer() {
@@ -1115,6 +1242,7 @@ function openNotificationDrawer() {
   if (!inspectionsData.length) {
     listEl.innerHTML = '<p class="text-xs text-slate-400 text-center py-6">Belum ada riwayat laporan masuk.</p>';
   } else {
+    const resolveBtnLabel = requireApprovalMode ? 'Selesai Perbaikan & Minta Approve' : 'Selesai Perbaikan (Siap Pakai)';
     listEl.innerHTML = inspectionsData.slice(0, 20).map(r => {
       const isApproved = isInspectionOfficiallyApproved(r);
       const isRev = isRevisionRequested(r);
@@ -1154,7 +1282,7 @@ function openNotificationDrawer() {
           ` : ''}
           ${(isPetugasRole() && isRev && r.id) ? `
             <button type="button" onclick="closeActiveModal('modal-notifications'); markIssueResolvedByOfficer('${r.id}');" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Selesai Perbaikan & Minta Approve
+              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> ${resolveBtnLabel}
             </button>
           ` : ''}
         </div>
@@ -1253,7 +1381,7 @@ function renderPublicReportView(r) {
         <div><span class="text-[10px] text-slate-400 font-bold block">SHIFT KERJA</span><span class="font-extrabold text-slate-800">${r.shift}</span></div>
         ${meta.executor ? `<div class="col-span-2 pt-1 border-t border-slate-200/70"><span class="text-[10px] text-indigo-600 font-bold block">PETUGAS PELAKSANA</span><span class="font-extrabold text-slate-800">${meta.executor}</span></div>` : ''}
       </div>
-      ${meta.feedbackStatus ? `<div class="${isApproved ? 'bg-emerald-50/80 border-emerald-200' : isRev ? 'bg-rose-50/80 border-rose-200' : 'bg-amber-50/80 border-amber-200'} border rounded-2xl p-3 space-y-1"><span class="text-[10px] font-extrabold uppercase ${isApproved ? 'text-emerald-800' : isRev ? 'text-rose-800' : 'text-amber-800'} block">Status Approval & Tanggapan Pemeriksa</span><p class="text-xs font-extrabold text-slate-800">${meta.feedbackStatus}</p>${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">Bagian Ditandai Perbaikan: ${meta.feedbackDetail}</p>` : ''}</div>` : ''}
+      ${meta.feedbackStatus ? `<div class="${isApproved ? 'bg-emerald-50/80 border-emerald-200' : isRev ? 'bg-rose-50/80 border-rose-200' : 'bg-amber-50/80 border-amber-200'} border rounded-2xl p-3 space-y-1"><span class="text-[10px] font-extrabold uppercase ${isApproved ? 'text-emerald-800' : isRev ? 'text-rose-800' : 'text-amber-800'} block">Status & Tanggapan Pemeriksa</span><p class="text-xs font-extrabold text-slate-800">${meta.feedbackStatus}</p>${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">Bagian Ditandai Perbaikan: ${meta.feedbackDetail}</p>` : ''}</div>` : ''}
       ${(r.photo_room_url || r.photo_toilet_url) ? `<div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Dokumentasi Foto</h3><div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${r.photo_room_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">Area Kamar</span><img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}${r.photo_toilet_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">Kamar Mandi</span><img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}</div></div>` : ''}
       <div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Rincian Kelengkapan & Kebersihan</h3><div class="space-y-1.5">${checklistHtml}</div></div>
       ${meta.cleanNotes ? `<div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-3"><span class="text-[10px] font-extrabold uppercase text-amber-800 block">Catatan Tambahan</span><p class="text-xs text-slate-700 mt-0.5">${meta.cleanNotes}</p></div>` : ''}
@@ -1390,11 +1518,21 @@ function populateOfficerDropdown() {
   }
 
   if (optApproved) {
-    optApproved.disabled = isPetugasRole();
-    optApproved.hidden = isPetugasRole();
+    const lockApprovedOption = isPetugasRole() && requireApprovalMode;
+    optApproved.disabled = lockApprovedOption;
+    optApproved.hidden = lockApprovedOption;
   }
   if (fbSel && !activeReviewReportId) {
-    fbSel.value = isManagerRole() ? 'Sesuai Standar (Approved)' : 'Menunggu Approval Manajemen';
+    if (isManagerRole() || !requireApprovalMode) {
+      fbSel.value = 'Sesuai Standar (Approved)';
+    } else {
+      fbSel.value = 'Menunggu Approval Manajemen';
+    }
+  }
+
+  const btnSubmit = document.getElementById('btn-submit-inspect');
+  if (btnSubmit && !activeReviewReportId) {
+    btnSubmit.textContent = (isPetugasRole() && requireApprovalMode) ? 'Ajukan Approval' : 'Simpan Laporan';
   }
 }
 
@@ -1453,7 +1591,7 @@ function clearBottomFormReviewBar() {
   const btnWa = document.getElementById('btn-submit-wa');
   if (btnSubmit) {
     btnSubmit.classList.remove('hidden');
-    btnSubmit.textContent = 'Simpan Laporan';
+    btnSubmit.textContent = (isPetugasRole() && requireApprovalMode) ? 'Ajukan Approval' : 'Simpan Laporan';
   }
   if (btnWa) {
     btnWa.classList.remove('hidden');
@@ -1488,7 +1626,7 @@ function populateFormWithReport(latestRep) {
     return;
   }
 
-  const realChecklistItems = itemsData.filter(i => i.category !== SHIFT_CATEGORY_KEY);
+  const realChecklistItems = itemsData.filter(i => !isSystemMetaCategory(i.category));
   if (document.querySelectorAll('.inspect-chk').length === 0 && realChecklistItems.length > 0) {
     renderInspectForm();
   }
@@ -1538,7 +1676,7 @@ function populateFormWithReport(latestRep) {
 
   const fbSel = document.getElementById('inspect-feedback-status');
   if (fbSel) {
-    fbSel.value = isManagerRole() ? 'Sesuai Standar (Approved)' : 'Menunggu Approval Manajemen';
+    fbSel.value = (isManagerRole() || !requireApprovalMode) ? 'Sesuai Standar (Approved)' : 'Menunggu Approval Manajemen';
   }
 
   const detailEl = document.getElementById('inspect-feedback-detail');
@@ -1609,7 +1747,11 @@ function populateFormWithReport(latestRep) {
   } else {
     clearBottomFormReviewBar();
     if (btnSubmit) {
-      btnSubmit.textContent = isRev ? 'Kirim Selesai Perbaikan' : 'Ajukan Approval';
+      if (isRev) {
+        btnSubmit.textContent = requireApprovalMode ? 'Kirim Selesai Perbaikan' : 'Simpan Selesai Perbaikan';
+      } else {
+        btnSubmit.textContent = requireApprovalMode ? 'Ajukan Approval' : 'Simpan Laporan';
+      }
     }
     if (btnWa) btnWa.classList.remove('hidden');
   }
@@ -1682,6 +1824,7 @@ async function enterApp() {
   document.getElementById('main-app').classList.remove('hidden');
   document.getElementById('user-greeting').textContent = 'Halo, ' + currentUser.full_name;
   configureNavigationByRole();
+  renderApprovalToggleCard();
   populateOfficerDropdown();
   populateShiftDropdown();
   renderMasterShifts();
@@ -1772,6 +1915,7 @@ function switchTab(tabName, fromPopState = false, skipAutoPrefill = false) {
     }
   }
   if (tabName === 'master') {
+    renderApprovalToggleCard();
     renderMasterShifts();
   }
   if (tabName === 'analytics') renderAnalytics();
@@ -1789,6 +1933,7 @@ async function loadAllData() {
   inspectionsData = insRes.data || [];
   usersData = usrRes.data || [];
 
+  syncApprovalConfigFromItems();
   await ensureDefaultShiftsInDb();
   rebuildShiftsFromItems();
   populateOfficerDropdown();
@@ -1866,7 +2011,7 @@ function renderDashboard() {
       ? `⚠️ Komplain: ${actorMeta?.feedbackDetail || 'Menunggu perbaikan petugas'}`
       : isWaitingApproval
         ? `Diajukan: ${actorMeta?.executor || latestRep?.inspector_name || 'Petugas'} (${latestRep?.readiness_score ?? 0}%)`
-        : (eff === 'siap' ? (u.last_checked_by || 'Approved Manajemen') : 'Belum dicek (Kosong)');
+        : (eff === 'siap' ? (u.last_checked_by || 'Siap Pakai') : 'Belum dicek (Kosong)');
 
     const openAction = (latestRep && !isInspectionOfficiallyApproved(latestRep))
       ? `openReportInForm('${latestRep.id}')`
@@ -1937,7 +2082,7 @@ function renderInspectForm() {
     document.getElementById('inspect-unit').value = prevSelectedUnit;
   }
   const box = document.getElementById('checklist-container');
-  const realChecklistItems = itemsData.filter(item => item.category !== SHIFT_CATEGORY_KEY);
+  const realChecklistItems = itemsData.filter(item => !isSystemMetaCategory(item.category));
   if (realChecklistItems.length === 0) { box.innerHTML = '<p class="text-xs text-slate-400">Belum ada item kelengkapan. Tambahkan di Pengaturan.</p>'; return; }
   box.innerHTML = realChecklistItems.map(item => `
     <label class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer active:scale-[0.99] transition">
@@ -2100,29 +2245,37 @@ async function processInspectionSubmit(alsoSendWa = false) {
     isApproved = true;
     finalFeedbackDetail = '';
     feedbackStatus = `Sesuai Standar (Approved oleh ${currentUser.full_name || officerName})`;
+  } else if (!requireApprovalMode && score === 100 && !missingCritical) {
+    isApproved = true;
+    finalFeedbackDetail = '';
+    feedbackStatus = `Sesuai Standar (Otomatis Siap Pakai oleh ${executorVal})`;
   } else {
     isApproved = false;
     if (isPetugasRole()) {
       finalFeedbackDetail = '';
-      feedbackStatus = activeReviewReportId
-        ? `Menunggu Approval Manajemen (Selesai Perbaikan oleh ${executorVal})`
-        : 'Menunggu Approval Manajemen';
+      if (requireApprovalMode) {
+        feedbackStatus = activeReviewReportId
+          ? `Menunggu Approval Manajemen (Selesai Perbaikan oleh ${executorVal})`
+          : 'Menunggu Approval Manajemen';
+      } else {
+        feedbackStatus = `Belum Lengkap (Skor ${score}%)`;
+      }
     } else if (feedbackStatus.includes('Approved') || feedbackStatus.includes('Sesuai Standar')) {
-      feedbackStatus = 'Menunggu Approval Manajemen';
+      feedbackStatus = requireApprovalMode ? 'Menunggu Approval Manajemen' : `Belum Lengkap (Skor ${score}%)`;
     }
   }
 
   const finalStatus = isApproved ? 'siap' : 'kotor';
   const unitCheckedByLabel = isApproved
-    ? `Approved: ${currentUser.full_name || officerName}`
+    ? (isManagerRole() ? `Approved: ${currentUser.full_name || officerName}` : `Siap Pakai (${executorVal})`)
     : isManagerSendingRevision
       ? `Perlu Perbaikan: ${finalFeedbackDetail}`
-      : `${executorVal} (Menunggu Approval)`;
+      : (requireApprovalMode ? `${executorVal} (Menunggu Approval)` : `${executorVal} (Belum Lengkap)`);
 
   const payload = {
     unit_id: unit.id,
     unit_name: unit.unit_name,
-    inspector_name: isApproved ? (currentUser.full_name || officerName) : officerName,
+    inspector_name: isApproved ? (isManagerRole() ? (currentUser.full_name || officerName) : executorVal) : officerName,
     inspector_role: currentUser.role,
     shift: selectedShift,
     readiness_score: score,
@@ -2189,8 +2342,9 @@ async function processInspectionSubmit(alsoSendWa = false) {
     switchTab(isManagerRole() ? 'dashboard' : 'analytics');
     if (alsoSendWa) openWaShareModal(savedRecord);
     else if (isManagerSendingRevision) alert('Komplain perbaikan terkirim ke Petugas! Status kamar kini ditandai PERLU PERBAIKAN.');
-    else if (!isApproved) alert('Laporan tersimpan! Notifikasi telah dikirim ke bagian Manajemen agar segera di-approve menjadi SIAP PAKAI.');
-    else alert('Approved! Laporan kesiapan kamar berhasil disimpan dan berstatus SIAP PAKAI.');
+    else if (!isApproved && requireApprovalMode) alert('Laporan tersimpan! Notifikasi telah dikirim ke bagian Manajemen agar segera di-approve menjadi SIAP PAKAI.');
+    else if (!isApproved) alert(`Laporan tersimpan dengan skor ${score}%. Lengkapi seluruh checklist wajib agar kamar berstatus SIAP PAKAI.`);
+    else alert('Berhasil! Laporan kesiapan kamar tersimpan dan kamar berstatus SIAP PAKAI.');
   }
 }
 
@@ -2363,7 +2517,7 @@ function editUnit(id) {
 async function deleteUnit(id) { if (isManagerRole() && confirm('Hapus unit kamar ini?')) { await db.from('master_units').delete().eq('id', id); loadAllData(); } }
 
 function renderMasterItems() {
-  const realChecklistItems = itemsData.filter(i => i.category !== SHIFT_CATEGORY_KEY);
+  const realChecklistItems = itemsData.filter(i => !isSystemMetaCategory(i.category));
   document.getElementById('master-item-list').innerHTML = realChecklistItems.map(i => `
     <div class="py-3 flex items-center justify-between gap-2">
       <div>
@@ -2442,6 +2596,8 @@ function renderAnalytics() {
     return;
   }
 
+  const resolveBtnLabel = requireApprovalMode ? 'Selesai Perbaikan & Minta Approve Manajemen' : 'Selesai Perbaikan (Siap Pakai)';
+
   historyBox.innerHTML = filteredRows.map((r) => {
     const waktuStr = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
     const meta = parseNotesMetadata(r.notes);
@@ -2470,7 +2626,7 @@ function renderAnalytics() {
           </div>
           ${canResolveFix ? `
             <button type="button" onclick="markIssueResolvedByOfficer('${r.id}')" class="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> ${isManagerRole() ? 'Masalah Selesai & Approve Siap Pakai' : 'Selesai Perbaikan & Minta Approve Manajemen'}
+              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> ${isManagerRole() ? 'Masalah Selesai & Approve Siap Pakai' : resolveBtnLabel}
             </button>
           ` : ''}
           ${(isManagerRole() && !isApproved && r.id) ? `
@@ -2539,6 +2695,6 @@ function exportPdf() {
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=5.7').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=5.8').catch(() => {});
   });
 }
