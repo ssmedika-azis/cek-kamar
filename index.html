@@ -363,17 +363,33 @@
             <span id="readiness-badge" class="px-3 py-1 rounded-full text-xs font-extrabold bg-slate-100 text-slate-600">Skor: 0%</span>
           </div>
 
-          <div id="prefill-review-banner" class="hidden bg-indigo-50 border border-indigo-200 rounded-xl p-3 space-y-2.5">
-            <div class="flex items-start gap-2.5">
-              <i data-lucide="file-check-2" class="w-4 h-4 text-indigo-600 shrink-0 mt-0.5"></i>
-              <div class="text-[11px] text-indigo-950 leading-relaxed flex-1">
-                <p class="font-extrabold">Hasil Pengisian Form Petugas</p>
-                <p id="prefill-review-desc" class="text-indigo-800 mt-0.5">Checklist, foto, dan catatan dari petugas telah dimuat di bawah.</p>
+          <div id="prefill-review-banner" class="hidden bg-indigo-50 border-2 border-indigo-200 rounded-2xl p-3.5 space-y-3 shadow-sm">
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex items-start gap-2.5 flex-1 min-w-0">
+                <div class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+                  <i data-lucide="file-check-2" class="w-4 h-4"></i>
+                </div>
+                <div class="text-[11px] text-indigo-950 leading-relaxed flex-1 min-w-0">
+                  <p class="font-extrabold text-xs">Hasil Pengisian Form Petugas</p>
+                  <p id="prefill-review-desc" class="text-indigo-800 mt-0.5">Checklist, foto, dan catatan dari petugas telah dimuat di bawah.</p>
+                </div>
               </div>
+              <button type="button" id="btn-toggle-prefill-detail" onclick="togglePrefillChecklistDetail()" class="shrink-0 px-2.5 py-1.5 bg-white hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-xl text-[10px] font-extrabold flex items-center gap-1 shadow-xs transition">
+                <i data-lucide="list-checks" class="w-3.5 h-3.5"></i> <span>Rincian Ceklis</span>
+              </button>
             </div>
-            <button type="button" id="btn-direct-approve-form" onclick="approveActiveFormReport()" class="hidden w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
-              <i data-lucide="check-circle-2" class="w-4 h-4"></i> APPROVE LAPORAN INI (JADIKAN SIAP PAKAI)
-            </button>
+            <div id="prefill-checklist-summary-box" class="bg-white/95 rounded-xl p-2.5 border border-indigo-100 space-y-2 text-[11px]">
+              <div id="prefill-checklist-items-list" class="space-y-1 max-h-44 overflow-y-auto"></div>
+              <div id="prefill-photos-preview-row" class="hidden grid grid-cols-2 gap-2 pt-1 border-t border-slate-100"></div>
+            </div>
+            <div id="prefill-action-buttons" class="space-y-1.5">
+              <button type="button" id="btn-officer-confirm-clean" onclick="confirmRoomCleanedToNurse()" class="hidden w-full py-2.5 px-3 bg-teal-600 hover:bg-teal-700 active:scale-[0.98] text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
+                <i data-lucide="send" class="w-4 h-4"></i> KONFIRMASI KE PERAWAT (KAMAR SUDAH DIBERSIHKAN)
+              </button>
+              <button type="button" id="btn-direct-approve-form" onclick="approveActiveFormReport()" class="hidden w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
+                <i data-lucide="check-circle-2" class="w-4 h-4"></i> APPROVE LAPORAN INI (JADIKAN SIAP PAKAI)
+              </button>
+            </div>
           </div>
 
           <form id="inspection-form" class="space-y-3.5">
@@ -539,75 +555,35 @@
             <span id="export-filter-count" class="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-200">0 Data</span>
           </div>
 
-          <div class="grid grid-cols-2 gap-2.5">
-            <div>
-              <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Periode Laporan</label>
-              <select id="export-period-type" onchange="handleExportPeriodTypeChange()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800">
-                <option value="all">Semua Data</option>
-                <option value="today">Hari Ini</option>
-                <option value="yesterday">Kemarin</option>
-                <option value="week">Minggu Ini</option>
-                <option value="thismonth">Bulan Ini</option>
-                <option value="day">Harian (Per Tanggal)</option>
-                <option value="range">Rentang Tanggal</option>
-                <option value="month">Bulanan (1 Bulan)</option>
-                <option value="month_range">Rentang Bulan & Tahun (mis. Jan 2000 - Jan 2026)</option>
-                <option value="year">Tahunan (Per Tahun)</option>
-              </select>
+          <div class="space-y-2.5">
+            <div class="grid grid-cols-2 gap-2.5">
+              <div>
+                <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Dari Bulan</label>
+                <select id="export-start-month" onchange="renderAnalytics()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800"></select>
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Sampai Bulan</label>
+                <select id="export-end-month" onchange="renderAnalytics()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800"></select>
+              </div>
             </div>
+
+            <div class="grid grid-cols-2 gap-2.5">
+              <div>
+                <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Dari Tahun</label>
+                <select id="export-start-year" onchange="renderAnalytics()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800"></select>
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Sampai Tahun</label>
+                <select id="export-end-year" onchange="renderAnalytics()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800"></select>
+              </div>
+            </div>
+
             <div>
               <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Filter Unit Kamar</label>
               <select id="export-filter-unit" onchange="renderAnalytics()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800">
                 <option value="all">Semua Kamar</option>
               </select>
             </div>
-          </div>
-
-          <div id="wrap-filter-day" class="hidden">
-            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Pilih Tanggal</label>
-            <input type="date" id="export-filter-day" onchange="renderAnalytics()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800" />
-          </div>
-
-          <div id="wrap-filter-range" class="hidden grid grid-cols-2 gap-2.5">
-            <div>
-              <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Dari Tanggal</label>
-              <input type="date" id="export-filter-start" onchange="renderAnalytics()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800" />
-            </div>
-            <div>
-              <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Sampai Tanggal</label>
-              <input type="date" id="export-filter-end" onchange="renderAnalytics()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800" />
-            </div>
-          </div>
-
-          <div id="wrap-filter-month" class="hidden">
-            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Pilih Bulan & Tahun</label>
-            <input type="month" id="export-filter-month" onchange="renderAnalytics()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800" />
-          </div>
-
-          <!-- FILTER RENTANG BULAN & TAHUN (2000 - SEKARANG) -->
-          <div id="wrap-filter-month-range" class="hidden bg-teal-50/60 border border-teal-200 rounded-2xl p-3 space-y-2.5">
-            <p class="text-[10.5px] font-extrabold text-teal-900">Pilih Rentang Bulan & Tahun Pengambilan Data:</p>
-            <div class="grid grid-cols-2 gap-2">
-              <div class="space-y-1">
-                <span class="block text-[10px] font-bold text-slate-600">Dari Bulan & Tahun</span>
-                <div class="grid grid-cols-2 gap-1">
-                  <select id="export-start-month" onchange="renderAnalytics()" class="px-2 py-2 rounded-xl bg-white border border-slate-200 text-[11px] font-bold text-slate-800"></select>
-                  <select id="export-start-year" onchange="renderAnalytics()" class="px-2 py-2 rounded-xl bg-white border border-slate-200 text-[11px] font-bold text-slate-800"></select>
-                </div>
-              </div>
-              <div class="space-y-1">
-                <span class="block text-[10px] font-bold text-slate-600">Sampai Bulan & Tahun</span>
-                <div class="grid grid-cols-2 gap-1">
-                  <select id="export-end-month" onchange="renderAnalytics()" class="px-2 py-2 rounded-xl bg-white border border-slate-200 text-[11px] font-bold text-slate-800"></select>
-                  <select id="export-end-year" onchange="renderAnalytics()" class="px-2 py-2 rounded-xl bg-white border border-slate-200 text-[11px] font-bold text-slate-800"></select>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div id="wrap-filter-year" class="hidden">
-            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Pilih Tahun</label>
-            <select id="export-filter-year" onchange="renderAnalytics()" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800"></select>
           </div>
 
           <!-- PILIHAN TABEL DATA SEBELUM EKSPOR EXCEL / PDF -->
@@ -637,11 +613,11 @@
           </div>
 
           <div class="grid grid-cols-2 gap-2 pt-1">
-            <button onclick="exportPdf()" class="py-2.5 px-3 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition">
-              <i data-lucide="file-text" class="w-4 h-4"></i> Download / Print PDF
+            <button type="button" onclick="openExportPreviewModal('pdf')" class="py-2.5 px-3 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition">
+              <i data-lucide="eye" class="w-4 h-4"></i> Pratinjau &amp; PDF
             </button>
-            <button onclick="exportCsv()" class="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition">
-              <i data-lucide="sheet" class="w-4 h-4"></i> Download Excel
+            <button type="button" onclick="openExportPreviewModal('excel')" class="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition">
+              <i data-lucide="eye" class="w-4 h-4"></i> Pratinjau &amp; Excel
             </button>
           </div>
         </div>
@@ -1016,6 +992,42 @@
         <button type="button" id="btn-submit-nurse-modal" onclick="submitNurseModalAction()" class="py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm">
           <i data-lucide="send" class="w-3.5 h-3.5"></i> Kirim Sekarang
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL PRATINJAU LAPORAN (PDF / EXCEL) SEBELUM DOWNLOAD -->
+  <div id="modal-export-preview" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-white rounded-3xl w-full max-w-3xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3 bg-slate-50 shrink-0">
+        <div class="flex items-center gap-2 min-w-0">
+          <div id="export-preview-icon-wrap" class="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+            <i data-lucide="file-text" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0">
+            <h3 id="export-preview-title" class="text-xs sm:text-sm font-extrabold text-slate-900 truncate">Pratinjau Dokumen Laporan</h3>
+            <p id="export-preview-subtitle" class="text-[10.5px] text-slate-500 truncate">Periksa hasil laporan sebelum mengunduh file</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeActiveModal('modal-export-preview')" class="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div id="export-preview-body" class="p-4 overflow-y-auto flex-1 bg-slate-100/70"></div>
+
+      <div class="border-t border-slate-200 px-4 py-3 bg-white flex items-center justify-between gap-2 shrink-0">
+        <button type="button" onclick="closeActiveModal('modal-export-preview')" class="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold">
+          Tutup / Kembali
+        </button>
+        <div class="flex items-center gap-2">
+          <button type="button" id="btn-confirm-export-print" onclick="printPreviewDocument()" class="hidden py-2.5 px-3.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold flex items-center gap-1.5">
+            <i data-lucide="printer" class="w-3.5 h-3.5"></i> Print
+          </button>
+          <button type="button" id="btn-confirm-export-download" onclick="confirmDownloadFromPreview()" class="py-2.5 px-4 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-sm">
+            <i data-lucide="download" class="w-4 h-4"></i> <span>Konfirmasi Download</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
