@@ -54,7 +54,7 @@ const NURSE_REQUEST_TYPES = {
     shortTag: 'MINTA DIBERSIHKAN',
     badgeClass: 'bg-amber-100 text-amber-800 border-amber-300',
     toastTitle: 'MINTA DIBERSIHKAN 🧹',
-    speak: (roomLabel) => `Kamar ${roomLabel} minta dibersihkan segera.`
+    speak: (roomLabel) => `Ruangan kamar ${roomLabel} minta dibersihkan.`
   },
   pulang: {
     key: 'pulang',
@@ -120,71 +120,6 @@ function extractSpokenRoomLabel(unitName) {
   return raw.replace(/^kamar\s*/i, '');
 }
 
-// Alamat suara: nomor kamar + lantai dari data master_units
-function getUnitAddress(report) {
-  if (!report) return { number: '', floor: '' };
-  const meta = unitsData.find(u => String(u.id) === String(report.unit_id))
-    || unitsData.find(u => normalizeText(u.unit_name) === normalizeText(report.unit_name || ''));
-  const rawCode = String(meta?.unit_code || report.unit_name || '');
-  const numMatch = rawCode.match(/(\d+[a-zA-Z]?)/);
-  const number = numMatch ? numMatch[1] : '';
-  const floorRaw = String(meta?.floor || '').trim();
-  const floor = floorRaw.replace(/^(lantai|lt\.?|l\.?)\s*/i, '').trim();
-  return { number, floor, meta };
-}
-
-function spokenAddress(report) {
-  const { number, floor } = getUnitAddress(report);
-  if (!number) return extractSpokenRoomLabel(report?.unit_name);
-  return floor ? `nomor ${number}, lantai ${floor}` : `nomor ${number}`;
-}
-
-// ===== Pengingat suara berulang (25 detik) sampai tugas dibuka =====
-const REMINDER_INTERVAL_MS = 25000;
-let reminderTimer = null;
-let reminderReportId = null;
-
-function shouldRepeatForCurrentUser(report) {
-  if (!report || !currentUser) return false;
-  if (isNurseRequestRecord(report)) return isPetugasRole();
-  if (isRepairRecord(report)) return !isPerawatRole();
-  if (isRevisionRequested(report)) return isPetugasRole();
-  if (!isInspectionOfficiallyApproved(report) && requireApprovalMode) return isManagerRole();
-  return false;
-}
-
-function speakPendingReminder() {
-  if (!reminderReportId) return;
-  const rep = inspectionsData.find(r => String(r.id) === String(reminderReportId));
-  if (!rep) return;
-  if (!shouldRepeatForCurrentUser(rep)) { stopVoiceReminder(true); return; }
-  speakIndonesianAlert(getSpokenTextForReport(rep));
-}
-
-function startVoiceReminder(report) {
-  if (!shouldRepeatForCurrentUser(report)) return;
-  if (reminderReportId === report.id && reminderTimer) return;
-  stopVoiceReminder(true);
-  reminderReportId = report.id;
-  const fire = () => {
-    if (document.hidden) return;
-    if (reminderReportId !== report.id) return;
-    speakIndonesianAlert(getSpokenTextForReport(report));
-  };
-  fire();
-  reminderTimer = setInterval(fire, REMINDER_INTERVAL_MS);
-}
-
-function stopVoiceReminder(silent) {
-  if (reminderTimer) { clearInterval(reminderTimer); reminderTimer = null; }
-  reminderReportId = null;
-  if (!silent) { try { window.speechSynthesis.cancel(); } catch (e) {} }
-}
-
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) speakPendingReminder();
-});
-
 function speakIndonesianAlert(text) {
   if (!text || !('speechSynthesis' in window)) return;
   try {
@@ -213,7 +148,7 @@ if ('speechSynthesis' in window) {
 
 function getSpokenTextForReport(report) {
   if (!report) return '';
-  const roomLabel = spokenAddress(report);
+  const roomLabel = extractSpokenRoomLabel(report.unit_name);
   const notesStr = String(report.notes || '');
   const shiftStr = String(report.shift || '');
 
@@ -792,7 +727,6 @@ async function approveReportById(reportId) {
   clearBottomFormReviewBar();
   activeReviewReportId = null;
   document.getElementById('prefill-review-banner')?.classList.add('hidden');
-  stopVoiceReminder();
   playNotificationChime();
   await loadAllData();
   alert(`Berhasil! Form laporan ${rep.unit_name} telah di-Approve menjadi SIAP PAKAI.`);
@@ -841,7 +775,6 @@ async function sendNurseRoomAction(unitId, unitName, actionKey) {
   if (!isManagerRole() && !isPerawatRole()) return;
   const cfg = NURSE_REQUEST_TYPES[actionKey] || NURSE_REQUEST_TYPES.pulang;
   const roomLabel = extractSpokenRoomLabel(unitName);
-  const addrLabel = spokenAddress({ unit_id: unitId, unit_name: unitName });
 
   const ok = confirm(`Kirim permintaan "${cfg.label}" untuk ${unitName} ke Petugas sekarang?`);
   if (!ok) return;
@@ -872,7 +805,7 @@ async function sendNurseRoomAction(unitId, unitName, actionKey) {
   if (error) return alert('Gagal mengirim permintaan kamar: ' + error.message);
 
   try {
-    const spokenMessage = cfg.speak(addrLabel);
+    const spokenMessage = cfg.speak(roomLabel);
     const reqPayload = {
       unit_id: unitId,
       unit_name: unitName,
@@ -902,7 +835,7 @@ async function sendNurseRoomAction(unitId, unitName, actionKey) {
   } catch (e) {}
 
   playNotificationChime();
-  speakIndonesianAlert(`Permintaan ${cfg.label} kamar ${addrLabel} terkirim.`);
+  speakIndonesianAlert(`Permintaan ${cfg.label} kamar ${roomLabel} terkirim.`);
   await loadAllData();
   alert(`Terkirim ke Petugas! Permintaan "${cfg.label}" untuk ${unitName} sudah masuk ke layar & suara notifikasi petugas.`);
 }
@@ -997,7 +930,6 @@ async function markIssueResolvedByOfficer(reportId) {
     clearBottomFormReviewBar();
     activeReviewReportId = null;
     document.getElementById('prefill-review-banner')?.classList.add('hidden');
-    stopVoiceReminder();
     playNotificationChime();
     await loadAllData();
     alert(`Berhasil! Perbaikan pada ${report.unit_name} selesai dan kamar langsung berstatus SIAP PAKAI.`);
@@ -1031,7 +963,6 @@ async function markIssueResolvedByOfficer(reportId) {
     clearBottomFormReviewBar();
     activeReviewReportId = null;
     document.getElementById('prefill-review-banner')?.classList.add('hidden');
-    stopVoiceReminder();
     playNotificationChime();
     await loadAllData();
     alert(`Terkirim ke Manajemen! Perbaikan pada ${report.unit_name} sudah dilaporkan selesai dan menunggu approval Manajemen.`);
@@ -1474,7 +1405,6 @@ function resetRepairForm() {
 function openRepairReportInForm(reportId) {
   const rep = getRepairReports().find(r => String(r.id) === String(reportId));
   if (!rep) return;
-  stopVoiceReminder();
   switchTab('repair');
   populateRepairFormDropdowns();
 
@@ -2363,7 +2293,6 @@ function hideToastBanner() { document.getElementById('live-toast-banner')?.class
 
 function openLatestNotifFromBanner() {
   hideToastBanner();
-  stopVoiceReminder();
   if (latestNotifReport && isNurseRequestRecord(latestNotifReport)) {
     if (isPetugasRole() && latestNotifReport.unit_id) quickInspect(latestNotifReport.unit_id);
     else if (!isPerawatRole()) switchTab('dashboard');
@@ -2404,11 +2333,7 @@ function handleIncomingNewReport(report) {
 
     playNotificationChime();
     const spokenText = getSpokenTextForReport(report);
-    if (shouldRepeatForCurrentUser(report)) {
-      startVoiceReminder(report);
-    } else {
-      speakIndonesianAlert(spokenText);
-    }
+    speakIndonesianAlert(spokenText);
 
     if (navigator.vibrate) navigator.vibrate([250, 100, 250]);
     showInAppBanner(report);
@@ -2457,7 +2382,6 @@ function testNotificationAlert() {
 }
 
 function openNotificationDrawer() {
-  stopVoiceReminder();
   unreadNotifCount = 0;
   document.getElementById('notif-unread-badge')?.classList.add('hidden');
   const listEl = document.getElementById('notif-drawer-list');
@@ -2547,10 +2471,7 @@ function startRealtimeReportListener() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'room_inspections' }, (payload) => { if (payload?.new) handleIncomingNewReport(payload.new); })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'room_inspections' }, (payload) => {
       if (payload?.new && !isInspectionOfficiallyApproved(payload.new)) handleIncomingNewReport(payload.new);
-      else {
-        if (payload?.new && reminderReportId === payload.new.id) stopVoiceReminder();
-        loadAllData();
-      }
+      else loadAllData();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'room_inspections' }, () => { loadAllData(); })
     .subscribe();
@@ -3060,7 +2981,6 @@ function loadExistingInspectionToForm(unitId) {
 function openReportInForm(reportId) {
   const rep = inspectionsData.find(r => String(r.id) === String(reportId));
   if (!rep) return;
-  stopVoiceReminder();
   if (isNurseRequestRecord(rep)) {
     if (isPetugasRole() && rep.unit_id) quickInspect(rep.unit_id);
     else if (!isPerawatRole()) switchTab('dashboard');
@@ -3169,7 +3089,6 @@ async function enterApp() {
 }
 
 function logout() {
-  stopVoiceReminder();
   localStorage.removeItem('ck_user');
   localStorage.removeItem('ck_last_tab');
   document.documentElement.classList.remove('has-session');
@@ -3465,7 +3384,6 @@ function renderDashboard() {
 
 function quickInspect(unitId) {
   if (isPerawatRole()) return;
-  stopVoiceReminder();
   switchTab('inspect', false, true);
   const unitSel = document.getElementById('inspect-unit');
   if (unitSel) unitSel.value = unitId;
@@ -4185,6 +4103,6 @@ function exportPdf() {
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=6.5').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=6.4').catch(() => {});
   });
-    }
+}
