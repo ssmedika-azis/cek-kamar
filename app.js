@@ -4439,121 +4439,6 @@ function setAnalyticsText(id, value) {
   if (el) el.textContent = value;
 }
 
-// ==================== RINGKASAN PENGGUNAAN KAMAR PER PERIODE ====================
-const SUMMARY_PERIODS = [
-  { key: 'today', label: 'Hari Ini' },
-  { key: 'week', label: '7 Hari Terakhir' },
-  { key: 'month', label: 'Bulan Ini' },
-  { key: 'year', label: 'Tahun Ini' },
-  { key: 'custom', label: 'Periode Kustom' }
-];
-
-function getPeriodBounds(key) {
-  const now = new Date();
-  if (key === 'today') {
-    const start = new Date(now); start.setHours(0, 0, 0, 0);
-    const end = new Date(now); end.setHours(23, 59, 59, 999);
-    return { start, end, label: 'Hari Ini' };
-  }
-  if (key === 'week') {
-    const start = new Date(now); start.setDate(now.getDate() - 7); start.setHours(0, 0, 0, 0);
-    const end = new Date(now); end.setHours(23, 59, 59, 999);
-    return { start, end, label: '7 Hari Terakhir' };
-  }
-  if (key === 'month') {
-    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-    return { start, end, label: 'Bulan Ini' };
-  }
-  if (key === 'year') {
-    const start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
-    const end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
-    return { start, end, label: 'Tahun Ini' };
-  }
-  // custom: dari Rentang Tanggal filter (mis. Januari 2020 – Januari 2026)
-  const sVal = document.getElementById('export-filter-start')?.value || '';
-  const eVal = document.getElementById('export-filter-end')?.value || '';
-  const start = sVal ? new Date(sVal + 'T00:00:00') : new Date(2020, 0, 1);
-  const end = eVal ? new Date(eVal + 'T23:59:59') : now;
-  const label = (sVal && eVal)
-    ? `Periode ${sVal} s/d ${eVal}`
-    : 'Semua Data (sejak 2020)';
-  return { start, end, label };
-}
-
-function getRoomOccupancyStats(start, end) {
-  const selectedUnit = document.getElementById('export-filter-unit')?.value || 'all';
-  const rows = inspectionsData.filter(r => {
-    if (!r.created_at) return false;
-    if (isCancelledNurseRecord(r)) return false;
-    const t = new Date(r.created_at);
-    if (t < start || t > end) return false;
-    if (selectedUnit !== 'all' && r.unit_name !== selectedUnit) return false;
-    return true;
-  });
-  const usedSet = new Set();
-  rows.forEach(r => {
-    const key = r.unit_id || r.unit_name;
-    if (r.final_status === 'siap') return; // kamar siap = kosong/bersih siap pakai
-    usedSet.add(key);
-  });
-  const total = unitsData.length;
-  const used = usedSet.size;
-  const empty = Math.max(total - used, 0);
-  const rate = total ? Math.round((used / total) * 1000) / 10 : 0;
-  return { total, used, empty, rate, reports: rows.length };
-}
-
-function getRoomSummaryRows() {
-  return SUMMARY_PERIODS.map(p => {
-    const bounds = getPeriodBounds(p.key);
-    const stats = getRoomOccupancyStats(bounds.start, bounds.end);
-    return { key: p.key, label: bounds.label, ...stats };
-  });
-}
-
-function renderRoomSummaryTable() {
-  const tbody = document.getElementById('room-summary-tbody');
-  if (!tbody) return;
-  tbody.innerHTML = getRoomSummaryRows().map(row => `
-    <tr class="border-b border-slate-100 ${row.key === 'custom' ? 'bg-indigo-50/40' : ''}">
-      <td class="py-2 pr-2 font-semibold text-slate-800">${row.label}</td>
-      <td class="py-2 pr-2 text-center font-bold text-slate-900">${row.total}</td>
-      <td class="py-2 pr-2 text-center font-bold text-orange-700">${row.used}</td>
-      <td class="py-2 pr-2 text-center font-bold text-emerald-700">${row.empty}</td>
-      <td class="py-2 text-center"><span class="inline-block px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold">${row.rate}%</span></td>
-    </tr>
-  `).join('');
-}
-
-function exportSummaryCsv() {
-  const rows = getRoomSummaryRows();
-  const lines = [
-    'RINGKASAN PENGGUNAAN KAMAR',
-    'RS Khusus Bedah SS Medika',
-    `Dicetak,${new Date().toLocaleString('id-ID')}`,
-    '',
-    'Periode,Jumlah Kamar,Kamar Terpakai,Kamar Kosong,Tingkat Hunian (%),Jumlah Laporan'
-  ];
-  rows.forEach(r => lines.push(`"${r.label}","${r.total}","${r.used}","${r.empty}","${r.rate}%","${r.reports}"`));
-  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `Ringkasan_Penggunaan_Kamar_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
-function exportSummaryPdf() {
-  const rows = getRoomSummaryRows();
-  const rowsHtml = rows.map(r => `<tr><td>${r.label}</td><td style="text-align:center">${r.total}</td><td style="text-align:center"><strong>${r.used}</strong></td><td style="text-align:center"><strong>${r.empty}</strong></td><td style="text-align:center">${r.rate}%</td><td style="text-align:center">${r.reports}</td></tr>`).join('');
-  const win = window.open('', '_blank');
-  if (!win) return alert('Izinkan pop-up browser untuk mengekspor PDF.');
-  const nowStr = new Date().toLocaleString('id-ID');
-  win.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8" /><title>Ringkasan Penggunaan Kamar</title><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script><style>body{font-family:Arial,sans-serif;padding:20px;color:#1e293b;background:#f8fafc;margin:0}.toolbar{display:flex;gap:10px;margin-bottom:16px;background:#fff;padding:12px 16px;border-radius:12px;border:1px solid #e2e8f0}.btn{padding:10px 16px;border:none;border-radius:10px;font-weight:bold;font-size:13px;cursor:pointer}.btn-download{background:#0d9488;color:#fff}.report-box{background:#fff;padding:24px;border-radius:12px;border:1px solid #e2e8f0}h2{margin:0 0 4px;color:#0d9488;font-size:18px}p{margin:0 0 14px;font-size:12px;color:#64748b}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left}th{background-color:#f1f5f9;font-weight:bold}@media print{.no-print{display:none!important}body{background:#fff;padding:0}.report-box{border:none;padding:0}}</style></head><body><div class="toolbar no-print"><button type="button" id="btn-dl-pdf" class="btn btn-download" onclick="downloadDirectPdf()">⬇ Download PDF</button></div><div id="pdf-content" class="report-box"><h2>RINGKASAN PENGGUNAAN KAMAR</h2><p>RS Khusus Bedah SS Medika • Dicetak: ${nowStr}</p><table><thead><tr><th>Periode</th><th>Jumlah Kamar</th><th>Kamar Terpakai</th><th>Kamar Kosong</th><th>Tingkat Hunian</th><th>Jumlah Laporan</th></tr></thead><tbody>${rowsHtml}</tbody></table></div><script>function downloadDirectPdf(){const btn=document.getElementById('btn-dl-pdf');btn.textContent='Memproses PDF...';btn.disabled=true;html2pdf().set({margin:10,filename:'Ringkasan_Penggunaan_Kamar.pdf',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'landscape'}}).from(document.getElementById('pdf-content')).save().then(()=>{btn.textContent='⬇ Download PDF';btn.disabled=false;});}<\/script></body></html>`);
-  win.document.close();
-}
-
 function renderAnalytics() {
   const siap = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
   const proses = unitsData.filter(u => ['kosong', 'dibersihkan', 'pending_approval', 'perlu_perbaikan'].includes(getEffectiveUnitStatus(u))).length;
@@ -4610,7 +4495,6 @@ function renderAnalytics() {
   setAnalyticsText('analytic-avg-time', `${avgTime} Detik`);
 
   renderDisciplineTable(filteredRows);
-  renderRoomSummaryTable();
 
   const historyBox = document.getElementById('history-list');
   if (filteredRows.length === 0) {
@@ -4762,13 +4646,7 @@ function exportCsv() {
     'Nama,Peran,Tugas,Tepat Waktu,Perlu Ulang,Persentase (%)',
     ...stats.map(d => [d.name, d.role, d.total, d.good, d.late, `${d.pct}%`].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
   ];
-  const roomSummaryLines = [
-    '',
-    'RINGKASAN PENGGUNAAN KAMAR',
-    'Periode,Jumlah Kamar,Kamar Terpakai,Kamar Kosong,Tingkat Hunian (%),Jumlah Laporan',
-    ...getRoomSummaryRows().map(r => '"' + r.label + '",' + r.total + ',' + r.used + ',' + r.empty + ',"' + r.rate + '%",' + r.reports)
-  ];
-  const blob = new Blob(['\uFEFF' + summaryLines.concat(headers).concat(rows).concat(roomSummaryLines).concat(discLines).join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob(['\uFEFF' + summaryLines.concat(headers).concat(rows).concat(discLines).join('\n')], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `Rekap_Kesiapan_Kamar_${fileSuffix}.csv`;
@@ -4789,8 +4667,6 @@ function exportPdf() {
   const stats = getDisciplineStats(filteredRows);
   const discRowsHtml = stats.map(d => `<tr><td>${d.name}</td><td>${d.role}</td><td style="text-align:center">${d.total}</td><td style="text-align:center">${d.good}</td><td style="text-align:center">${d.late}</td><td style="text-align:center"><strong>${d.pct}%</strong></td></tr>`).join('');
   const discTableHtml = stats.length ? `<h3 style="margin:18px 0 6px;font-size:13px;color:#0f172a">Tabel Kedisiplinan Petugas &amp; Teknisi</h3><table><thead><tr><th>Nama</th><th>Peran</th><th>Tugas</th><th>Tepat Waktu</th><th>Perlu Ulang</th><th>Kedisiplinan</th></tr></thead><tbody>${discRowsHtml}</tbody></table>` : '';
-  const roomSummaryRows = getRoomSummaryRows();
-  const roomSummaryHtml = '<h3 style="margin:16px 0 6px;font-size:13px;color:#0f172a">Ringkasan Penggunaan Kamar per Periode</h3><table><thead><tr><th>Periode</th><th>Jumlah Kamar</th><th>Kamar Terpakai</th><th>Kamar Kosong</th><th>Hunian</th><th>Laporan</th></tr></thead><tbody>' + roomSummaryRows.map(r => '<tr><td>' + r.label + '</td><td style="text-align:center">' + r.total + '</td><td style="text-align:center">' + r.used + '</td><td style="text-align:center">' + r.empty + '</td><td style="text-align:center">' + r.rate + '%</td><td style="text-align:center">' + r.reports + '</td></tr>').join('') + '</tbody></table>';
   const printWin = window.open('', '_blank');
   if (!printWin) return alert('Izinkan pop-up browser untuk mengekspor PDF.');
 
@@ -4806,13 +4682,13 @@ function exportPdf() {
     return `<tr><td>${i + 1}</td><td>${new Date(r.created_at).toLocaleString('id-ID')}</td><td>${r.unit_name}</td><td>${r.inspector_name}</td><td>${meta.executor || r.inspector_name}</td><td>${r.shift}</td><td>${r.readiness_score}%</td><td>${r.final_status.toUpperCase()}</td><td>${feedbackFull}</td><td>${cleanNotesText || '-'}</td>${includePhotos ? `<td><div style="display:flex;gap:4px;">${r.photo_room_url ? `<img src="${r.photo_room_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}</div></td>` : ''}</tr>`;
   }).join('');
 
-  printWin.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8" /><title>Rekap Kesiapan Kamar</title><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script><style>body{font-family:Arial,sans-serif;padding:20px;color:#1e293b;background:#f8fafc;margin:0}.toolbar{display:flex;gap:10px;margin-bottom:16px;background:#fff;padding:12px 16px;border-radius:12px;border:1px solid #e2e8f0}.btn{padding:10px 16px;border:none;border-radius:10px;font-weight:bold;font-size:13px;cursor:pointer}.btn-download{background:#0d9488;color:#fff}.btn-print{background:#334155;color:#fff}.report-box{background:#fff;padding:24px;border-radius:12px;border:1px solid #e2e8f0}h2{margin:0 0 4px;color:#0d9488;font-size:18px}p{margin:0 0 14px;font-size:12px;color:#64748b}.summary{display:flex;gap:16px;margin-bottom:14px;font-size:12px;background:#f1f5f9;padding:10px 14px;border-radius:8px}table{width:100%;border-collapse:collapse;font-size:10.5px}th,td{border:1px solid #cbd5e1;padding:6px;text-align:left;vertical-align:middle}th{background-color:#f1f5f9;font-weight:bold}@media print{.no-print{display:none!important}body{background:#fff;padding:0}.report-box{border:none;padding:0}}</style></head><body><div class="toolbar no-print"><button type="button" id="btn-dl-pdf" class="btn btn-download" onclick="downloadDirectPdf()">⬇ Download PDF</button><button type="button" id="btn-print" class="btn btn-print" onclick="window.print()">🖨 Cetak / Print</button></div><div id="pdf-content" class="report-box"><h2>REKAPITULASI LAPORAN KESIAPAN KAMAR</h2><p>RS Khusus Bedah SS Medika • Filter: <strong>${label}</strong> • Dicetak: ${new Date().toLocaleString('id-ID')}</p><div class="summary"><span><strong>Total Laporan:</strong> ${total}</span><span><strong>Skor Kesiapan Murni:</strong> ${pureAvg}%</span><span><strong>Kamar Terpakai:</strong> ${occPct}%</span><span><strong>Rata-rata Waktu:</strong> ${avgTime} Detik</span></div><table><thead><tr><th>No</th><th>Waktu</th><th>Unit Kamar</th><th>Pemeriksa</th><th>Pelaksana</th><th>Shift</th><th>Skor</th><th>Status</th><th>Tanggapan Pemeriksa</th><th>Catatan</th>${includePhotos ? '<th>Foto</th>' : ''}</tr></thead><tbody>${rowsHtml}</tbody></table>${roomSummaryHtml}${discTableHtml}</div><script>function downloadDirectPdf(){const btn=document.getElementById('btn-dl-pdf');btn.textContent='Memproses PDF...';btn.disabled=true;html2pdf().set({margin:10,filename:'Rekap_Kesiapan_Kamar_${fileSuffix}.pdf',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'landscape'}}).from(document.getElementById('pdf-content')).save().then(()=>{btn.textContent='⬇ Download PDF';btn.disabled=false;});}<\/script></body></html>`);
+  printWin.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8" /><title>Rekap Kesiapan Kamar</title><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script><style>body{font-family:Arial,sans-serif;padding:20px;color:#1e293b;background:#f8fafc;margin:0}.toolbar{display:flex;gap:10px;margin-bottom:16px;background:#fff;padding:12px 16px;border-radius:12px;border:1px solid #e2e8f0}.btn{padding:10px 16px;border:none;border-radius:10px;font-weight:bold;font-size:13px;cursor:pointer}.btn-download{background:#0d9488;color:#fff}.btn-print{background:#334155;color:#fff}.report-box{background:#fff;padding:24px;border-radius:12px;border:1px solid #e2e8f0}h2{margin:0 0 4px;color:#0d9488;font-size:18px}p{margin:0 0 14px;font-size:12px;color:#64748b}.summary{display:flex;gap:16px;margin-bottom:14px;font-size:12px;background:#f1f5f9;padding:10px 14px;border-radius:8px}table{width:100%;border-collapse:collapse;font-size:10.5px}th,td{border:1px solid #cbd5e1;padding:6px;text-align:left;vertical-align:middle}th{background-color:#f1f5f9;font-weight:bold}@media print{.no-print{display:none!important}body{background:#fff;padding:0}.report-box{border:none;padding:0}}</style></head><body><div class="toolbar no-print"><button type="button" id="btn-dl-pdf" class="btn btn-download" onclick="downloadDirectPdf()">⬇ Download PDF</button><button type="button" id="btn-print" class="btn btn-print" onclick="window.print()">🖨 Cetak / Print</button></div><div id="pdf-content" class="report-box"><h2>REKAPITULASI LAPORAN KESIAPAN KAMAR</h2><p>RS Khusus Bedah SS Medika • Filter: <strong>${label}</strong> • Dicetak: ${new Date().toLocaleString('id-ID')}</p><div class="summary"><span><strong>Total Laporan:</strong> ${total}</span><span><strong>Skor Kesiapan Murni:</strong> ${pureAvg}%</span><span><strong>Kamar Terpakai:</strong> ${occPct}%</span><span><strong>Rata-rata Waktu:</strong> ${avgTime} Detik</span></div><table><thead><tr><th>No</th><th>Waktu</th><th>Unit Kamar</th><th>Pemeriksa</th><th>Pelaksana</th><th>Shift</th><th>Skor</th><th>Status</th><th>Tanggapan Pemeriksa</th><th>Catatan</th>${includePhotos ? '<th>Foto</th>' : ''}</tr></thead><tbody>${rowsHtml}</tbody></table>${discTableHtml}</div><script>function downloadDirectPdf(){const btn=document.getElementById('btn-dl-pdf');btn.textContent='Memproses PDF...';btn.disabled=true;html2pdf().set({margin:10,filename:'Rekap_Kesiapan_Kamar_${fileSuffix}.pdf',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'landscape'}}).from(document.getElementById('pdf-content')).save().then(()=>{btn.textContent='⬇ Download PDF';btn.disabled=false;});}<\/script></body></html>`);
   printWin.document.close();
 }
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=6.8').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=6.7').catch(() => {});
     navigator.serviceWorker.ready.then(reg => {
       try {
         if (reg.periodicSync && Notification.permission === 'granted') {
