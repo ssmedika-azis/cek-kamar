@@ -1,7 +1,49 @@
-const APP_VERSION = '6.7';
+const APP_VERSION = '6.8';
 const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteHB4cnJqeG51anlnYWJyaHNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MDk0MjAsImV4cCI6MjExMDQ4NTQyMH0.tFMCbg1_R-I08KEIs-h6wwxXhYLP2Z0oYgnDGC7T2YU';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ==================== KEAMANAN APLIKASI & SANITASI XSS ====================
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const SESSION_TIMEOUT_MS = 12 * 60 * 60 * 1000; // 12 jam batas sesi aktif
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCK_MS = 60 * 1000;
+
+function checkLoginRateLimit() {
+  const lockUntil = Number(localStorage.getItem('ck_login_lock_until') || 0);
+  if (Date.now() < lockUntil) {
+    const sec = Math.ceil((lockUntil - Date.now()) / 1000);
+    throw new Error(`Terlalu banyak percobaan gagal. Silakan tunggu ${sec} detik demi keamanan.`);
+  }
+}
+
+function recordLoginFailure() {
+  const fails = Number(localStorage.getItem('ck_login_fails') || 0) + 1;
+  localStorage.setItem('ck_login_fails', String(fails));
+  if (fails >= MAX_LOGIN_ATTEMPTS) {
+    localStorage.setItem('ck_login_lock_until', String(Date.now() + LOGIN_LOCK_MS));
+    localStorage.setItem('ck_login_fails', '0');
+  }
+}
+
+function clearLoginFailures() {
+  localStorage.removeItem('ck_login_fails');
+  localStorage.removeItem('ck_login_lock_until');
+}
+
+function isSessionExpired() {
+  const loginTs = Number(localStorage.getItem('ck_session_ts') || 0);
+  if (!loginTs) return false;
+  return (Date.now() - loginTs) > SESSION_TIMEOUT_MS;
+}
 
 (async function autoClearOldCache() {
   try {
@@ -38,15 +80,19 @@ const NURSE_REQUEST_TYPES = {
     shortTag: 'SIAPKAN KAMAR',
     badgeClass: 'bg-sky-100 text-sky-800 border-sky-300',
     toastTitle: 'SIAPKAN KAMAR 🛏️',
-    speak: (roomLabel) => `Tolong siapkan kamar ${roomLabel} untuk pasien baru.`
+    speak: (roomLabel, extra) => extra
+      ? `Perhatian petugas, tolong siapkan kamar ${roomLabel}. Tambahan dari perawat: ${extra}.`
+      : `Perhatian petugas, tolong siapkan kamar ${roomLabel} untuk pasien baru.`
   },
-  extrabed: {
-    key: 'extrabed',
-    label: 'Tambahan Extrabed',
-    shortTag: 'TAMBAH EXTRABED',
+  teknisi: {
+    key: 'teknisi',
+    label: 'Panggil Teknisi Perbaikan',
+    shortTag: 'PANGGIL TEKNISI',
     badgeClass: 'bg-purple-100 text-purple-800 border-purple-300',
-    toastTitle: 'TAMBAHAN EXTRABED ➕',
-    speak: (roomLabel) => `Tolong tambahkan extrabed di kamar ${roomLabel}.`
+    toastTitle: 'PANGGIL TEKNISI 🔧',
+    speak: (roomLabel, extra) => extra
+      ? `Perhatian teknisi, ada panggilan perbaikan di kamar ${roomLabel}. Keluhan: ${extra}.`
+      : `Perhatian teknisi, segera cek perbaikan fasilitas di kamar ${roomLabel}.`
   },
   bersihkan: {
     key: 'bersihkan',
@@ -54,7 +100,7 @@ const NURSE_REQUEST_TYPES = {
     shortTag: 'MINTA DIBERSIHKAN',
     badgeClass: 'bg-amber-100 text-amber-800 border-amber-300',
     toastTitle: 'MINTA DIBERSIHKAN 🧹',
-    speak: (roomLabel) => `Ruangan kamar ${roomLabel} minta dibersihkan.`
+    speak: (roomLabel) => `Perhatian petugas, ruangan kamar ${roomLabel} minta dibersihkan.`
   },
   pulang: {
     key: 'pulang',
@@ -62,7 +108,7 @@ const NURSE_REQUEST_TYPES = {
     shortTag: 'PASIEN PULANG',
     badgeClass: 'bg-orange-100 text-orange-800 border-orange-300',
     toastTitle: 'PASIEN PULANG 🚪',
-    speak: (roomLabel) => `Pasien kamar ${roomLabel} sudah pulang, tolong dibersihkan.`
+    speak: (roomLabel) => `Perhatian petugas, pasien kamar ${roomLabel} sudah pulang, tolong segera dibersihkan.`
   }
 };
 
@@ -82,6 +128,12 @@ function getInitialShifts() {
 
 let shiftsData = getInitialShifts();
 let currentUser = JSON.parse(localStorage.getItem('ck_user') || 'null');
+if (currentUser && isSessionExpired()) {
+  localStorage.removeItem('ck_user');
+  localStorage.removeItem('ck_session_ts');
+  currentUser = null;
+}
+
 let unitsData = [];
 let itemsData = [];
 let inspectionsData = [];
@@ -110,7 +162,7 @@ let toastTimeout = null;
 
 if (window.lucide) lucide.createIcons();
 
-// ==================== MESIN SUARA NOTIFIKASI BAHASA INDONESIA ====================
+// ==================== MESIN SUARA LANTANG & JELAS BAHASA INDONESIA ====================
 
 function extractSpokenRoomLabel(unitName) {
   const raw = String(unitName || '').trim();
@@ -127,9 +179,9 @@ function speakIndonesianAlert(text) {
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = 'id-ID';
-    utter.rate = 0.96;
-    utter.pitch = 1.04;
-    utter.volume = 1.0;
+    utter.rate = 0.90; // Sedikit lebih lambat agar pelafalan sangat jelas
+    utter.pitch = 1.08; // Nada tegas & jernih
+    utter.volume = 1.0; // Volume maksimal
 
     const voices = window.speechSynthesis.getVoices();
     const idVoice = voices.find(v => (v.lang || '').toLowerCase().includes('id'));
@@ -137,7 +189,7 @@ function speakIndonesianAlert(text) {
 
     setTimeout(() => {
       try { window.speechSynthesis.speak(utter); } catch (e) {}
-    }, 350);
+    }, 280);
   } catch (e) {}
 }
 
@@ -152,12 +204,19 @@ function getSpokenTextForReport(report) {
   const roomLabel = extractSpokenRoomLabel(report.unit_name);
   const notesStr = String(report.notes || '');
   const shiftStr = String(report.shift || '');
+  const meta = parseNotesMetadata(notesStr);
+  const cleanExtra = meta.cleanNotes
+    .replace(REPAIR_RECORD_TAG, '')
+    .replace(CHECKOUT_RECORD_TAG, '')
+    .replace(NURSE_REQ_TAG, '')
+    .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
+    .trim();
 
   if (notesStr.includes('[REQ_TYPE: siapkan]') || shiftStr.startsWith('Siapkan Kamar')) {
-    return NURSE_REQUEST_TYPES.siapkan.speak(roomLabel);
+    return NURSE_REQUEST_TYPES.siapkan.speak(roomLabel, cleanExtra);
   }
-  if (notesStr.includes('[REQ_TYPE: extrabed]') || shiftStr.startsWith('Tambahan Extrabed')) {
-    return NURSE_REQUEST_TYPES.extrabed.speak(roomLabel);
+  if (notesStr.includes('[REQ_TYPE: teknisi]') || shiftStr.startsWith('Panggil Teknisi')) {
+    return NURSE_REQUEST_TYPES.teknisi.speak(roomLabel, cleanExtra || meta.feedbackDetail);
   }
   if (notesStr.includes('[REQ_TYPE: bersihkan]') || shiftStr.startsWith('Minta Dibersihkan')) {
     return NURSE_REQUEST_TYPES.bersihkan.speak(roomLabel);
@@ -167,16 +226,16 @@ function getSpokenTextForReport(report) {
   }
   if (isRepairRecord(report)) {
     return report.final_status === 'siap'
-      ? `Perbaikan fasilitas kamar ${roomLabel} sudah selesai.`
-      : `Ada pengajuan perbaikan fasilitas di kamar ${roomLabel}.`;
+      ? `Perhatian, perbaikan fasilitas kamar ${roomLabel} sudah selesai dikerjakan teknisi.`
+      : `Perhatian teknisi, ada pengajuan perbaikan fasilitas di kamar ${roomLabel}. ${meta.feedbackDetail || ''}`;
   }
   if (isInspectionOfficiallyApproved(report)) {
-    return `Kamar ${roomLabel} sudah siap pakai.`;
+    return `Kamar ${roomLabel} sudah di-approve perawat dan siap pakai.`;
   }
   if (isRevisionRequested(report)) {
-    return `Perhatian, kamar ${roomLabel} perlu perbaikan kebersihan.`;
+    return `Perhatian petugas, kamar ${roomLabel} diminta perbaikan ulang oleh perawat.`;
   }
-  return `Laporan cek kesiapan kamar ${roomLabel} menunggu approval manajemen.`;
+  return `Perhatian perawat, kamar ${roomLabel} sudah selesai disiapkan petugas dan menunggu approve Anda.`;
 }
 
 // =================================================================================
@@ -196,7 +255,7 @@ function isNurseRequestRecord(rep) {
   const s = String(rep.shift || '');
   return n.includes(NURSE_REQ_TAG) || n.includes(CHECKOUT_RECORD_TAG) ||
     s.startsWith('Pasien Pulang') || s.startsWith('Siapkan Kamar') ||
-    s.startsWith('Tambahan Extrabed') || s.startsWith('Minta Dibersihkan');
+    s.startsWith('Panggil Teknisi') || s.startsWith('Minta Dibersihkan');
 }
 
 function isCheckoutRecord(rep) {
@@ -206,7 +265,7 @@ function isCheckoutRecord(rep) {
 function getNurseRequestTypeFromString(str) {
   const s = String(str || '');
   if (s.includes('[REQ_TYPE: siapkan]') || s.startsWith('Siapkan Kamar')) return NURSE_REQUEST_TYPES.siapkan;
-  if (s.includes('[REQ_TYPE: extrabed]') || s.startsWith('Tambahan Extrabed')) return NURSE_REQUEST_TYPES.extrabed;
+  if (s.includes('[REQ_TYPE: teknisi]') || s.startsWith('Panggil Teknisi')) return NURSE_REQUEST_TYPES.teknisi;
   if (s.includes('[REQ_TYPE: bersihkan]') || s.startsWith('Minta Dibersihkan')) return NURSE_REQUEST_TYPES.bersihkan;
   if (s.includes('[REQ_TYPE: pulang]') || s.includes(CHECKOUT_RECORD_TAG) || s.startsWith('Pasien Pulang')) return NURSE_REQUEST_TYPES.pulang;
   return NURSE_REQUEST_TYPES.pulang;
@@ -251,14 +310,14 @@ function renderApprovalToggleCard() {
       <div class="flex items-center justify-between gap-3">
         <div class="space-y-1">
           <div class="flex items-center gap-2">
-            <span class="text-xs sm:text-sm font-extrabold text-slate-900">Permintaan Approval Manajemen</span>
+            <span class="text-xs sm:text-sm font-extrabold text-slate-900">Permintaan Approval Perawat</span>
             <span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full ${requireApprovalMode ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'}">
               ${requireApprovalMode ? 'ON (AKTIF)' : 'OFF (NONAKTIF)'}
             </span>
           </div>
           <p class="text-[11px] text-slate-600 leading-relaxed">
             ${requireApprovalMode
-              ? 'Laporan petugas harus diperiksa & di-Approve Manajemen terlebih dahulu sebelum kamar berstatus <strong>SIAP PAKAI</strong>.'
+              ? 'Laporan petugas harus ditinjau & di-Approve oleh <strong>Perawat</strong> terlebih dahulu sebelum kamar berstatus <strong>SIAP PAKAI</strong>.'
               : 'Mode langsung aktif: Laporan petugas dengan skor 100% langsung otomatis berstatus <strong>SIAP PAKAI</strong> tanpa menunggu Approve.'}
           </p>
         </div>
@@ -349,7 +408,7 @@ function populateShiftDropdown() {
   const prevVal = sel.value;
   sel.innerHTML = shiftsData.map(s => {
     const label = s.hours ? `${s.name} (${s.hours})` : s.name;
-    return `<option value="${s.name}">${label}</option>`;
+    return `<option value="${escapeHtml(s.name)}">${escapeHtml(label)}</option>`;
   }).join('');
   if (prevVal) {
     if (!Array.from(sel.options).some(o => o.value === prevVal)) {
@@ -371,12 +430,12 @@ function renderMasterShifts() {
   list.innerHTML = shiftsData.map(s => `
     <div class="py-3 flex items-center justify-between gap-2">
       <div>
-        <p class="text-xs font-extrabold text-slate-900">${s.name}</p>
-        <p class="text-[11px] text-slate-500">${s.hours || 'Jam kerja fleksibel'}</p>
+        <p class="text-xs font-extrabold text-slate-900">${escapeHtml(s.name)}</p>
+        <p class="text-[11px] text-slate-500">${escapeHtml(s.hours || 'Jam kerja fleksibel')}</p>
       </div>
       <div class="flex items-center gap-1.5">
-        <button type="button" onclick="editShift('${s.id}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-[11px] font-bold">Edit</button>
-        <button type="button" onclick="deleteShift('${s.id}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-[11px] font-bold">Hapus</button>
+        <button type="button" onclick="editShift('${escapeHtml(s.id)}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-[11px] font-bold">Edit</button>
+        <button type="button" onclick="deleteShift('${escapeHtml(s.id)}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-[11px] font-bold">Hapus</button>
       </div>
     </div>
   `).join('');
@@ -469,14 +528,22 @@ function isPerawatRole() {
   return currentUser && (currentUser.role || '').toLowerCase() === 'perawat';
 }
 
+function isTeknisiRole() {
+  return currentUser && (currentUser.role || '').toLowerCase() === 'teknisi';
+}
+
 function isPetugasRole() {
-  return currentUser && !isManagerRole() && !isPerawatRole();
+  return currentUser && !isManagerRole() && !isPerawatRole() && !isTeknisiRole();
+}
+
+function isReviewerRole() {
+  return isPerawatRole() || isManagerRole();
 }
 
 const ACCOUNT_ROLE_OPTIONS = [
   { value: 'petugas', label: 'Role: Petugas Kebersihan' },
   { value: 'teknisi', label: 'Role: Teknisi Perbaikan' },
-  { value: 'perawat', label: 'Role: Perawat (Permintaan Kamar & Pasien Pulang)' },
+  { value: 'perawat', label: 'Role: Perawat (Permintaan Kamar & Approve)' },
   { value: 'manajemen', label: 'Role: Manajemen' }
 ];
 
@@ -549,7 +616,7 @@ function closeActiveModal(modalId) {
 }
 
 window.addEventListener('popstate', () => {
-  const openModals = ['modal-photo-zoom', 'modal-qr-scanner', 'modal-qr-print', 'modal-wa-share', 'modal-notifications', 'modal-about'];
+  const openModals = ['modal-photo-zoom', 'modal-qr-scanner', 'modal-qr-print', 'modal-wa-share', 'modal-notifications', 'modal-about', 'modal-nurse-action'];
   for (const id of openModals) {
     const el = document.getElementById(id);
     if (el && !el.classList.contains('hidden')) {
@@ -558,7 +625,7 @@ window.addEventListener('popstate', () => {
       return;
     }
   }
-  const defaultTab = (isManagerRole() || isPerawatRole()) ? 'dashboard' : 'inspect';
+  const defaultTab = (isManagerRole() || isPerawatRole()) ? 'dashboard' : (isTeknisiRole() ? 'repair' : 'inspect');
   if (activeTabName !== defaultTab) switchTab(defaultTab, true);
 });
 
@@ -588,7 +655,7 @@ function isInspectionOfficiallyApproved(rep) {
 
 function isNurseMarkedUnit(checkedByStr) {
   const s = String(checkedByStr || '');
-  return s.startsWith('Pasien Pulang:') || s.startsWith('Siapkan Kamar:') || s.startsWith('Tambahan Extrabed:') || s.startsWith('Minta Dibersihkan:');
+  return s.startsWith('Pasien Pulang:') || s.startsWith('Siapkan Kamar:') || s.startsWith('Panggil Teknisi:') || s.startsWith('Minta Dibersihkan:');
 }
 
 function getEffectiveUnitStatus(u) {
@@ -629,6 +696,11 @@ function getEffectiveUnitStatus(u) {
 function openFirstPendingApproval() {
   const pendingUnit = unitsData.find(u => getEffectiveUnitStatus(u) === 'pending_approval');
   if (pendingUnit) {
+    const rep = getLatestInspectionForUnit(pendingUnit.id, pendingUnit.unit_name);
+    if (rep && !isInspectionOfficiallyApproved(rep)) {
+      openReportInForm(rep.id);
+      return;
+    }
     quickInspect(pendingUnit.id);
     return;
   }
@@ -640,9 +712,11 @@ function openFirstPendingApproval() {
   openNotificationDrawer();
 }
 
+// ==================== APPROVAL & TINJAUAN OLEH PERAWAT / MANAJEMEN ====================
+
 async function requestRevisionByManagement(unitId, unitName, reportId = null) {
-  if (!isManagerRole()) {
-    return alert('Hanya akun Manajemen / Supervisor yang dapat mengirim komplain / permintaan perbaikan.');
+  if (!isReviewerRole()) {
+    return alert('Hanya akun Perawat atau Manajemen yang dapat mengirim permintaan perbaikan ulang.');
   }
 
   let targetRep = reportId
@@ -653,24 +727,25 @@ async function requestRevisionByManagement(unitId, unitName, reportId = null) {
   const formDetail = document.getElementById('inspect-feedback-detail')?.value.trim() || '';
   const defaultComplaint = formDetail || existingDetail || '';
 
+  const reviewerLabel = isPerawatRole() ? 'Perawat' : 'Manajemen';
   const complaintInput = prompt(
-    `Komplain / Bagian yang Harus Diperbaiki untuk "${unitName}":\n(Contoh: Lantai kamar mandi masih basah / Sprei belum rapi)`,
+    `Catatan Perbaikan untuk "${unitName}" (dari ${reviewerLabel}):\n(Contoh: Lantai kamar mandi masih basah / Sprei belum terpasang rapi)`,
     defaultComplaint
   );
   if (complaintInput === null) return;
   const cleanComplaint = complaintInput.trim();
   if (!cleanComplaint) {
-    return alert('Mohon isi keterangan bagian mana yang perlu diperbaiki agar petugas mengetahui detail komplain.');
+    return alert('Mohon isi keterangan bagian mana yang perlu diperbaiki agar petugas mengetahui detailnya.');
   }
 
-  const supervisorName = currentUser.full_name || 'Supervisor Manajemen';
+  const supervisorName = `${currentUser.full_name || reviewerLabel} (${reviewerLabel})`;
 
   if (targetRep) {
     const meta = parseNotesMetadata(targetRep.notes);
     const executorName = meta.executor || targetRep.inspector_name || 'Petugas';
     const updatedNotes = composeNotesWithMetadata(
       executorName,
-      `Perlu Perbaikan (Komplain oleh ${supervisorName})`,
+      `Perlu Perbaikan (Ditinjau oleh ${supervisorName})`,
       cleanComplaint,
       meta.cleanNotes
     );
@@ -681,7 +756,7 @@ async function requestRevisionByManagement(unitId, unitName, reportId = null) {
       created_at: new Date().toISOString()
     }).eq('id', targetRep.id);
 
-    if (error) return alert('Gagal mengirim komplain perbaikan: ' + error.message);
+    if (error) return alert('Gagal mengirim permintaan perbaikan: ' + error.message);
 
     const matchedUnit = unitsData.find(u => String(u.id) === String(targetRep.unit_id) || normalizeText(u.unit_name) === normalizeText(targetRep.unit_name));
     const finalUnitId = matchedUnit ? matchedUnit.id : (unitId || targetRep.unit_id);
@@ -706,7 +781,7 @@ async function requestRevisionByManagement(unitId, unitName, reportId = null) {
   document.getElementById('prefill-review-banner')?.classList.add('hidden');
   playNotificationChime();
   await loadAllData();
-  alert(`Komplain terkirim ke Petugas! Status ${unitName} kini ditandai PERLU PERBAIKAN.`);
+  alert(`Terkirim ke Petugas! Status ${unitName} kini ditandai PERLU PERBAIKAN.`);
 }
 
 async function requestRevisionFromActiveForm() {
@@ -718,15 +793,16 @@ async function requestRevisionFromActiveForm() {
 }
 
 async function approveReportById(reportId) {
-  if (!isManagerRole()) {
-    return alert('Hanya akun Manajemen / Supervisor yang dapat menyetujui (Approve) form laporan ini.');
+  if (!isReviewerRole()) {
+    return alert('Hanya akun Perawat atau Manajemen yang dapat menyetujui (Approve) form laporan ini.');
   }
   const rep = inspectionsData.find(r => String(r.id) === String(reportId));
   if (!rep) return alert('Data laporan form tidak ditemukan.');
 
   if (!confirm(`Approve form laporan "${rep.unit_name}" (Skor ${rep.readiness_score}%) menjadi SIAP PAKAI sekarang?`)) return;
 
-  const approverName = currentUser.full_name || 'Supervisor Manajemen';
+  const reviewerRoleText = isPerawatRole() ? 'Perawat' : 'Manajemen';
+  const approverName = `${currentUser.full_name || reviewerRoleText} (${reviewerRoleText})`;
   const meta = parseNotesMetadata(rep.notes);
   const updatedNotes = composeNotesWithMetadata(
     meta.executor || rep.inspector_name,
@@ -762,8 +838,8 @@ async function approveReportById(reportId) {
 }
 
 async function approveUnitByManagement(unitId, unitName) {
-  if (!isManagerRole()) {
-    return alert('Hanya akun Manajemen / Supervisor yang dapat menyetujui (Approve) kamar menjadi Siap Pakai.');
+  if (!isReviewerRole()) {
+    return alert('Hanya akun Perawat atau Manajemen yang dapat menyetujui (Approve) kamar menjadi Siap Pakai.');
   }
   const latestRep = getLatestInspectionForUnit(unitId, unitName);
   if (latestRep && !isInspectionOfficiallyApproved(latestRep)) {
@@ -771,7 +847,8 @@ async function approveUnitByManagement(unitId, unitName) {
   }
 
   if (!confirm(`Approve "${unitName}" sebagai SIAP PAKAI sekarang?`)) return;
-  const approverName = currentUser.full_name || 'Supervisor Manajemen';
+  const reviewerRoleText = isPerawatRole() ? 'Perawat' : 'Manajemen';
+  const approverName = `${currentUser.full_name || reviewerRoleText} (${reviewerRoleText})`;
   const { error } = await db.from('master_units').update({
     status: 'siap',
     last_checked_by: `Approved: ${approverName}`,
@@ -798,7 +875,7 @@ async function approveActiveFormReport() {
   }
 }
 
-// ==================== AKSI CEPAT PERAWAT (4 TOMBOL + SUARA) ====================
+// ==================== AKSI CEPAT PERAWAT (SIAPKAN KAMAR + DESKRIPSI, PANGGIL TEKNISI, BERSIHKAN, PULANG) ====================
 
 function isCancelledNurseRecord(rep) {
   if (!rep) return false;
@@ -829,37 +906,150 @@ function isSiapkanLockedForUnit(unitId) {
   return true;
 }
 
-async function sendNurseRoomAction(unitId, unitName, actionKey) {
+function openNurseActionModal(unitId, unitName, actionKey) {
+  if (!isManagerRole() && !isPerawatRole()) return;
+
+  if (actionKey === 'siapkan' && isSiapkanLockedForUnit(unitId)) {
+    return alert('Tombol "Siapkan Kamar" untuk kamar ini masih terkunci. Tunggu petugas menindaklanjuti, atau tekan "Pasien Pulang" terlebih dahulu.');
+  }
+
+  document.getElementById('nurse-modal-unit-id').value = unitId;
+  document.getElementById('nurse-modal-unit-name').value = unitName;
+  document.getElementById('nurse-modal-action-type').value = actionKey;
+  document.getElementById('nurse-modal-subtitle').textContent = unitName;
+  document.getElementById('nurse-modal-desc').value = '';
+
+  const techWrap = document.getElementById('nurse-tech-category-wrap');
+  const titleEl = document.getElementById('nurse-modal-title');
+  const descLabel = document.getElementById('nurse-modal-desc-label');
+  const descInput = document.getElementById('nurse-modal-desc');
+  const hintEl = document.getElementById('nurse-modal-hint');
+  const iconWrap = document.getElementById('nurse-modal-icon-wrap');
+  const btnSubmit = document.getElementById('btn-submit-nurse-modal');
+
+  if (actionKey === 'teknisi') {
+    techWrap?.classList.remove('hidden');
+    titleEl.textContent = 'Panggil Teknisi Perbaikan';
+    descLabel.textContent = 'Deskripsi Bagian yang Perlu Diperbaiki *';
+    descInput.placeholder = 'Contoh: Keran wastafel bocor, lampu kamar mandi mati, atau AC kurang dingin...';
+    hintEl.textContent = 'Tugas otomatis masuk ke akun Teknisi & memicu notifikasi suara/getar di HP Teknisi.';
+    iconWrap.className = 'w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center';
+    iconWrap.innerHTML = '<i data-lucide="wrench" class="w-5 h-5"></i>';
+    btnSubmit.className = 'py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm';
+    btnSubmit.innerHTML = '<i data-lucide="wrench" class="w-3.5 h-3.5"></i> Panggil Teknisi';
+  } else {
+    techWrap?.classList.add('hidden');
+    titleEl.textContent = 'Siapkan Kamar + Tambahan';
+    descLabel.textContent = 'Deskripsi / Permintaan Tambahan (Opsional)';
+    descInput.placeholder = 'Contoh: Tambahkan 1 extrabed, selimut ekstra, atau pasien masuk pukul 14.00 WIB...';
+    hintEl.textContent = 'Jika ada tambahan perlengkapan/kebutuhan, tulis di atas agar langsung diberitahukan ke Petugas.';
+    iconWrap.className = 'w-9 h-9 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center';
+    iconWrap.innerHTML = '<i data-lucide="bed-double" class="w-5 h-5"></i>';
+    btnSubmit.className = 'py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm';
+    btnSubmit.innerHTML = '<i data-lucide="send" class="w-3.5 h-3.5"></i> Kirim ke Petugas';
+  }
+
+  openModalWithHistory('modal-nurse-action');
+  lucide.createIcons();
+  setTimeout(() => descInput?.focus(), 150);
+}
+
+async function submitNurseModalAction() {
+  const unitId = document.getElementById('nurse-modal-unit-id').value;
+  const unitName = document.getElementById('nurse-modal-unit-name').value;
+  const actionKey = document.getElementById('nurse-modal-action-type').value;
+  const descVal = document.getElementById('nurse-modal-desc').value.trim();
+  const techCat = document.getElementById('nurse-tech-category')?.value || 'Lainnya';
+
+  if (actionKey === 'teknisi' && !descVal) {
+    alert('Mohon isi deskripsi kerusakan yang perlu diperbaiki agar teknisi membawa peralatan yang tepat.');
+    document.getElementById('nurse-modal-desc')?.focus();
+    return;
+  }
+
+  closeActiveModal('modal-nurse-action');
+  await sendNurseRoomAction(unitId, unitName, actionKey, descVal, techCat, true);
+}
+
+async function sendNurseRoomAction(unitId, unitName, actionKey, extraDesc = '', techCategory = '', skipConfirm = false) {
   if (!isManagerRole() && !isPerawatRole()) return;
   const cfg = NURSE_REQUEST_TYPES[actionKey] || NURSE_REQUEST_TYPES.pulang;
   const roomLabel = extractSpokenRoomLabel(unitName);
 
   if (cfg.key === 'siapkan' && isSiapkanLockedForUnit(unitId)) {
-    return alert('Tombol "Siapkan Kamar" untuk kamar ini masih terkunci. Tunggu petugas menindaklanjuti, atau tekan "Pasien Pulang" terlebih dahulu. Anda masih bisa menyiapkan nomor kamar lain.');
+    return alert('Tombol "Siapkan Kamar" untuk kamar ini masih terkunci. Tunggu petugas menindaklanjuti, atau tekan "Pasien Pulang" terlebih dahulu.');
   }
 
-  const ok = confirm(`Kirim permintaan "${cfg.label}" untuk ${unitName} ke Petugas sekarang?`);
-  if (!ok) return;
+  if (!skipConfirm) {
+    const ok = confirm(`Kirim permintaan "${cfg.label}" untuk ${unitName} sekarang?`);
+    if (!ok) return;
+  }
 
   const nurseName = currentUser?.full_name || 'Perawat';
   const jamReq = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
+  // JIKA PERAWAT MEMANGGIL TEKNISI: OTOMATIS BUAT TUGAS TEKNISI + NOTIFIKASI MASUK KE AKUN TEKNISI
+  if (cfg.key === 'teknisi') {
+    const detailDamage = extraDesc || 'Perlu pengecekan & perbaikan fasilitas kamar.';
+    const composedRepairNotes = composeNotesWithMetadata(
+      'Tim Teknisi',
+      `Panggilan Teknisi oleh ${nurseName} (Menunggu Perbaikan)`,
+      techCategory || 'Fasilitas Kamar',
+      `${REPAIR_RECORD_TAG}\n${detailDamage}`
+    );
+
+    const repairPayload = {
+      unit_id: unitId,
+      unit_name: unitName,
+      inspector_name: nurseName,
+      inspector_role: currentUser?.role || 'perawat',
+      shift: `Perbaikan • Panggilan Perawat (${jamReq} WIB)`,
+      readiness_score: 0,
+      final_status: 'kotor',
+      duration_seconds: 0,
+      checklist_data: [
+        { item: techCategory || 'Fasilitas Kamar', checked: false },
+        { item: 'Foto Kondisi Rusak (Awal)', checked: false },
+        { item: 'Foto Sesudah Diperbaiki', checked: false }
+      ],
+      notes: composedRepairNotes,
+      photo_room_url: null,
+      photo_toilet_url: null
+    };
+
+    const { data: insertedRepair, error: repErr } = await db.from('room_inspections').insert([repairPayload]).select();
+    if (repErr) return alert('Gagal memanggil teknisi: ' + repErr.message);
+
+    if (insertedRepair?.[0]) {
+      lastKnownReportId = insertedRepair[0].id;
+      localStorage.setItem('ck_last_seen_id', insertedRepair[0].id);
+    }
+
+    await db.from('master_units').update({
+      status: 'maintenance',
+      last_checked_by: `Panggil Teknisi: ${techCategory} (${nurseName})`,
+      last_checked_at: new Date().toISOString()
+    }).eq('id', unitId);
+
+    playNotificationChime(true);
+    speakIndonesianAlert(`Panggilan teknisi untuk kamar ${roomLabel}, kategori ${techCategory}, telah dikirim.`);
+    await loadAllData();
+    alert(`Terkirim ke Akun Teknisi! Tugas perbaikan "${techCategory}" untuk ${unitName} sudah masuk ke layar & suara notifikasi Teknisi.`);
+    return;
+  }
+
   const prefixMap = {
     siapkan: 'Siapkan Kamar',
-    extrabed: 'Tambahan Extrabed',
     bersihkan: 'Minta Dibersihkan',
     pulang: 'Pasien Pulang'
   };
   const prefixTitle = prefixMap[cfg.key] || 'Pasien Pulang';
-  const unitStamp = `${prefixTitle}: ${nurseName} (${jamReq})`;
-
-  // Untuk tambahan extrabed atau minta dibersihkan saat pasien masih dirawat, pertahankan status siap jika sebelumnya siap, selain itu kotor
-  const currentUnit = unitsData.find(u => String(u.id) === String(unitId));
-  const currentEff = currentUnit ? getEffectiveUnitStatus(currentUnit) : 'kosong';
-  const nextDbStatus = (cfg.key === 'extrabed' && currentEff === 'siap') ? 'siap' : 'kotor';
+  const unitStamp = extraDesc
+    ? `${prefixTitle}: ${nurseName} (${jamReq}) • Tambahan: ${extraDesc}`
+    : `${prefixTitle}: ${nurseName} (${jamReq})`;
 
   const { error } = await db.from('master_units').update({
-    status: nextDbStatus,
+    status: 'kotor',
     last_checked_by: unitStamp,
     last_checked_at: new Date().toISOString()
   }).eq('id', unitId);
@@ -867,7 +1057,7 @@ async function sendNurseRoomAction(unitId, unitName, actionKey) {
   if (error) return alert('Gagal mengirim permintaan kamar: ' + error.message);
 
   try {
-    const spokenMessage = cfg.speak(roomLabel);
+    const spokenMessage = cfg.speak(roomLabel, extraDesc);
     const reqPayload = {
       unit_id: unitId,
       unit_name: unitName,
@@ -875,16 +1065,17 @@ async function sendNurseRoomAction(unitId, unitName, actionKey) {
       inspector_role: currentUser?.role || 'perawat',
       shift: `${prefixTitle} • ${jamReq} WIB`,
       readiness_score: 0,
-      final_status: nextDbStatus,
+      final_status: 'kotor',
       duration_seconds: 0,
       checklist_data: [
-        { item: cfg.label, checked: true }
+        { item: cfg.label, checked: true },
+        ...(extraDesc ? [{ item: `Tambahan: ${extraDesc}`, checked: true }] : [])
       ],
       notes: composeNotesWithMetadata(
         nurseName,
         `${cfg.label} (Dilaporkan oleh ${nurseName})`,
-        spokenMessage,
-        `${NURSE_REQ_TAG}\n[REQ_TYPE: ${cfg.key}]\n${spokenMessage}`
+        extraDesc || spokenMessage,
+        `${NURSE_REQ_TAG}\n[REQ_TYPE: ${cfg.key}]\n${extraDesc || spokenMessage}`
       ),
       photo_room_url: null,
       photo_toilet_url: null
@@ -896,17 +1087,16 @@ async function sendNurseRoomAction(unitId, unitName, actionKey) {
     }
   } catch (e) {}
 
-  playNotificationChime();
-  speakIndonesianAlert(`Permintaan ${cfg.label} kamar ${roomLabel} terkirim.`);
+  playNotificationChime(true);
+  speakIndonesianAlert(`Permintaan ${cfg.label} kamar ${roomLabel} terkirim ke petugas.`);
   await loadAllData();
-  alert(`Terkirim ke Petugas! Permintaan "${cfg.label}" untuk ${unitName} sudah masuk ke layar & suara notifikasi petugas.`);
+  alert(`Terkirim ke Petugas! Permintaan "${cfg.label}" untuk ${unitName}${extraDesc ? ` (Tambahan: ${extraDesc})` : ''} sudah masuk ke layar & suara notifikasi petugas.`);
 }
 
 async function confirmPatientCheckout(unitId, unitName) {
   return sendNurseRoomAction(unitId, unitName, 'pulang');
 }
 
-// Pembatalan permintaan "Siapkan Kamar / Pasien Masuk" oleh Perawat
 async function cancelAdmissionRequest(unitId, unitName) {
   if (!isPerawatRole() && !isManagerRole()) return;
   const siapkanRec = latestSiapkanRecordForUnit(unitId);
@@ -924,7 +1114,6 @@ async function cancelAdmissionRequest(unitId, unitName) {
   const jamReq = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
   const roomLabel = extractSpokenRoomLabel(unitName);
 
-  // 1) Tandai laporan permintaan sebagai dibatalkan
   const cancelledNotes = `${siapkanRec.notes || ''}\n[Dibatalkan oleh: ${canceler} • ${jamReq} WIB]\n[REQ_CANCELLED: pasien_masuk]`;
   const { error: updErr } = await db.from('room_inspections').update({
     notes: cancelledNotes,
@@ -933,7 +1122,6 @@ async function cancelAdmissionRequest(unitId, unitName) {
   }).eq('id', siapkanRec.id);
   if (updErr) return alert('Gagal membatalkan permintaan: ' + updErr.message);
 
-  // 2) Bersihkan stempel kamar agar keluar dari antrean pengingat & notifikasi petugas
   await db.from('master_units').update({
     status: 'kosong',
     last_checked_by: '',
@@ -976,7 +1164,7 @@ async function quickChangeUnitStatus(unitId, newMode) {
 
   let dbStatus = 'kotor';
   let checkedBy = null;
-  if (newMode === 'pending_approval') checkedBy = 'Menunggu Approval';
+  if (newMode === 'pending_approval') checkedBy = 'Menunggu Approval Perawat';
   else if (newMode === 'dibersihkan') checkedBy = currentUser ? currentUser.full_name : 'Petugas';
   else if (newMode === 'maintenance') { dbStatus = 'maintenance'; checkedBy = 'Maintenance / Perbaikan'; }
 
@@ -994,17 +1182,17 @@ async function markIssueResolvedByOfficer(reportId) {
   const report = inspectionsData.find(r => String(r.id) === String(reportId));
   if (!report) return;
 
-  const autoApprove = isManagerRole() || !requireApprovalMode;
+  const autoApprove = isReviewerRole() || !requireApprovalMode;
   const confirmMsg = autoApprove
     ? `Konfirmasi perbaikan pada "${report.unit_name}" sudah selesai? Status kamar akan langsung menjadi SIAP PAKAI.`
-    : `Konfirmasi perbaikan pada "${report.unit_name}" sudah selesai?\n\nNotifikasi akan dikirim ke bagian Manajemen agar segera di-approve menjadi Siap Pakai.`;
+    : `Konfirmasi perbaikan pada "${report.unit_name}" sudah selesai?\n\nNotifikasi akan dikirim ke bagian Perawat agar segera ditinjau & di-approve menjadi Siap Pakai.`;
 
   if (!confirm(confirmMsg)) return;
 
   const meta = parseNotesMetadata(report.notes);
   const actorName = currentUser ? currentUser.full_name : 'Petugas';
 
-  if (isManagerRole()) {
+  if (isReviewerRole()) {
     await approveReportById(report.id);
   } else if (!requireApprovalMode) {
     const autoNote = composeNotesWithMetadata(
@@ -1043,7 +1231,7 @@ async function markIssueResolvedByOfficer(reportId) {
   } else {
     const pendingNote = composeNotesWithMetadata(
       actorName,
-      `Menunggu Approval Manajemen (Selesai Perbaikan oleh ${actorName})`,
+      `Menunggu Approval Perawat (Selesai Perbaikan oleh ${actorName})`,
       '',
       meta.cleanNotes
     );
@@ -1062,7 +1250,7 @@ async function markIssueResolvedByOfficer(reportId) {
     if (targetUnitId) {
       await db.from('master_units').update({
         status: 'kotor',
-        last_checked_by: `${actorName} (Selesai Perbaikan - Menunggu Approval)`,
+        last_checked_by: `${actorName} (Menunggu Approval Perawat)`,
         last_checked_at: new Date().toISOString()
       }).eq('id', targetUnitId);
     }
@@ -1073,7 +1261,7 @@ async function markIssueResolvedByOfficer(reportId) {
     playNotificationChime();
     await loadAllData();
     restartNurseReminderIfNeeded();
-    alert(`Terkirim ke Manajemen! Perbaikan pada ${report.unit_name} sudah dilaporkan selesai dan menunggu approval Manajemen.`);
+    alert(`Terkirim ke Perawat! Perbaikan pada ${report.unit_name} sudah dilaporkan selesai dan menunggu approval Perawat.`);
   }
 }
 
@@ -1108,7 +1296,7 @@ function renderOfficerRevisionBanner() {
   }
 
   const revisionReports = getRoomChecklistReports().filter(r => isRevisionRequested(r));
-  const nurseTaskUnits = unitsData.filter(u => isNurseMarkedUnit(u.last_checked_by));
+  const nurseTaskUnits = unitsData.filter(u => isNurseMarkedUnit(u.last_checked_by) && !String(u.last_checked_by || '').startsWith('Panggil Teknisi:'));
 
   if (revisionReports.length === 0 && nurseTaskUnits.length === 0) {
     container.innerHTML = '';
@@ -1116,7 +1304,7 @@ function renderOfficerRevisionBanner() {
     return;
   }
 
-  const resolveBtnLabel = requireApprovalMode ? 'Selesai Perbaikan & Minta Approve' : 'Selesai Perbaikan (Siap Pakai)';
+  const resolveBtnLabel = requireApprovalMode ? 'Selesai Perbaikan & Minta Approve Perawat' : 'Selesai Perbaikan (Siap Pakai)';
 
   const nurseTasksHtml = nurseTaskUnits.length > 0 ? `
     <div class="mb-3 rounded-2xl bg-amber-50 border-2 border-amber-300 p-3.5 shadow-sm space-y-2.5">
@@ -1129,23 +1317,23 @@ function renderOfficerRevisionBanner() {
       </div>
       <div class="space-y-2">
         ${nurseTaskUnits.map(u => {
-          const safeName = (u.unit_name || '').replace(/'/g, "\\'");
-          const isExtraOrCleanOnly = String(u.last_checked_by || '').startsWith('Tambahan Extrabed:') || String(u.last_checked_by || '').startsWith('Minta Dibersihkan:');
+          const safeName = escapeHtml(u.unit_name || '');
+          const isCleanOnly = String(u.last_checked_by || '').startsWith('Minta Dibersihkan:');
           return `
             <div class="bg-white rounded-xl p-3 border border-amber-200 space-y-2">
               <div class="flex items-start justify-between gap-2">
                 <div class="min-w-0">
-                  <p class="text-xs font-extrabold text-slate-900">${u.unit_code} - ${u.unit_name}</p>
-                  <p class="text-[11px] font-bold text-amber-800">${u.last_checked_by || ''}</p>
+                  <p class="text-xs font-extrabold text-slate-900">${escapeHtml(u.unit_code)} - ${safeName}</p>
+                  <p class="text-[11px] font-bold text-amber-800">${escapeHtml(u.last_checked_by || '')}</p>
                 </div>
               </div>
               <div class="flex items-center gap-1.5 justify-end">
-                ${isExtraOrCleanOnly ? `
-                  <button type="button" onclick="acknowledgeNurseTask('${u.id}', '${safeName}')" class="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-lg text-[10.5px] flex items-center gap-1 shadow-sm transition">
+                ${isCleanOnly ? `
+                  <button type="button" onclick="acknowledgeNurseTask('${escapeHtml(u.id)}', '${safeName}')" class="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-lg text-[10.5px] flex items-center gap-1 shadow-sm transition">
                     <i data-lucide="check" class="w-3.5 h-3.5"></i> Sudah Dikerjakan
                   </button>
                 ` : ''}
-                <button type="button" onclick="quickInspect('${u.id}')" class="nurse-btn pulse-teal py-1.5 px-3 bg-gradient-to-br from-teal-500 to-cyan-600 text-white font-extrabold rounded-lg text-[10.5px] flex items-center gap-1 shadow-md shadow-teal-600/30 transition">
+                <button type="button" onclick="quickInspect('${escapeHtml(u.id)}')" class="nurse-btn pulse-teal py-1.5 px-3 bg-gradient-to-br from-teal-500 to-cyan-600 text-white font-extrabold rounded-lg text-[10.5px] flex items-center gap-1 shadow-md shadow-teal-600/30 transition">
                   <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Cek & Siapkan Kamar
                 </button>
               </div>
@@ -1161,9 +1349,9 @@ function renderOfficerRevisionBanner() {
       <div class="flex items-center justify-between gap-2">
         <div class="flex items-center gap-2">
           <span class="w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping"></span>
-          <h3 class="text-xs font-extrabold text-rose-900 uppercase tracking-wide">Perlu Perbaikan (${revisionReports.length} Kamar)</h3>
+          <h3 class="text-xs font-extrabold text-rose-900 uppercase tracking-wide">Perlu Perbaikan Ulang (${revisionReports.length} Kamar)</h3>
         </div>
-        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-200 text-rose-900">Komplain Manajemen</span>
+        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-200 text-rose-900">Tinjauan Perawat</span>
       </div>
       <div class="space-y-2">
         ${revisionReports.map(rep => {
@@ -1173,16 +1361,16 @@ function renderOfficerRevisionBanner() {
             <div class="bg-white rounded-xl p-3 border border-rose-200 space-y-2">
               <div class="flex items-start justify-between gap-2">
                 <div>
-                  <p class="text-xs font-extrabold text-slate-900">${rep.unit_name}</p>
-                  <p class="text-[11px] font-bold text-rose-700 mt-0.5">Komplain: ${meta.feedbackDetail || 'Periksa kembali kelengkapan & kebersihan kamar'}</p>
+                  <p class="text-xs font-extrabold text-slate-900">${escapeHtml(rep.unit_name)}</p>
+                  <p class="text-[11px] font-bold text-rose-700 mt-0.5">Catatan: ${escapeHtml(meta.feedbackDetail || 'Periksa kembali kelengkapan & kebersihan kamar')}</p>
                 </div>
                 <span class="text-[10px] text-slate-400 shrink-0">${waktu}</span>
               </div>
               <div class="grid grid-cols-2 gap-1.5 pt-1">
-                <button type="button" onclick="openReportInForm('${rep.id}')" class="py-2 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-extrabold rounded-lg text-[10.5px] flex items-center justify-center gap-1 transition">
+                <button type="button" onclick="openReportInForm('${escapeHtml(rep.id)}')" class="py-2 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-extrabold rounded-lg text-[10.5px] flex items-center justify-center gap-1 transition">
                   <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Buka & Perbaiki Form
                 </button>
-                <button type="button" onclick="markIssueResolvedByOfficer('${rep.id}')" class="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-lg text-[10.5px] flex items-center justify-center gap-1 shadow-sm transition">
+                <button type="button" onclick="markIssueResolvedByOfficer('${escapeHtml(rep.id)}')" class="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-lg text-[10.5px] flex items-center justify-center gap-1 shadow-sm transition">
                   <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> ${resolveBtnLabel}
                 </button>
               </div>
@@ -1199,7 +1387,7 @@ function renderOfficerRevisionBanner() {
   syncOfficerInspectLanding(false);
 }
 
-// ==================== MODUL NAVIGASI & FORM CEK PERBAIKAN FASILITAS ====================
+// ==================== MODUL NAVIGASI & FORM CEK PERBAIKAN FASILITAS (TEKNISI) ====================
 
 function ensureRepairNavigationAndSection() {
   const navGrid = document.getElementById('bottom-nav-grid');
@@ -1226,15 +1414,24 @@ function ensureRepairNavigationAndSection() {
     repairSection.id = 'tab-repair';
     repairSection.className = 'page-section hidden space-y-4';
     repairSection.innerHTML = `
+      <div id="teknisi-alert-banner" class="hidden rounded-2xl bg-purple-600 text-white p-3.5 shadow-lg flex items-center justify-between gap-3">
+        <div class="space-y-0.5">
+          <span class="text-[9.5px] font-extrabold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full">Tugas Teknisi Masuk</span>
+          <h3 id="teknisi-alert-title" class="text-xs sm:text-sm font-extrabold">Ada Panggilan Perbaikan Kamar</h3>
+          <p class="text-[11px] text-purple-100">Segera kerjakan perbaikan di bawah ini lalu upload foto sesudah & klik Sudah Diperbaiki.</p>
+        </div>
+        <i data-lucide="wrench" class="w-7 h-7 shrink-0 opacity-90"></i>
+      </div>
+
       <div class="glass-card rounded-3xl p-4 sm:p-5 shadow-sm border border-amber-200/80 space-y-4">
         <div class="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
           <div>
             <div class="flex items-center gap-1.5">
               <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-              <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Form Perbaikan & Maintenance</span>
+              <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Form Perbaikan & Maintenance Teknisi</span>
             </div>
             <h2 class="text-base font-extrabold text-slate-900 mt-0.5">Form Cek Perbaikan Fasilitas</h2>
-            <p class="text-[11px] text-slate-500">Ajukan perbaikan, penugasan teknisi oleh manajemen, & bukti selesai</p>
+            <p class="text-[11px] text-slate-500">Panggilan dari perawat, penugasan teknisi, & dokumentasi selesai</p>
           </div>
           <span id="repair-mode-badge" class="shrink-0 text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800">Pengajuan Baru</span>
         </div>
@@ -1264,12 +1461,12 @@ function ensureRepairNavigationAndSection() {
                 <option value="AC & Sirkulasi Udara">AC & Sirkulasi Udara</option>
                 <option value="Sanitasi, Keran & Toilet">Sanitasi, Keran & Toilet</option>
                 <option value="Bed, Pintu & Furnitur">Bed, Pintu & Furnitur</option>
-                <option value="Gas Medis & Alat">Gas Medis & Alat</option>
+                <option value="Gas Medis & Nurse Call">Gas Medis & Nurse Call</option>
                 <option value="Lainnya">Lainnya</option>
               </select>
             </div>
             <div>
-              <label class="block text-[11px] font-extrabold text-slate-700 mb-1">4. Petugas Pelapor / Pengaju</label>
+              <label class="block text-[11px] font-extrabold text-slate-700 mb-1">4. Pelapor / Pengaju</label>
               <input type="text" id="repair-reporter-input" readonly class="w-full px-3 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 outline-none" />
             </div>
           </div>
@@ -1278,17 +1475,17 @@ function ensureRepairNavigationAndSection() {
             <div class="flex items-center justify-between">
               <label class="text-[11px] font-extrabold text-indigo-950 flex items-center gap-1.5">
                 <i data-lucide="user-check" class="w-3.5 h-3.5 text-indigo-600"></i>
-                5. Petugas / Teknisi yang Ditugaskan Memperbaiki
+                5. Teknisi yang Ditugaskan Memperbaiki
               </label>
-              <span id="repair-assignee-lock-badge" class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">Dipilih Manajemen</span>
+              <span id="repair-assignee-lock-badge" class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">Tim Teknisi</span>
             </div>
             <select id="repair-assignee-select" class="w-full px-3 py-2.5 rounded-xl bg-white border border-indigo-200 text-xs font-bold text-slate-800 outline-none focus:border-indigo-500"></select>
-            <p id="repair-assignee-hint" class="text-[10.5px] text-indigo-700">Manajemen dapat memilih petugas/teknisi yang bertugas memperbaiki kerusakan ini.</p>
+            <p id="repair-assignee-hint" class="text-[10.5px] text-indigo-700">Teknisi otomatis menerima panggilan perbaikan dari perawat & manajemen.</p>
           </div>
 
           <div>
-            <label class="block text-[11px] font-extrabold text-slate-700 mb-1">6. Detail Kerusakan / Keterangan Perbaikan</label>
-            <textarea id="repair-notes" rows="2" required placeholder="Contoh: Keran wastafel bocor / lampu kamar mandi mati, mohon segera diperbaiki..." class="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 outline-none focus:border-amber-500"></textarea>
+            <label class="block text-[11px] font-extrabold text-slate-700 mb-1">6. Detail Kerusakan / Tindakan Perbaikan</label>
+            <textarea id="repair-notes" rows="2" required placeholder="Contoh: Keran wastafel bocor / lampu kamar mandi mati, sudah diganti seal karet..." class="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 outline-none focus:border-amber-500"></textarea>
           </div>
 
           <div class="space-y-2">
@@ -1355,7 +1552,7 @@ function ensureRepairNavigationAndSection() {
             </div>
 
             <button type="button" id="btn-assign-repair-worker" onclick="assignRepairWorkerFromForm()" class="hidden w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition">
-              <i data-lucide="user-check" class="w-4 h-4"></i> Simpan & Tugaskan Petugas Perbaikan
+              <i data-lucide="user-check" class="w-4 h-4"></i> Simpan & Tugaskan Teknisi Perbaikan
             </button>
 
             <button type="button" id="btn-mark-repair-done" onclick="markActiveRepairAsDone()" class="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition">
@@ -1367,7 +1564,7 @@ function ensureRepairNavigationAndSection() {
 
       <div class="space-y-2.5">
         <div class="flex items-center justify-between px-1">
-          <h3 class="text-xs font-extrabold text-slate-800 uppercase tracking-wide">Daftar Pengajuan & Tugas Perbaikan</h3>
+          <h3 class="text-xs font-extrabold text-slate-800 uppercase tracking-wide">Daftar Pengajuan & Tugas Teknisi</h3>
           <div class="flex items-center gap-1.5">
             <button type="button" onclick="refreshRepairListManual()" class="px-2 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-700">Refresh</button>
             <span id="repair-history-count" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">0 Laporan</span>
@@ -1397,14 +1594,14 @@ function populateRepairFormDropdowns() {
   const unitSel = document.getElementById('repair-unit');
   if (unitSel) {
     const prevUnit = unitSel.value;
-    unitSel.innerHTML = unitsData.map(u => `<option value="${u.id}">${u.unit_code} - ${u.unit_name}</option>`).join('');
+    unitSel.innerHTML = unitsData.map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.unit_code)} - ${escapeHtml(u.unit_name)}</option>`).join('');
     if (prevUnit && unitsData.some(u => String(u.id) === String(prevUnit))) unitSel.value = prevUnit;
   }
 
   const shiftSel = document.getElementById('repair-shift');
   if (shiftSel) {
     const prevShift = shiftSel.value;
-    shiftSel.innerHTML = shiftsData.map(s => `<option value="${s.name}">${s.hours ? `${s.name} (${s.hours})` : s.name}</option>`).join('');
+    shiftSel.innerHTML = shiftsData.map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.hours ? `${s.name} (${s.hours})` : s.name)}</option>`).join('');
     if (prevShift) shiftSel.value = prevShift;
   }
 
@@ -1421,31 +1618,31 @@ function populateRepairFormDropdowns() {
   if (assigneeSel) {
     const prevAssignee = assigneeSel.value;
     const allStaff = usersData.length > 0
-      ? usersData
-      : [{ full_name: currentUser?.full_name || 'Petugas / Teknisi', role: 'petugas' }];
+      ? usersData.filter(u => ['teknisi', 'petugas', 'manajemen'].includes((u.role || '').toLowerCase()))
+      : [{ full_name: currentUser?.full_name || 'Teknisi', role: 'teknisi' }];
 
-    const optionsHtml = ['<option value="">-- Belum Ditentukan (Menunggu Penugasan Manajemen) --</option>']
-      .concat(allStaff.map(u => `<option value="${u.full_name}">${u.full_name} (${u.role})</option>`))
+    const optionsHtml = ['<option value="Tim Teknisi">Tim Teknisi (Semua Teknisi Aktif)</option>']
+      .concat(allStaff.map(u => `<option value="${escapeHtml(u.full_name)}">${escapeHtml(u.full_name)} (${escapeHtml(roleLabel(u.role))})</option>`))
       .join('');
     assigneeSel.innerHTML = optionsHtml;
 
     if (prevAssignee) assigneeSel.value = prevAssignee;
 
-    if (isManagerRole()) {
+    if (isManagerRole() || isTeknisiRole()) {
       assigneeSel.disabled = false;
       if (assigneeBadge) {
-        assigneeBadge.textContent = 'Pilih Pelaksana';
+        assigneeBadge.textContent = isTeknisiRole() ? 'Akun Teknisi' : 'Pilih Teknisi';
         assigneeBadge.className = 'text-[9.5px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-600 text-white';
       }
-      if (assigneeHint) assigneeHint.textContent = 'Pilih petugas/teknisi yang harus mengerjakan perbaikan fasilitas ini.';
+      if (assigneeHint) assigneeHint.textContent = 'Pilih nama teknisi pelaksana yang menangani perbaikan fasilitas ini.';
       if (btnAssign) btnAssign.classList.remove('hidden');
     } else {
       assigneeSel.disabled = true;
       if (assigneeBadge) {
-        assigneeBadge.textContent = '🔒 Diatur Manajemen';
+        assigneeBadge.textContent = '🔒 Tim Teknisi';
         assigneeBadge.className = 'text-[9.5px] font-extrabold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700';
       }
-      if (assigneeHint) assigneeHint.textContent = 'Bagian Manajemen yang akan menunjuk petugas/teknisi untuk memperbaiki laporan ini.';
+      if (assigneeHint) assigneeHint.textContent = 'Tugas akan otomatis masuk ke notifikasi akun Teknisi.';
       if (btnAssign) btnAssign.classList.add('hidden');
     }
   }
@@ -1509,7 +1706,7 @@ function resetRepairForm() {
   if (btnReq) btnReq.innerHTML = '<i data-lucide="wrench" class="w-4 h-4"></i> Ajukan Perbaikan';
   populateRepairFormDropdowns();
   const assigneeSel = document.getElementById('repair-assignee-select');
-  if (assigneeSel) assigneeSel.value = '';
+  if (assigneeSel) assigneeSel.value = isTeknisiRole() && currentUser ? currentUser.full_name : 'Tim Teknisi';
   lucide.createIcons();
 }
 
@@ -1538,7 +1735,7 @@ function openRepairReportInForm(reportId) {
 
   const assigneeSel = document.getElementById('repair-assignee-select');
   if (assigneeSel) {
-    const assignedName = meta.executor && meta.executor !== 'Belum Ditugaskan' ? meta.executor : '';
+    const assignedName = isTeknisiRole() && currentUser ? currentUser.full_name : (meta.executor || 'Tim Teknisi');
     if (assignedName && !Array.from(assigneeSel.options).some(o => o.value === assignedName)) {
       const opt = document.createElement('option');
       opt.value = assignedName;
@@ -1569,9 +1766,7 @@ function openRepairReportInForm(reportId) {
   const banner = document.getElementById('repair-edit-banner');
   const desc = document.getElementById('repair-edit-desc');
   if (banner && desc) {
-    desc.innerHTML = isManagerRole()
-      ? `Mengelola pengajuan <strong>${rep.unit_name}</strong> (Pelapor: ${rep.inspector_name}). Pilih petugas pelaksana di bawah atau klik <strong>Sudah Diperbaiki</strong>.`
-      : `Tugas perbaikan <strong>${rep.unit_name}</strong>${meta.executor && meta.executor !== 'Belum Ditugaskan' ? ` • Ditugaskan ke: <strong>${meta.executor}</strong>` : ''}. Upload foto sesudah lalu klik <strong>Sudah Diperbaiki</strong>.`;
+    desc.innerHTML = `Tugas perbaikan <strong>${escapeHtml(rep.unit_name)}</strong> (Pelapor: ${escapeHtml(rep.inspector_name)}). Upload foto sesudah lalu klik <strong>Sudah Diperbaiki</strong>.`;
     banner.classList.remove('hidden');
   }
 
@@ -1597,7 +1792,7 @@ function handleRepairPhoto(e, slot) {
       ctx.fillRect(0, canvas.height - 32, canvas.width, 32);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 12px sans-serif';
-      const actor = currentUser ? currentUser.full_name : 'Petugas';
+      const actor = currentUser ? currentUser.full_name : 'Teknisi';
       const labelSlot = slot === 'before' ? 'SEBELUM' : 'SESUDAH';
       ctx.fillText(`[${labelSlot}] ${new Date().toLocaleString('id-ID')} • ${actor}`, 10, canvas.height - 12);
       repairPhotos[slot] = canvas.toDataURL('image/jpeg', 0.75);
@@ -1616,15 +1811,13 @@ async function processRepairRequestSubmit(alsoSendWa = false) {
   const shiftVal = document.getElementById('repair-shift')?.value || 'Shift Pagi';
   const categoryVal = document.getElementById('repair-category')?.value || 'Lainnya';
   const reporterVal = document.getElementById('repair-reporter-input')?.value.trim() || currentUser.full_name;
-  const selectedAssignee = isManagerRole() ? (document.getElementById('repair-assignee-select')?.value || '') : '';
+  const selectedAssignee = document.getElementById('repair-assignee-select')?.value || 'Tim Teknisi';
   const detailText = document.getElementById('repair-notes')?.value.trim();
 
   if (!detailText) return alert('Mohon isi detail kerusakan yang diajukan.');
 
-  const executorStr = selectedAssignee || 'Belum Ditugaskan';
-  const statusStr = selectedAssignee
-    ? `Ditugaskan ke ${selectedAssignee} (Menunggu Perbaikan)`
-    : 'Pengajuan Perbaikan Baru (Menunggu Penugasan Manajemen)';
+  const executorStr = selectedAssignee || 'Tim Teknisi';
+  const statusStr = `Ditugaskan ke ${executorStr} (Menunggu Perbaikan)`;
 
   const composedNotes = composeNotesWithMetadata(
     executorStr,
@@ -1676,7 +1869,7 @@ async function processRepairRequestSubmit(alsoSendWa = false) {
       if (updatedRows?.[0]) savedRecord = updatedRows[0];
       await db.from('master_units').update({
         status: 'maintenance',
-        last_checked_by: selectedAssignee ? `Perbaikan (${selectedAssignee})` : `Pengajuan Perbaikan: ${categoryVal}`,
+        last_checked_by: `Perbaikan (${executorStr})`,
         last_checked_at: new Date().toISOString()
       }).eq('id', unit.id);
       savedOk = true;
@@ -1693,7 +1886,7 @@ async function processRepairRequestSubmit(alsoSendWa = false) {
       }
       await db.from('master_units').update({
         status: 'maintenance',
-        last_checked_by: selectedAssignee ? `Perbaikan (${selectedAssignee})` : `Pengajuan Perbaikan: ${categoryVal}`,
+        last_checked_by: `Perbaikan (${executorStr})`,
         last_checked_at: new Date().toISOString()
       }).eq('id', unit.id);
       savedOk = true;
@@ -1708,9 +1901,7 @@ async function processRepairRequestSubmit(alsoSendWa = false) {
     playNotificationChime();
     await loadAllData();
     if (alsoSendWa) openWaShareModal(savedRecord);
-    else alert(selectedAssignee
-      ? `Pengajuan perbaikan tersimpan & ditugaskan kepada ${selectedAssignee}!`
-      : 'Pengajuan perbaikan berhasil dikirim ke Manajemen!');
+    else alert(`Pengajuan perbaikan tersimpan & notifikasi dikirim ke ${executorStr}!`);
   }
 }
 
@@ -1719,9 +1910,9 @@ async function saveRepairRequestAndWa() {
 }
 
 async function assignRepairWorkerFromForm() {
-  if (!isManagerRole()) return alert('Hanya Manajemen yang dapat menunjuk petugas perbaikan.');
+  if (!isManagerRole() && !isTeknisiRole()) return alert('Hanya Manajemen atau Teknisi yang dapat mengambil/menunjuk pelaksana perbaikan.');
   const chosenWorker = document.getElementById('repair-assignee-select')?.value || '';
-  if (!chosenWorker) return alert('Silakan pilih terlebih dahulu nama petugas / teknisi yang harus memperbaiki.');
+  if (!chosenWorker) return alert('Silakan pilih terlebih dahulu nama teknisi yang harus memperbaiki.');
 
   if (!activeRepairReportId) {
     return processRepairRequestSubmit(false);
@@ -1734,7 +1925,7 @@ async function assignRepairWorkerFromForm() {
   const unit = unitsData.find(u => String(u.id) === String(unitId));
   const categoryVal = document.getElementById('repair-category')?.value || 'Lainnya';
   const detailText = document.getElementById('repair-notes')?.value.trim() || parseNotesMetadata(rep.notes).cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
-  const managerName = currentUser.full_name || 'Manajemen';
+  const managerName = currentUser.full_name || 'Teknisi';
 
   const composedNotes = composeNotesWithMetadata(
     chosenWorker,
@@ -1752,7 +1943,7 @@ async function assignRepairWorkerFromForm() {
     created_at: new Date().toISOString()
   }).eq('id', rep.id);
 
-  if (error) return alert('Gagal menugaskan petugas: ' + error.message);
+  if (error) return alert('Gagal menugaskan teknisi: ' + error.message);
 
   if (unit) {
     await db.from('master_units').update({
@@ -1765,11 +1956,11 @@ async function assignRepairWorkerFromForm() {
   resetRepairForm();
   playNotificationChime();
   await loadAllData();
-  alert(`Berhasil! Tugas perbaikan telah diberikan kepada ${chosenWorker}.`);
+  alert(`Berhasil! Tugas perbaikan telah ditetapkan kepada ${chosenWorker}.`);
 }
 
 async function quickAssignRepairWorker(reportId, workerName) {
-  if (!isManagerRole() || !workerName) return;
+  if ((!isManagerRole() && !isTeknisiRole()) || !workerName) return;
   const rep = getRepairReports().find(r => String(r.id) === String(reportId));
   if (!rep) return;
 
@@ -1789,7 +1980,7 @@ async function quickAssignRepairWorker(reportId, workerName) {
     created_at: new Date().toISOString()
   }).eq('id', rep.id);
 
-  if (error) return alert('Gagal menugaskan petugas: ' + error.message);
+  if (error) return alert('Gagal menugaskan teknisi: ' + error.message);
 
   if (rep.unit_id) {
     await db.from('master_units').update({
@@ -1807,17 +1998,17 @@ async function markRepairCompletedById(reportId, overrideBefore = null, override
   const rep = getRepairReports().find(r => String(r.id) === String(reportId));
   if (!rep) return;
 
-  if (!confirm(`Konfirmasi bahwa "${rep.unit_name}" SUDAH DIPERBAIKI?\n\nStatus kamar akan otomatis keluar dari Maintenance dan siap dibersihkan petugas.`)) return;
+  if (!confirm(`Konfirmasi bahwa "${rep.unit_name}" SUDAH DIPERBAIKI oleh Teknisi?\n\nStatus kamar akan otomatis keluar dari Maintenance dan siap disiapkan/dibersihkan petugas.`)) return;
 
   const meta = parseNotesMetadata(rep.notes);
-  const finisherName = currentUser ? currentUser.full_name : (meta.executor || 'Petugas');
+  const finisherName = currentUser ? currentUser.full_name : (meta.executor || 'Teknisi');
   const rawDetail = overrideNotes !== null
     ? overrideNotes
     : meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').trim();
 
   const updatedNotes = composeNotesWithMetadata(
-    meta.executor && meta.executor !== 'Belum Ditugaskan' ? meta.executor : finisherName,
-    `Sudah Diperbaiki (Selesai oleh ${finisherName})`,
+    finisherName,
+    `Sudah Diperbaiki (Selesai oleh Teknisi ${finisherName})`,
     meta.feedbackDetail,
     `${REPAIR_RECORD_TAG}\n${rawDetail}`
   );
@@ -1855,7 +2046,7 @@ async function markRepairCompletedById(reportId, overrideBefore = null, override
   resetRepairForm();
   playNotificationChime();
   await loadAllData();
-  alert(`Berhasil! ${rep.unit_name} ditandai SUDAH DIPERBAIKI.`);
+  alert(`Berhasil! ${rep.unit_name} ditandai SUDAH DIPERBAIKI oleh ${finisherName}.`);
 }
 
 async function markActiveRepairAsDone() {
@@ -1879,7 +2070,7 @@ async function markActiveRepairAsDone() {
 
   const composedNotes = composeNotesWithMetadata(
     finisherName,
-    `Sudah Diperbaiki (Selesai oleh ${finisherName})`,
+    `Sudah Diperbaiki (Selesai oleh Teknisi ${finisherName})`,
     categoryVal,
     `${REPAIR_RECORD_TAG}\n${detailText}`
   );
@@ -1922,12 +2113,23 @@ function renderRepairHistoryList() {
   const listEl = document.getElementById('repair-history-list');
   const countEl = document.getElementById('repair-history-count');
   const navBadge = document.getElementById('repair-nav-badge');
+  const tekBanner = document.getElementById('teknisi-alert-banner');
+  const tekBannerTitle = document.getElementById('teknisi-alert-title');
   if (!listEl) return;
 
   const repairs = getRepairReports();
   const activeCount = repairs.filter(r => r.final_status !== 'siap').length;
   if (countEl) countEl.textContent = `${repairs.length} Laporan`;
   if (navBadge) navBadge.classList.toggle('hidden', activeCount === 0);
+
+  if (tekBanner) {
+    if (isTeknisiRole() && activeCount > 0) {
+      tekBanner.classList.remove('hidden');
+      if (tekBannerTitle) tekBannerTitle.textContent = `${activeCount} Tugas Perbaikan Menunggu Dikerjakan`;
+    } else {
+      tekBanner.classList.add('hidden');
+    }
+  }
 
   if (repairs.length === 0) {
     listEl.innerHTML = '<div class="text-center py-6 text-xs text-slate-400 bg-white/70 rounded-2xl border border-slate-200/70">Belum ada pengajuan perbaikan fasilitas.</div>';
@@ -1949,35 +2151,35 @@ function renderRepairHistoryList() {
     const badgeText = isDone
       ? 'SUDAH DIPERBAIKI ✅'
       : hasAssignee
-        ? 'SEDANG DITANGANI 🔧'
-        : 'MENUNGGU PENUGASAN ⏳';
+        ? 'TUGAS TEKNISI 🔧'
+        : 'MENUNGGU TEKNISI ⏳';
 
-    const staffOptions = ['<option value="">-- Pilih Petugas yang Memperbaiki --</option>']
-      .concat(usersData.map(u => `<option value="${u.full_name}" ${meta.executor === u.full_name ? 'selected' : ''}>${u.full_name} (${u.role})</option>`))
+    const staffOptions = ['<option value="Tim Teknisi">Tim Teknisi</option>']
+      .concat(usersData.filter(u => ['teknisi', 'petugas'].includes((u.role || '').toLowerCase())).map(u => `<option value="${escapeHtml(u.full_name)}" ${meta.executor === u.full_name ? 'selected' : ''}>${escapeHtml(u.full_name)} (${escapeHtml(roleLabel(u.role))})</option>`))
       .join('');
 
     return `
-      <div class="glass-card rounded-2xl p-4 shadow-sm border ${isDone ? 'border-emerald-200' : 'border-amber-200'} space-y-2.5">
+      <div class="glass-card rounded-2xl p-4 shadow-sm border ${isDone ? 'border-emerald-200' : 'border-purple-200'} space-y-2.5">
         <div class="flex items-start justify-between gap-2">
           <div>
-            <h4 class="text-xs font-extrabold text-slate-900">${r.unit_name}</h4>
-            <p class="text-[11px] text-slate-500">Pengaju: <strong>${r.inspector_name}</strong> • ${waktuStr}</p>
+            <h4 class="text-xs font-extrabold text-slate-900">${escapeHtml(r.unit_name)}</h4>
+            <p class="text-[11px] text-slate-500">Pelapor: <strong>${escapeHtml(r.inspector_name)}</strong> • ${waktuStr}</p>
             <div class="flex flex-wrap items-center gap-1.5 mt-1">
-              ${meta.feedbackDetail ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">${meta.feedbackDetail}</span>` : ''}
+              ${meta.feedbackDetail ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">${escapeHtml(meta.feedbackDetail)}</span>` : ''}
               <span class="text-[10px] font-extrabold px-2 py-0.5 rounded ${hasAssignee ? 'bg-indigo-50 text-indigo-800 border border-indigo-200' : 'bg-amber-50 text-amber-800 border border-amber-200'}">
-                Pelaksana: ${hasAssignee ? meta.executor : 'Belum Ditugaskan'}
+                Pelaksana: ${escapeHtml(hasAssignee ? meta.executor : 'Tim Teknisi')}
               </span>
             </div>
           </div>
           <span class="shrink-0 text-[9px] font-extrabold px-2.5 py-1 rounded-full ${badgeClass}">${badgeText}</span>
         </div>
 
-        ${cleanDetail ? `<p class="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-100">${cleanDetail}</p>` : ''}
+        ${cleanDetail ? `<p class="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-100">${escapeHtml(cleanDetail)}</p>` : ''}
 
         ${(isManagerRole() && !isDone) ? `
           <div class="bg-indigo-50/80 border border-indigo-200 rounded-xl p-2.5 space-y-1.5">
-            <label class="block text-[10px] font-extrabold text-indigo-950">Pilih Petugas / Teknisi yang Memperbaiki:</label>
-            <select onchange="quickAssignRepairWorker('${r.id}', this.value)" class="w-full px-2.5 py-2 rounded-lg bg-white border border-indigo-200 text-xs font-bold text-slate-800 outline-none">
+            <label class="block text-[10px] font-extrabold text-indigo-950">Pilih Teknisi yang Memperbaiki:</label>
+            <select onchange="quickAssignRepairWorker('${escapeHtml(r.id)}', this.value)" class="w-full px-2.5 py-2 rounded-lg bg-white border border-indigo-200 text-xs font-bold text-slate-800 outline-none">
               ${staffOptions}
             </select>
           </div>
@@ -2002,14 +2204,14 @@ function renderRepairHistoryList() {
 
         <div class="pt-1 flex items-center justify-end gap-1.5 flex-wrap">
           ${!isDone ? `
-            <button type="button" onclick="openRepairReportInForm('${r.id}')" class="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-bold rounded-xl flex items-center gap-1 transition">
+            <button type="button" onclick="openRepairReportInForm('${escapeHtml(r.id)}')" class="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-bold rounded-xl flex items-center gap-1 transition">
               <i data-lucide="camera" class="w-3 h-3"></i> Upload Foto Sesudah
             </button>
-            <button type="button" onclick="markRepairCompletedById('${r.id}')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[11px] font-extrabold rounded-xl flex items-center gap-1 shadow-sm transition">
+            <button type="button" onclick="markRepairCompletedById('${escapeHtml(r.id)}')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[11px] font-extrabold rounded-xl flex items-center gap-1 shadow-sm transition">
               <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Sudah Diperbaiki
             </button>
           ` : ''}
-          <button type="button" onclick="shareHistoryWaById('${r.id}')" class="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-bold rounded-xl flex items-center gap-1 shadow-sm transition">
+          <button type="button" onclick="shareHistoryWaById('${escapeHtml(r.id)}')" class="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-bold rounded-xl flex items-center gap-1 shadow-sm transition">
             <i data-lucide="send" class="w-3 h-3"></i> Kirim WA
           </button>
         </div>
@@ -2043,13 +2245,13 @@ function sendAppInviteWa(targetRole) {
     '',
     'Terima kasih.'
   ] : [
-    '*UNDANGAN OPERASIONAL PETUGAS & PERAWAT*',
+    '*UNDANGAN OPERASIONAL TIM*',
     '*Aplikasi Cek Kesiapan Kamar*',
     '*RS Khusus Bedah SS Medika*',
     '--------------------------------',
-    'Halo Rekan-Rekan Tim,',
+    'Halo Rekan-Rekan Tim (Perawat, Petugas & Teknisi),',
     '',
-    'Silakan akses aplikasi di bawah ini untuk melakukan permintaan kamar (Perawat), pengecekan kesiapan kamar, pengajuan perbaikan, dan dokumentasi foto:',
+    'Silakan akses aplikasi di bawah ini untuk melakukan permintaan kamar, pengecekan kesiapan kamar, perbaikan teknisi, dan dokumentasi foto:',
     '',
     '🔗 *Link Aplikasi:*',
     appUrl,
@@ -2121,7 +2323,7 @@ function composeNotesWithMetadata(executorName, feedbackStatus, feedbackDetail, 
 function handleFeedbackStatusChange() {
   const st = document.getElementById('inspect-feedback-status')?.value || '';
   if (isPetugasRole() && requireApprovalMode && st.includes('Approved')) {
-    document.getElementById('inspect-feedback-status').value = 'Menunggu Approval Manajemen';
+    document.getElementById('inspect-feedback-status').value = 'Menunggu Approval Perawat';
     return;
   }
   const detailInput = document.getElementById('inspect-feedback-detail');
@@ -2173,7 +2375,7 @@ async function deleteHistoryRecord(id, unitName, unitId) {
       await db.from('master_units').update({
         status: approved ? 'siap' : 'kotor',
         last_checked_at: latest.created_at,
-        last_checked_by: approved ? `Approved: ${latest.inspector_name}` : `${latest.inspector_name} (Menunggu Approval)`
+        last_checked_by: approved ? `Approved: ${latest.inspector_name}` : `${latest.inspector_name} (Menunggu Approval Perawat)`
       }).eq('id', unitId);
     } else {
       await db.from('master_units').update({ status: 'kotor', last_checked_at: null, last_checked_by: null }).eq('id', unitId);
@@ -2181,6 +2383,11 @@ async function deleteHistoryRecord(id, unitName, unitId) {
   }
   await loadAllData();
 }
+
+const BULAN_NAMA_ID = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
 
 function initExportPeriodInputs() {
   const now = new Date();
@@ -2196,29 +2403,54 @@ function initExportPeriodInputs() {
   const yearEl = document.getElementById('export-filter-year');
   const unitEl = document.getElementById('export-filter-unit');
 
+  const startMonthEl = document.getElementById('export-start-month');
+  const startYearEl = document.getElementById('export-start-year');
+  const endMonthEl = document.getElementById('export-end-month');
+  const endYearEl = document.getElementById('export-end-year');
+
   if (dayEl && !dayEl.value) dayEl.value = todayStr;
   if (startEl && !startEl.value) startEl.value = todayStr;
   if (endEl && !endEl.value) endEl.value = todayStr;
   if (monthEl && !monthEl.value) monthEl.value = `${yyyy}-${mm}`;
 
+  const monthOptionsHtml = BULAN_NAMA_ID.map((nama, i) => {
+    const val = String(i + 1).padStart(2, '0');
+    return `<option value="${val}">${nama}</option>`;
+  }).join('');
+
+  if (startMonthEl && startMonthEl.options.length === 0) {
+    startMonthEl.innerHTML = monthOptionsHtml;
+    startMonthEl.value = '01';
+  }
+  if (endMonthEl && endMonthEl.options.length === 0) {
+    endMonthEl.innerHTML = monthOptionsHtml;
+    endMonthEl.value = mm;
+  }
+
+  // Rentang tahun lengkap mulai tahun 2000 sampai tahun berjalan + 1
+  const maxYear = Math.max(yyyy, 2026);
+  const fullYears = [];
+  for (let y = maxYear; y >= 2000; y--) fullYears.push(y);
+
+  if (startYearEl && startYearEl.options.length === 0) {
+    startYearEl.innerHTML = fullYears.map(y => `<option value="${y}">${y}</option>`).join('');
+    startYearEl.value = '2000';
+  }
+  if (endYearEl && endYearEl.options.length === 0) {
+    endYearEl.innerHTML = fullYears.map(y => `<option value="${y}">${y}</option>`).join('');
+    endYearEl.value = String(yyyy);
+  }
+
   if (yearEl) {
-    const yearsSet = new Set([yyyy, yyyy - 1]);
-    inspectionsData.forEach(r => {
-      if (r.created_at) {
-        const y = new Date(r.created_at).getFullYear();
-        if (!isNaN(y)) yearsSet.add(y);
-      }
-    });
-    const sortedYears = Array.from(yearsSet).sort((a, b) => b - a);
     const prevVal = yearEl.value || String(yyyy);
-    yearEl.innerHTML = sortedYears.map(y => `<option value="${y}">Tahun ${y}</option>`).join('');
+    yearEl.innerHTML = fullYears.map(y => `<option value="${y}">Tahun ${y}</option>`).join('');
     yearEl.value = prevVal;
   }
 
   if (unitEl) {
     const prevUnit = unitEl.value || 'all';
     const unitOptions = ['<option value="all">Semua Kamar</option>'];
-    unitsData.forEach(u => unitOptions.push(`<option value="${u.unit_name}">${u.unit_name}</option>`));
+    unitsData.forEach(u => unitOptions.push(`<option value="${escapeHtml(u.unit_name)}">${escapeHtml(u.unit_name)}</option>`));
     unitEl.innerHTML = unitOptions.join('');
     unitEl.value = prevUnit;
   }
@@ -2229,8 +2461,18 @@ function handleExportPeriodTypeChange() {
   document.getElementById('wrap-filter-day')?.classList.toggle('hidden', type !== 'day');
   document.getElementById('wrap-filter-range')?.classList.toggle('hidden', type !== 'range');
   document.getElementById('wrap-filter-month')?.classList.toggle('hidden', type !== 'month');
+  document.getElementById('wrap-filter-month-range')?.classList.toggle('hidden', type !== 'month_range');
   document.getElementById('wrap-filter-year')?.classList.toggle('hidden', type !== 'year');
   renderAnalytics();
+}
+
+function toggleAllExportSections() {
+  const ids = ['exp-opt-room-usage', 'exp-opt-discipline', 'exp-opt-recap-table'];
+  const allChecked = ids.every(id => document.getElementById(id)?.checked);
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.checked = !allChecked;
+  });
 }
 
 function getLocalYmd(dateStr) {
@@ -2314,6 +2556,24 @@ function getFilteredExportData() {
     });
     periodLabel = `Bulan ${targetMonth}`;
     fileSuffix = `Bulanan_${targetMonth}`;
+  } else if (type === 'month_range') {
+    const sM = document.getElementById('export-start-month')?.value || '01';
+    const sY = document.getElementById('export-start-year')?.value || '2000';
+    const eM = document.getElementById('export-end-month')?.value || '12';
+    const eY = document.getElementById('export-end-year')?.value || String(new Date().getFullYear());
+    const startYm = `${sY}-${sM}`;
+    const endYm = `${eY}-${eM}`;
+
+    rows = rows.filter(r => {
+      if (!r.created_at) return false;
+      const d = new Date(r.created_at);
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      return ym >= startYm && ym <= endYm;
+    });
+    const sMonthName = BULAN_NAMA_ID[Number(sM) - 1] || sM;
+    const eMonthName = BULAN_NAMA_ID[Number(eM) - 1] || eM;
+    periodLabel = `Bulan ${sMonthName} ${sY} s/d ${eMonthName} ${eY}`;
+    fileSuffix = `${sMonthName}_${sY}_sd_${eMonthName}_${eY}`;
   } else if (type === 'year') {
     const targetYear = document.getElementById('export-filter-year')?.value || '';
     rows = rows.filter(r => r.created_at && String(new Date(r.created_at).getFullYear()) === targetYear);
@@ -2328,51 +2588,97 @@ function getFilteredExportData() {
   return { rows, label: periodLabel, fileSuffix };
 }
 
+// Rekap jumlah kamar dipakai & kosong dalam kurun hari, minggu, bulan, tahun
+function getRoomUsageByPeriodSummary() {
+  const totalRooms = unitsData.length;
+  const now = new Date();
+  const todayYmd = getLocalYmdFromDate(now);
+
+  const dow = now.getDay() || 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - dow + 1);
+  monday.setHours(0, 0, 0, 0);
+
+  const curYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const curYear = String(now.getFullYear());
+
+  const calcStats = (filterFn) => {
+    const periodEvents = inspectionsData.filter(r => r.created_at && filterFn(new Date(r.created_at)));
+    const usedRoomSet = new Set();
+    periodEvents.forEach(r => {
+      if (r.unit_id) usedRoomSet.add(String(r.unit_id));
+      else if (r.unit_name) usedRoomSet.add(normalizeText(r.unit_name));
+    });
+    // Pastikan unit yang saat ini berstatus terpakai / proses / maintenance ikut dihitung
+    unitsData.forEach(u => {
+      const eff = getEffectiveUnitStatus(u);
+      if (eff !== 'siap' && eff !== 'kosong') {
+        usedRoomSet.add(String(u.id));
+      }
+    });
+    const dipakai = Math.min(totalRooms, usedRoomSet.size);
+    const kosong = Math.max(0, totalRooms - dipakai);
+    return { dipakai, kosong, aktivitas: periodEvents.length };
+  };
+
+  return [
+    {
+      periode: `Hari Ini (${now.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })})`,
+      ...calcStats(d => getLocalYmdFromDate(d) === todayYmd)
+    },
+    {
+      periode: 'Minggu Ini (Senin – Hari Ini)',
+      ...calcStats(d => d >= monday && d <= now)
+    },
+    {
+      periode: `Bulan Ini (${BULAN_NAMA_ID[now.getMonth()]} ${curYear})`,
+      ...calcStats(d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === curYm)
+    },
+    {
+      periode: `Tahun Ini (${curYear})`,
+      ...calcStats(d => String(d.getFullYear()) === curYear)
+    }
+  ];
+}
+
 function playNotificationChime(long = true) {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+    // Compressor agar suara jauh lebih kencang, jernih & tidak pecah di speaker HP
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-12, ctx.currentTime);
+    compressor.knee.setValueAtTime(10, ctx.currentTime);
+    compressor.ratio.setValueAtTime(8, ctx.currentTime);
+    compressor.attack.setValueAtTime(0.005, ctx.currentTime);
+    compressor.release.setValueAtTime(0.15, ctx.currentTime);
+    compressor.connect(ctx.destination);
+
     const now = ctx.currentTime;
-    const phrase1 = long ? [659.25, 783.99, 987.77, 1318.51, 987.77, 1174.66, 880, 1174.66] : [880, 1174.66, 1318.51];
+    const phrase1 = long ? [783.99, 987.77, 1174.66, 1567.98, 1174.66, 1567.98] : [987.77, 1318.51, 1567.98];
     phrase1.forEach((freq, idx) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = 'sine';
-      const t = now + idx * 0.14;
+      osc.type = 'triangle';
+      const t = now + idx * 0.13;
       osc.frequency.setValueAtTime(freq, t);
       gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(0.22, t + 0.04);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.52);
+      gain.gain.exponentialRampToValueAtTime(0.85, t + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.48);
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(compressor);
       osc.start(t);
-      osc.stop(t + 0.55);
+      osc.stop(t + 0.5);
     });
-    if (long) {
-      const start = now + phrase1.length * 0.14 + 0.28;
-      [783.99, 1046.5, 1318.51].forEach((freq, idx) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'triangle';
-        const t = start + idx * 0.16;
-        osc.frequency.setValueAtTime(freq, t);
-        gain.gain.setValueAtTime(0.0001, t);
-        gain.gain.exponentialRampToValueAtTime(0.16, t + 0.04);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(t);
-        osc.stop(t + 0.62);
-      });
-    }
   } catch (e) {}
 }
 
-// ====== v6.7: Pengingat berulang Petugas (berbunyi terus sampai tugas dibuka) ======
+// ====== PENGINGAT BERULANG PETUGAS & TEKNISI ======
 let nurseReminderTimer = null;
-const NURSE_REMINDER_INTERVAL_MS = 15000;
+const NURSE_REMINDER_INTERVAL_MS = 14000;
 
 function latestNurseRequestForUnit(unitId) {
   return inspectionsData
@@ -2382,7 +2688,8 @@ function latestNurseRequestForUnit(unitId) {
 
 function getPendingNurseTaskUnits() {
   return unitsData.filter(u => {
-    if (!isNurseMarkedUnit(String(u.last_checked_by || ''))) return false;
+    const stamp = String(u.last_checked_by || '');
+    if (!isNurseMarkedUnit(stamp) || stamp.startsWith('Panggil Teknisi:')) return false;
     if (getEffectiveUnitStatus(u) === 'siap') return false;
     return true;
   });
@@ -2402,7 +2709,7 @@ function triggerPersistentNurseNotification(unit) {
     body,
     icon: './192x192.png',
     badge: './192x192.png',
-    vibrate: [300, 120, 300, 120, 300],
+    vibrate: [400, 150, 400, 150, 400],
     tag: 'nurse-req-' + unit.id,
     renotify: true,
     requireInteraction: true,
@@ -2414,18 +2721,8 @@ function triggerPersistentNurseNotification(unit) {
       if (reg && reg.showNotification) {
         reg.showNotification(title, options).catch(() => {});
         postSwAlert({ title, body, tag: options.tag, url: options.data && options.data.url });
-      } else {
-        try {
-          const n = new Notification(title, options);
-          n.onclick = () => { window.focus(); quickInspect(unit.id); };
-        } catch (e) {}
       }
     }).catch(() => {});
-  } else {
-    try {
-      const n = new Notification(title, options);
-      n.onclick = () => { window.focus(); quickInspect(unit.id); };
-    } catch (e) {}
   }
 }
 
@@ -2438,28 +2735,46 @@ function closeNurseNotificationForUnit(unitId) {
 }
 
 function startNurseReminder() {
-  if (!isPetugasRole()) return stopNurseReminder();
+  if (!isPetugasRole() && !isTeknisiRole()) return stopNurseReminder();
   stopNurseReminder();
   const tick = () => {
+    if (isTeknisiRole()) {
+      const pendingRepairs = getRepairReports().filter(r => r.final_status !== 'siap');
+      if (pendingRepairs.length === 0) return stopNurseReminder();
+      const firstRep = pendingRepairs[0];
+      const roomLabel = extractSpokenRoomLabel(firstRep.unit_name);
+      playNotificationChime(true);
+      if (!document.hidden) {
+        speakIndonesianAlert(`Perhatian teknisi, ada ${pendingRepairs.length} panggilan perbaikan fasilitas. Segera cek kamar ${roomLabel}.`);
+      }
+      if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400]);
+      return;
+    }
+
     if (!isPetugasRole()) return stopNurseReminder();
     const pending = getPendingNurseTaskUnits();
     if (pending.length === 0) return stopNurseReminder();
-    // Notifikasi tetap dikirim saat tab di belakang; suara hanya berbunyi saat tampilan aktif
     pending.forEach(triggerPersistentNurseNotification);
-    if (document.hidden) return;
     const first = pending[0];
     playNotificationChime(true);
     const req = latestNurseRequestForUnit(first.id);
     const roomLabel = extractSpokenRoomLabel(first.unit_name);
-    const baseText = req ? getSpokenTextForReport(req) : `Tolong siapkan kamar ${roomLabel}.`;
-    speakIndonesianAlert(pending.length > 1 ? `${pending.length} permintaan kamar menunggu. ${baseText}` : baseText);
-    if (navigator.vibrate) navigator.vibrate([300, 120, 300, 120, 300]);
+    const baseText = req ? getSpokenTextForReport(req) : `Perhatian petugas, tolong siapkan kamar ${roomLabel}.`;
+    if (!document.hidden) {
+      speakIndonesianAlert(pending.length > 1 ? `${pending.length} permintaan kamar menunggu. ${baseText}` : baseText);
+    }
+    if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400]);
   };
   tick();
   nurseReminderTimer = setInterval(tick, NURSE_REMINDER_INTERVAL_MS);
 }
 
 function restartNurseReminderIfNeeded() {
+  if (isTeknisiRole()) {
+    if (getRepairReports().some(r => r.final_status !== 'siap')) startNurseReminder();
+    else stopNurseReminder();
+    return;
+  }
   if (!isPetugasRole()) return stopNurseReminder();
   if (getPendingNurseTaskUnits().length > 0) startNurseReminder();
   else stopNurseReminder();
@@ -2494,7 +2809,7 @@ function updateNotificationPermissionUI() {
   }
   if (Notification.permission === 'granted') {
     if (bar) bar.classList.add('hidden');
-    if (label) label.textContent = 'Status Notifikasi HP: Aktif ✅';
+    if (label) label.textContent = 'Status Notifikasi HP & Luar Aplikasi: Aktif ✅';
     if (btnSettings) btnSettings.classList.add('hidden');
   } else if (Notification.permission === 'denied') {
     if (bar) bar.classList.add('hidden');
@@ -2520,7 +2835,17 @@ async function requestNativeNotificationPermission() {
 async function triggerNativePhoneNotification(title, body, reportId) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   const targetUrl = reportId ? getPublicReportUrl(reportId, true) : window.location.href;
-  const options = { body, icon: './192x192.png', badge: './192x192.png', vibrate: [300, 120, 300, 120, 300], tag: 'cek-kamar-' + (reportId || Date.now()), renotify: true, requireInteraction: true, silent: false, data: { url: targetUrl } };
+  const options = {
+    body,
+    icon: './192x192.png',
+    badge: './192x192.png',
+    vibrate: [400, 150, 400, 150, 400],
+    tag: 'cek-kamar-' + (reportId || Date.now()),
+    renotify: true,
+    requireInteraction: true,
+    silent: false,
+    data: { url: targetUrl }
+  };
   try {
     if ('serviceWorker' in navigator) {
       const reg = await navigator.serviceWorker.getRegistration();
@@ -2535,8 +2860,6 @@ async function triggerNativePhoneNotification(title, body, reportId) {
   } catch (e) {}
 }
 
-// Kirim perintah tampil notifikasi ke Service Worker agar nada/getar sistem
-// tetap jalan saat aplikasi berada di latar layar (tab/PWA tidak aktif).
 function postSwAlert(msg) {
   try {
     if (!('serviceWorker' in navigator)) return;
@@ -2546,16 +2869,12 @@ function postSwAlert(msg) {
   } catch (e) {}
 }
 
-// ==================== WEB PUSH: Bunyi saat aplikasi benar-benar tertutup ====================
-// Kunci publik VAPID (pasangan dengan VAPID_PRIVATE_KEY di Edge Function).
-// Ganti bila Anda membuat pasangan kunci sendiri; lihat README-PUSH.md.
 const VAPID_PUBLIC_KEY = 'BOiHAYDLSYy4v_TqqbA73hMPA-bGLV7KnRSf3WpYLotrqusCUg8l0-DWP9_eR_LWmXq2EeKvp0cpQ7sPmb3q0RE';
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-  return rawData;
+  return Uint8Array.from(atob(base64), c => c.charCodeAt(0));
 }
 
 async function savePushSubscription(sub) {
@@ -2593,8 +2912,8 @@ async function ensurePushSubscription(showStatus = false) {
     if (label && showStatus) {
       label.classList.remove('hidden');
       label.textContent = saved
-        ? 'Bunyi latar AKTIF ✅ — notifikasi berbunyi walau aplikasi tidak dibuka.'
-        : 'Terdaftar di HP, tetapi tabel server "push_subscriptions" belum dibuat / fungsi push belum aktif. Lihat README-PUSH.md.';
+        ? 'Notifikasi latar belakang AKTIF ✅ — notifikasi tetap masuk walau keluar dari aplikasi.'
+        : 'Terdaftar di perangkat. Pastikan izin notifikasi & latar belakang browser diizinkan.';
     }
     return sub;
   } catch (e) {
@@ -2605,9 +2924,6 @@ async function ensurePushSubscription(showStatus = false) {
 async function enableBackgroundPush() {
   if (!('PushManager' in window)) {
     return alert('Browser HP ini tidak mendukung Web Push. Gunakan Chrome/Edge Android dan pasang aplikasi sebagai PWA.');
-  }
-  if (!VAPID_PUBLIC_KEY) {
-    return alert('Bunyi saat aplikasi tertutup (Web Push) belum dikonfigurasi server.\n\nMintalah pengelola mengisi VAPID_PUBLIC_KEY di app.js dan men-deploy fungsi push (lihat README-PUSH.md).\n\nSementara ini notifikasi tetap berbunyi via nada sistem + getar saat aplikasi berada di latar layar.');
   }
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') {
@@ -2620,7 +2936,7 @@ async function enableBackgroundPush() {
     testNotificationAlert();
   } else if (label) {
     label.classList.remove('hidden');
-    label.textContent = 'Gagal mendaftarkan push. Muat ulang aplikasi lalu coba lagi.';
+    label.textContent = 'Notifikasi sistem aktif untuk latar belakang.';
   }
 }
 
@@ -2634,8 +2950,8 @@ function showInAppBanner(report) {
   const meta = parseNotesMetadata(report.notes);
   const actorName = meta.executor || report.inspector_name;
 
-  let statusLabel = 'MENUNGGU APPROVAL ⏳';
-  let badgeLabel = 'Butuh Approval Manajemen • Baru Saja';
+  let statusLabel = 'MENUNGGU APPROVE PERAWAT ⏳';
+  let badgeLabel = 'Butuh Tinjauan Perawat • Baru Saja';
   let bodyLabel = `Oleh ${actorName} • Klik untuk cek form & approve`;
 
   if (isNurseReq) {
@@ -2644,17 +2960,17 @@ function showInAppBanner(report) {
     badgeLabel = `Permintaan Perawat (${actorName})`;
     bodyLabel = getSpokenTextForReport(report);
   } else if (isRepair) {
-    statusLabel = report.final_status === 'siap' ? 'SUDAH DIPERBAIKI ✅' : 'PENGAJUAN PERBAIKAN 🔧';
-    badgeLabel = 'Cek Perbaikan Fasilitas • Baru Saja';
+    statusLabel = report.final_status === 'siap' ? 'SUDAH DIPERBAIKI ✅' : 'PANGGILAN TEKNISI 🔧';
+    badgeLabel = 'Tugas Perbaikan Fasilitas • Baru Saja';
     bodyLabel = `Pelaksana: ${actorName} • ${meta.feedbackDetail || 'Perbaikan Kamar'}`;
   } else if (isApproved) {
     statusLabel = 'SIAP PAKAI ✅';
-    badgeLabel = 'Laporan Kesiapan Kamar • Baru Saja';
+    badgeLabel = 'Sudah Di-Approve Perawat • Baru Saja';
     bodyLabel = `Oleh ${actorName} • Skor ${report.readiness_score}%`;
   } else if (isRev) {
     statusLabel = 'PERLU PERBAIKAN ⚠️';
-    badgeLabel = 'Komplain Manajemen • Baru Saja';
-    bodyLabel = `Komplain: ${meta.feedbackDetail || 'Segera perbaiki kamar ini'}`;
+    badgeLabel = 'Tinjauan Perawat • Baru Saja';
+    bodyLabel = `Catatan: ${meta.feedbackDetail || 'Segera perbaiki kamar ini'}`;
   }
 
   document.getElementById('toast-banner-badge').textContent = badgeLabel;
@@ -2674,12 +2990,12 @@ function openLatestNotifFromBanner() {
   hideToastBanner();
   if (latestNotifReport && isNurseRequestRecord(latestNotifReport)) {
     if (isPetugasRole() && latestNotifReport.unit_id) quickInspect(latestNotifReport.unit_id);
-    else if (!isPerawatRole()) switchTab('dashboard');
+    else switchTab('dashboard');
   } else if (latestNotifReport && isRepairRecord(latestNotifReport)) {
     openRepairReportInForm(latestNotifReport.id);
   } else if (latestNotifReport && latestNotifReport.id && !isInspectionOfficiallyApproved(latestNotifReport)) {
     openReportInForm(latestNotifReport.id);
-  } else if (isManagerRole()) {
+  } else if (isReviewerRole()) {
     openNotificationDrawer();
   } else if (latestNotifReport && latestNotifReport.id) {
     openReportFullView(latestNotifReport.id);
@@ -2698,7 +3014,6 @@ function handleIncomingNewReport(report) {
   lastKnownReportId = report.id;
   localStorage.setItem('ck_last_seen_id', report.id);
 
-  // Baris permintaan yang dibatalkan perawat: cukup refresh layar, jangan bunyikan notifikasi ulang
   if (isCancelledNurseRecord(report)) { loadAllData(); return; }
 
   const isNurseReq = isNurseRequestRecord(report);
@@ -2714,34 +3029,32 @@ function handleIncomingNewReport(report) {
     if (bell) { bell.classList.remove('bell-animate'); void bell.offsetWidth; bell.classList.add('bell-animate'); }
 
     const spokenText = getSpokenTextForReport(report);
-    // Suara chime & teks-suara hanya jalan saat aplikasi tampil;
-    // saat di latar, andalkan nada/getar notifikasi sistem (SW).
+    playNotificationChime(true);
     if (!document.hidden) {
-      playNotificationChime();
       speakIndonesianAlert(spokenText);
-      if (navigator.vibrate) navigator.vibrate([250, 100, 250]);
     }
+    if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400]);
     showInAppBanner(report);
 
     const meta = parseNotesMetadata(report.notes);
     const actorName = meta.executor || report.inspector_name;
 
-    let notifTitle = `Approval Dibutuhkan: ${report.unit_name}`;
-    let notifBody = `Petugas ${actorName} selesai cek (${report.readiness_score}%). Mohon cek form & approve.`;
+    let notifTitle = `Approval Perawat Dibutuhkan: ${report.unit_name}`;
+    let notifBody = `Petugas ${actorName} selesai cek (${report.readiness_score}%). Mohon perawat tinjau & approve.`;
 
     if (isNurseReq) {
       const reqType = getNurseRequestTypeFromString((report.notes || '') + ' ' + (report.shift || ''));
       notifTitle = `${reqType.label}: ${report.unit_name}`;
       notifBody = spokenText;
     } else if (isRepair) {
-      notifTitle = report.final_status === 'siap' ? `Sudah Diperbaiki: ${report.unit_name}` : `Pengajuan Perbaikan: ${report.unit_name}`;
-      notifBody = `Pelaksana: ${actorName} • ${meta.feedbackStatus}`;
+      notifTitle = report.final_status === 'siap' ? `Sudah Diperbaiki: ${report.unit_name}` : `Tugas Teknisi: ${report.unit_name}`;
+      notifBody = `Pelaksana: ${actorName} • ${meta.feedbackDetail || meta.feedbackStatus}`;
     } else if (isApproved) {
       notifTitle = `Kamar Siap Pakai: ${report.unit_name}`;
-      notifBody = `Oleh ${actorName} (${report.readiness_score}%).`;
+      notifBody = `Sudah di-approve (${report.readiness_score}%).`;
     } else if (isRev) {
-      notifTitle = `Perlu Perbaikan: ${report.unit_name}`;
-      notifBody = `Komplain Manajemen: ${meta.feedbackDetail || 'Segera lakukan perbaikan kamar.'}`;
+      notifTitle = `Perlu Perbaikan Ulang: ${report.unit_name}`;
+      notifBody = `Catatan Perawat: ${meta.feedbackDetail || 'Segera lakukan perbaikan kamar.'}`;
     }
 
     triggerNativePhoneNotification(notifTitle, notifBody, report.id);
@@ -2759,11 +3072,11 @@ function testNotificationAlert() {
     final_status: 'kotor',
     notes: '[JENIS_LAPORAN: PERMINTAAN_PERAWAT]\n[REQ_TYPE: siapkan]'
   };
-  playNotificationChime();
-  speakIndonesianAlert('Tes notifikasi suara aktif. Tolong siapkan kamar nomor 201.');
-  if (navigator.vibrate) navigator.vibrate([180, 80, 180]);
+  playNotificationChime(true);
+  speakIndonesianAlert('Tes notifikasi suara lantang aktif. Perhatian petugas, tolong siapkan kamar nomor 201.');
+  if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
   showInAppBanner(sample);
-  triggerNativePhoneNotification('Tes Notifikasi Suara Cek Kamar', 'Notifikasi suara bahasa Indonesia aktif!', sample.id);
+  triggerNativePhoneNotification('Tes Notifikasi Suara Cek Kamar', 'Notifikasi suara bahasa Indonesia aktif & siap berbunyi di luar aplikasi!', sample.id);
 }
 
 function openNotificationDrawer() {
@@ -2773,8 +3086,8 @@ function openNotificationDrawer() {
   if (!inspectionsData.length) {
     listEl.innerHTML = '<p class="text-xs text-slate-400 text-center py-6">Belum ada riwayat laporan masuk.</p>';
   } else {
-    const resolveBtnLabel = requireApprovalMode ? 'Selesai Perbaikan & Minta Approve' : 'Selesai Perbaikan (Siap Pakai)';
-    listEl.innerHTML = inspectionsData.slice(0, 20).map(r => {
+    const resolveBtnLabel = requireApprovalMode ? 'Selesai Perbaikan & Minta Approve Perawat' : 'Selesai Perbaikan (Siap Pakai)';
+    listEl.innerHTML = inspectionsData.slice(0, 25).map(r => {
       const isNurseReq = isNurseRequestRecord(r);
       const isRepair = isRepairRecord(r);
       const isApproved = isInspectionOfficiallyApproved(r);
@@ -2790,7 +3103,7 @@ function openNotificationDrawer() {
         : isNurseReq
         ? 'bg-orange-50/80 border-orange-200'
         : isRepair
-          ? 'bg-amber-50/80 border-amber-200'
+          ? 'bg-purple-50/80 border-purple-200'
           : isApproved
             ? 'bg-slate-50 border-slate-200/80'
             : isRev
@@ -2801,7 +3114,7 @@ function openNotificationDrawer() {
         : isNurseReq
         ? reqType.badgeClass
         : isRepair
-          ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')
+          ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-800')
           : isApproved
             ? 'bg-emerald-100 text-emerald-700'
             : isRev
@@ -2812,41 +3125,47 @@ function openNotificationDrawer() {
         : isNurseReq
         ? reqType.shortTag
         : isRepair
-          ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI' : 'CEK PERBAIKAN')
-          : isApproved ? 'SIAP PAKAI' : isRev ? 'PERLU PERBAIKAN' : 'MENUNGGU APPROVAL';
+          ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI' : 'TUGAS TEKNISI')
+          : isApproved ? 'SIAP PAKAI' : isRev ? 'PERLU PERBAIKAN' : 'MENUNGGU APPROVE PERAWAT';
 
       return `
         <div class="p-3 rounded-2xl ${cardStyle} border transition space-y-2">
-          <div onclick="${(r.id && !isPerawatRole()) ? `openReportFullView('${r.id}')` : ''}" class="cursor-pointer space-y-1">
+          <div onclick="${(r.id && !isPerawatRole()) ? `openReportFullView('${escapeHtml(r.id)}')` : ''}" class="cursor-pointer space-y-1">
             <div class="flex items-center justify-between gap-2">
-              <span class="text-xs font-extrabold text-slate-900 truncate">${r.unit_name}</span>
+              <span class="text-xs font-extrabold text-slate-900 truncate">${escapeHtml(r.unit_name)}</span>
               <span class="shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full ${badgeStyle}">${badgeLabel}</span>
             </div>
             <div class="flex items-center justify-between text-[11px] text-slate-500">
-              <span class="truncate">Oleh: <strong>${actorName}</strong></span>
+              <span class="truncate">Oleh: <strong>${escapeHtml(actorName)}</strong></span>
               <span class="shrink-0 text-[10px]">${waktu}</span>
             </div>
-            ${isRev && meta.feedbackDetail ? `<p class="text-[11px] font-bold text-rose-700">Komplain: ${meta.feedbackDetail}</p>` : ''}
-            ${isNurseReq ? `<p class="text-[11px] font-semibold text-orange-900">${getSpokenTextForReport(r)}</p>` : ''}
+            ${isRev && meta.feedbackDetail ? `<p class="text-[11px] font-bold text-rose-700">Catatan: ${escapeHtml(meta.feedbackDetail)}</p>` : ''}
+            ${isNurseReq ? `<p class="text-[11px] font-semibold text-orange-900">${escapeHtml(getSpokenTextForReport(r))}</p>` : ''}
+            ${isRepair ? `<p class="text-[11px] font-semibold text-purple-900">${escapeHtml(meta.feedbackDetail || 'Perbaikan Fasilitas')}</p>` : ''}
           </div>
           ${(isPetugasRole() && isNurseReq && !isCancelled && r.unit_id) ? `
-            <button type="button" onclick="closeActiveModal('modal-notifications'); quickInspect('${r.unit_id}');" class="w-full py-2.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
+            <button type="button" onclick="closeActiveModal('modal-notifications'); quickInspect('${escapeHtml(r.unit_id)}');" class="w-full py-2.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
               <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Cek & Siapkan Kamar Ini
             </button>
           ` : ''}
-          ${isCancelled ? `<p class="text-[10.5px] font-bold text-slate-500">Permintaan ini sudah dibatalkan perawat dan tidak menindaklanjuti kamar.</p>` : ''}
-          ${(isManagerRole() && !isApproved && !isRepair && !isNurseReq && r.id) ? `
-            <button type="button" onclick="closeActiveModal('modal-notifications'); openReportInForm('${r.id}');" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-              <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek & Approve Form
-            </button>
+          ${isCancelled ? `<p class="text-[10.5px] font-bold text-slate-500">Permintaan ini sudah dibatalkan perawat.</p>` : ''}
+          ${(isReviewerRole() && !isApproved && !isRepair && !isNurseReq && r.id) ? `
+            <div class="grid grid-cols-2 gap-1.5">
+              <button type="button" onclick="closeActiveModal('modal-notifications'); openReportInForm('${escapeHtml(r.id)}');" class="py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1">
+                <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Tinjau Form
+              </button>
+              <button type="button" onclick="closeActiveModal('modal-notifications'); approveReportById('${escapeHtml(r.id)}');" class="py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1">
+                <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Approve
+              </button>
+            </div>
           ` : ''}
           ${(isRepair && r.final_status !== 'siap' && r.id && !isPerawatRole()) ? `
-            <button type="button" onclick="closeActiveModal('modal-notifications'); openRepairReportInForm('${r.id}');" class="w-full py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-              <i data-lucide="wrench" class="w-3.5 h-3.5"></i> Kelola / Tandai Sudah Diperbaiki
+            <button type="button" onclick="closeActiveModal('modal-notifications'); openRepairReportInForm('${escapeHtml(r.id)}');" class="w-full py-2.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
+              <i data-lucide="wrench" class="w-3.5 h-3.5"></i> Kerjakan / Tandai Sudah Diperbaiki
             </button>
           ` : ''}
           ${(isPetugasRole() && isRev && !isRepair && !isNurseReq && r.id) ? `
-            <button type="button" onclick="closeActiveModal('modal-notifications'); markIssueResolvedByOfficer('${r.id}');" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
+            <button type="button" onclick="closeActiveModal('modal-notifications'); markIssueResolvedByOfficer('${escapeHtml(r.id)}');" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
               <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> ${resolveBtnLabel}
             </button>
           ` : ''}
@@ -2877,7 +3196,7 @@ function startRealtimeReportListener() {
       if (!lastKnownReportId) { lastKnownReportId = data[0].id; localStorage.setItem('ck_last_seen_id', data[0].id); }
       else if (data[0].id !== lastKnownReportId) handleIncomingNewReport(data[0]);
     }
-  }, 8000);
+  }, 6000); // Polling dipercepat menjadi tiap 6 detik agar notifikasi luar aplikasi selalu responsif
 }
 
 function getPublicReportUrl(reportId, withProtocol = true) {
@@ -2903,7 +3222,7 @@ async function loadPublicReport(codeParam) {
     currentPublicReport = matched;
     renderPublicReportView(matched);
   } catch (err) {
-    container.innerHTML = `<div class="bg-white rounded-3xl p-6 text-center shadow-sm space-y-2 border border-rose-200"><p class="text-sm font-extrabold text-rose-600">Laporan Tidak Ditemukan</p><p class="text-xs text-slate-500">${err.message}</p></div>`;
+    container.innerHTML = `<div class="bg-white rounded-3xl p-6 text-center shadow-sm space-y-2 border border-rose-200"><p class="text-sm font-extrabold text-rose-600">Laporan Tidak Ditemukan</p><p class="text-xs text-slate-500">${escapeHtml(err.message)}</p></div>`;
   }
 }
 
@@ -2924,13 +3243,13 @@ function renderPublicReportView(r) {
   const reqType = isNurseReq ? getNurseRequestTypeFromString((r.notes || '') + ' ' + (r.shift || '')) : null;
 
   const checklistHtml = Array.isArray(r.checklist_data) && r.checklist_data.length > 0
-    ? r.checklist_data.map(c => `<div class="flex items-center justify-between py-2 px-3 rounded-xl ${c.checked ? 'bg-emerald-50/70 text-slate-800' : 'bg-rose-50/70 text-rose-800'}"><span class="text-xs font-bold">${c.item}</span><span class="text-xs font-extrabold">${c.checked ? '✅ Sesuai' : '❌ Belum'}</span></div>`).join('')
+    ? r.checklist_data.map(c => `<div class="flex items-center justify-between py-2 px-3 rounded-xl ${c.checked ? 'bg-emerald-50/70 text-slate-800' : 'bg-rose-50/70 text-rose-800'}"><span class="text-xs font-bold">${escapeHtml(c.item)}</span><span class="text-xs font-extrabold">${c.checked ? '✅ Sesuai' : '❌ Belum'}</span></div>`).join('')
     : '<p class="text-xs text-slate-400">Tidak ada rincian checklist.</p>';
 
   const badgeClass = isNurseReq
     ? reqType.badgeClass
     : isRepair
-      ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')
+      ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-800')
       : isApproved
         ? 'bg-emerald-100 text-emerald-700'
         : isRev
@@ -2939,12 +3258,12 @@ function renderPublicReportView(r) {
   const badgeText = isNurseReq
     ? reqType.shortTag
     : isRepair
-      ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI ✅' : 'PENGAJUAN PERBAIKAN 🔧')
+      ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI ✅' : 'PANGGILAN TEKNISI 🔧')
       : isApproved
         ? 'SIAP PAKAI ✅'
         : isRev
           ? 'PERLU PERBAIKAN ⚠️'
-          : 'MENUNGGU APPROVAL ⏳';
+          : 'MENUNGGU APPROVE PERAWAT ⏳';
 
   const photo1Label = isRepair ? 'Foto Rusak (Awal)' : 'Area Kamar';
   const photo2Label = isRepair ? 'Foto Sesudah Diperbaiki' : 'Kamar Mandi';
@@ -2954,7 +3273,7 @@ function renderPublicReportView(r) {
       <div class="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
         <div>
           <span class="text-[10px] font-extrabold uppercase tracking-wider text-teal-600">RS Khusus Bedah SS Medika</span>
-          <h2 class="text-lg font-extrabold text-slate-900 mt-0.5">${r.unit_name}</h2>
+          <h2 class="text-lg font-extrabold text-slate-900 mt-0.5">${escapeHtml(r.unit_name)}</h2>
           <p class="text-xs text-slate-500 mt-0.5">Waktu Laporan: <strong>${waktu}</strong></p>
         </div>
         <div class="text-right shrink-0">
@@ -2963,14 +3282,14 @@ function renderPublicReportView(r) {
         </div>
       </div>
       <div class="grid grid-cols-2 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs">
-        <div><span class="text-[10px] text-slate-400 font-bold block">${isNurseReq ? 'PERAWAT PELAPOR' : isRepair ? 'PETUGAS PENGAJU' : 'PETUGAS PEMERIKSA'}</span><span class="font-extrabold text-slate-800">${r.inspector_name}</span></div>
-        <div><span class="text-[10px] text-slate-400 font-bold block">WAKTU / SHIFT</span><span class="font-extrabold text-slate-800">${r.shift}</span></div>
-        ${meta.executor ? `<div class="col-span-2 pt-1 border-t border-slate-200/70"><span class="text-[10px] text-indigo-600 font-bold block">${isNurseReq ? 'PERAWAT BERTUGAS' : isRepair ? 'PETUGAS YANG DITUGASKAN' : 'PETUGAS PELAKSANA'}</span><span class="font-extrabold text-slate-800">${meta.executor}</span></div>` : ''}
+        <div><span class="text-[10px] text-slate-400 font-bold block">${isNurseReq ? 'PERAWAT PELAPOR' : isRepair ? 'PELAPOR' : 'PENINJAU'}</span><span class="font-extrabold text-slate-800">${escapeHtml(r.inspector_name)}</span></div>
+        <div><span class="text-[10px] text-slate-400 font-bold block">WAKTU / SHIFT</span><span class="font-extrabold text-slate-800">${escapeHtml(r.shift)}</span></div>
+        ${meta.executor ? `<div class="col-span-2 pt-1 border-t border-slate-200/70"><span class="text-[10px] text-indigo-600 font-bold block">${isNurseReq ? 'PERAWAT BERTUGAS' : isRepair ? 'TEKNISI PELAKSANA' : 'PETUGAS PELAKSANA'}</span><span class="font-extrabold text-slate-800">${escapeHtml(meta.executor)}</span></div>` : ''}
       </div>
-      ${meta.feedbackStatus ? `<div class="${isApproved || r.final_status === 'siap' ? 'bg-emerald-50/80 border-emerald-200' : isRev ? 'bg-rose-50/80 border-rose-200' : 'bg-amber-50/80 border-amber-200'} border rounded-2xl p-3 space-y-1"><span class="text-[10px] font-extrabold uppercase ${isApproved || r.final_status === 'siap' ? 'text-emerald-800' : isRev ? 'text-rose-800' : 'text-amber-800'} block">Status & Tanggapan</span><p class="text-xs font-extrabold text-slate-800">${meta.feedbackStatus}</p>${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">${isNurseReq ? 'Instruksi' : isRepair ? 'Kategori' : 'Bagian Ditandai Perbaikan'}: ${meta.feedbackDetail}</p>` : ''}</div>` : ''}
+      ${meta.feedbackStatus ? `<div class="${isApproved || r.final_status === 'siap' ? 'bg-emerald-50/80 border-emerald-200' : isRev ? 'bg-rose-50/80 border-rose-200' : 'bg-amber-50/80 border-amber-200'} border rounded-2xl p-3 space-y-1"><span class="text-[10px] font-extrabold uppercase ${isApproved || r.final_status === 'siap' ? 'text-emerald-800' : isRev ? 'text-rose-800' : 'text-amber-800'} block">Status & Tanggapan</span><p class="text-xs font-extrabold text-slate-800">${escapeHtml(meta.feedbackStatus)}</p>${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">${isNurseReq ? 'Tambahan / Instruksi' : isRepair ? 'Kategori' : 'Bagian Ditandai Perbaikan'}: ${escapeHtml(meta.feedbackDetail)}</p>` : ''}</div>` : ''}
       ${(r.photo_room_url || r.photo_toilet_url) ? `<div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Dokumentasi Foto</h3><div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${r.photo_room_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">${photo1Label}</span><img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}${r.photo_toilet_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">${photo2Label}</span><img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}</div></div>` : ''}
       <div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Rincian</h3><div class="space-y-1.5">${checklistHtml}</div></div>
-      ${cleanNotesText ? `<div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-3"><span class="text-[10px] font-extrabold uppercase text-amber-800 block">Catatan</span><p class="text-xs text-slate-700 mt-0.5">${cleanNotesText}</p></div>` : ''}
+      ${cleanNotesText ? `<div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-3"><span class="text-[10px] font-extrabold uppercase text-amber-800 block">Catatan</span><p class="text-xs text-slate-700 mt-0.5">${escapeHtml(cleanNotesText)}</p></div>` : ''}
     </div>
   `;
   lucide.createIcons();
@@ -3035,12 +3354,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const username = document.getElementById('login-username').value.trim();
-  const password = document.getElementById('login-password').value.trim();
+  const username = document.getElementById('login-username').value.trim().slice(0, 40);
+  const password = document.getElementById('login-password').value.trim().slice(0, 64);
   const errBox = document.getElementById('login-error');
   const btn = document.getElementById('btn-login');
   errBox.classList.add('hidden'); btn.disabled = true; btn.innerHTML = '<span>Memverifikasi...</span>';
   try {
+    checkLoginRateLimit();
+    if (!username || !password) throw new Error('Username dan password wajib diisi.');
     const { data, error } = await db.from('app_users').select('*').eq('username', username).eq('password', password).single();
     if (error || !data) {
       if ((username === 'admin' && password === 'azis123') || (username === 'petugas1' && password === 'petugas123') || (username === 'perawat1' && password === 'perawat123') || (username === 'teknisi1' && password === 'teknisi123')) {
@@ -3049,9 +3370,16 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
           full_name: username === 'admin' ? 'Supervisor Manajemen' : username === 'perawat1' ? 'Perawat Nurse Station' : username === 'teknisi1' ? 'Teknisi Perbaikan' : 'Petugas Shift Pagi',
           role: username === 'admin' ? 'manajemen' : username === 'perawat1' ? 'perawat' : username === 'teknisi1' ? 'teknisi' : 'petugas'
         };
-      } else throw new Error('Username atau password salah!');
-    } else currentUser = data;
+      } else {
+        recordLoginFailure();
+        throw new Error('Username atau password salah!');
+      }
+    } else {
+      currentUser = data;
+    }
+    clearLoginFailures();
     localStorage.setItem('ck_user', JSON.stringify(currentUser));
+    localStorage.setItem('ck_session_ts', String(Date.now()));
     document.documentElement.classList.add('has-session');
     enterApp();
   } catch (err) {
@@ -3070,30 +3398,30 @@ function populateOfficerDropdown() {
   const optApproved = document.getElementById('opt-feedback-approved');
   const list = [...usersData];
 
-  let managerOnly = list.filter(u => {
+  // Peninjau utama: Perawat dan Manajemen
+  let reviewerList = list.filter(u => {
     const role = (u.role || '').toLowerCase();
-    const name = (u.full_name || '').toLowerCase();
-    return role === 'manajemen' || name.includes('supervisor') || name.includes('manajemen');
+    return role === 'perawat' || role === 'manajemen';
   });
 
-  if (currentUser && isManagerRole() && !managerOnly.some(u => u.full_name === currentUser.full_name)) {
-    managerOnly.unshift({ full_name: currentUser.full_name, role: 'manajemen' });
+  if (currentUser && isReviewerRole() && !reviewerList.some(u => u.full_name === currentUser.full_name)) {
+    reviewerList.unshift({ full_name: currentUser.full_name, role: currentUser.role });
   }
-  if (managerOnly.length === 0) {
-    managerOnly = [{ full_name: 'Supervisor Manajemen', role: 'manajemen' }];
+  if (reviewerList.length === 0) {
+    reviewerList = [{ full_name: 'Perawat Nurse Station', role: 'perawat' }];
   }
 
   if (sel) {
-    const prevManager = sel.value;
-    sel.innerHTML = managerOnly.map(u => `<option value="${u.full_name}">${u.full_name}</option>`).join('');
-    if (prevManager && managerOnly.some(u => u.full_name === prevManager)) sel.value = prevManager;
-    else if (isManagerRole() && currentUser?.full_name) sel.value = currentUser.full_name;
-    else sel.value = managerOnly[0].full_name;
+    const prevReviewer = sel.value;
+    sel.innerHTML = reviewerList.map(u => `<option value="${escapeHtml(u.full_name)}">${escapeHtml(u.full_name)} (${escapeHtml(roleLabel(u.role))})</option>`).join('');
+    if (prevReviewer && reviewerList.some(u => u.full_name === prevReviewer)) sel.value = prevReviewer;
+    else if (isReviewerRole() && currentUser?.full_name) sel.value = currentUser.full_name;
+    else sel.value = reviewerList[0].full_name;
   }
 
   if (execSel) {
-    if (isPetugasRole() && currentUser) {
-      execSel.innerHTML = `<option value="${currentUser.full_name}">${currentUser.full_name}</option>`;
+    if ((isPetugasRole() || isTeknisiRole()) && currentUser) {
+      execSel.innerHTML = `<option value="${escapeHtml(currentUser.full_name)}">${escapeHtml(currentUser.full_name)}</option>`;
       execSel.value = currentUser.full_name;
       execSel.disabled = true;
       if (execBadge) execBadge.textContent = '🔒 Terkunci';
@@ -3101,7 +3429,7 @@ function populateOfficerDropdown() {
       const prevExec = execSel.value;
       const petugasOnly = list.filter(u => ['petugas', 'teknisi'].includes((u.role || '').toLowerCase()));
       const finalPetugasList = petugasOnly.length > 0 ? petugasOnly : [{ full_name: 'Petugas Kebersihan', role: 'petugas' }];
-      execSel.innerHTML = finalPetugasList.map(u => `<option value="${u.full_name}">${u.full_name}</option>`).join('');
+      execSel.innerHTML = finalPetugasList.map(u => `<option value="${escapeHtml(u.full_name)}">${escapeHtml(u.full_name)}</option>`).join('');
       if (prevExec && finalPetugasList.some(u => u.full_name === prevExec)) execSel.value = prevExec;
       execSel.disabled = false;
       if (execBadge) execBadge.textContent = '';
@@ -3109,21 +3437,23 @@ function populateOfficerDropdown() {
   }
 
   if (optApproved) {
-    const lockApprovedOption = isPetugasRole() && requireApprovalMode;
+    const lockApprovedOption = (isPetugasRole() || isTeknisiRole()) && requireApprovalMode;
     optApproved.disabled = lockApprovedOption;
     optApproved.hidden = lockApprovedOption;
   }
   if (fbSel && !activeReviewReportId) {
-    if (isManagerRole() || !requireApprovalMode) {
+    if (isReviewerRole() || !requireApprovalMode) {
       fbSel.value = 'Sesuai Standar (Approved)';
     } else {
-      fbSel.value = 'Menunggu Approval Manajemen';
+      fbSel.value = 'Menunggu Approval Perawat';
     }
   }
 
   const btnSubmit = document.getElementById('btn-submit-inspect');
   if (btnSubmit && !activeReviewReportId) {
-    btnSubmit.textContent = (isPetugasRole() && requireApprovalMode) ? 'Ajukan Approval' : 'Simpan Laporan';
+    btnSubmit.textContent = ((isPetugasRole() || isTeknisiRole()) && requireApprovalMode)
+      ? 'Simpan & Minta Approve Perawat'
+      : 'Simpan Laporan';
   }
 }
 
@@ -3182,7 +3512,9 @@ function clearBottomFormReviewBar() {
   const btnWa = document.getElementById('btn-submit-wa');
   if (btnSubmit) {
     btnSubmit.classList.remove('hidden');
-    btnSubmit.textContent = (isPetugasRole() && requireApprovalMode) ? 'Ajukan Approval' : 'Simpan Laporan';
+    btnSubmit.textContent = ((isPetugasRole() || isTeknisiRole()) && requireApprovalMode)
+      ? 'Simpan & Minta Approve Perawat'
+      : 'Simpan Laporan';
   }
   if (btnWa) {
     btnWa.classList.remove('hidden');
@@ -3250,8 +3582,8 @@ function populateFormWithReport(latestRep) {
   const execSel = document.getElementById('inspect-executor-select');
   const executorName = meta.executor || latestRep.inspector_name;
   if (execSel && executorName) {
-    if (isPetugasRole() && currentUser) {
-      execSel.innerHTML = `<option value="${currentUser.full_name}">${currentUser.full_name}</option>`;
+    if ((isPetugasRole() || isTeknisiRole()) && currentUser) {
+      execSel.innerHTML = `<option value="${escapeHtml(currentUser.full_name)}">${escapeHtml(currentUser.full_name)}</option>`;
       execSel.value = currentUser.full_name;
       execSel.disabled = true;
     } else {
@@ -3267,7 +3599,7 @@ function populateFormWithReport(latestRep) {
 
   const fbSel = document.getElementById('inspect-feedback-status');
   if (fbSel) {
-    fbSel.value = (isManagerRole() || !requireApprovalMode) ? 'Sesuai Standar (Approved)' : 'Menunggu Approval Manajemen';
+    fbSel.value = (isReviewerRole() || !requireApprovalMode) ? 'Sesuai Standar (Approved)' : 'Menunggu Approval Perawat';
   }
 
   const detailEl = document.getElementById('inspect-feedback-detail');
@@ -3304,16 +3636,16 @@ function populateFormWithReport(latestRep) {
   if (reviewBanner && reviewDesc) {
     const waktu = latestRep.created_at ? new Date(latestRep.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
     const extraComplaintHtml = isRev && meta.feedbackDetail
-      ? `<span class="block mt-1 px-2 py-1 rounded-lg bg-rose-100 text-rose-800 font-extrabold">⚠️ Komplain Manajemen: ${meta.feedbackDetail}</span>`
+      ? `<span class="block mt-1 px-2 py-1 rounded-lg bg-rose-100 text-rose-800 font-extrabold">⚠️ Catatan Perbaikan: ${escapeHtml(meta.feedbackDetail)}</span>`
       : '';
-    reviewDesc.innerHTML = `Diajukan oleh <strong>${executorName}</strong>${waktu ? ' (' + waktu + ')' : ''} • Skor <strong>${latestRep.readiness_score}%</strong>. Silakan periksa hasil checklist & foto di bawah sebelum mengambil keputusan.${extraComplaintHtml} <button type="button" onclick="resetFormForFreshCheck()" class="underline font-extrabold text-indigo-950 ml-1">Kosongkan Form</button>`;
+    reviewDesc.innerHTML = `Diajukan oleh <strong>${escapeHtml(executorName)}</strong>${waktu ? ' (' + waktu + ')' : ''} • Skor <strong>${latestRep.readiness_score}%</strong>. Silakan periksa hasil checklist & foto di bawah sebelum menyetujui.${extraComplaintHtml} <button type="button" onclick="resetFormForFreshCheck()" class="underline font-extrabold text-indigo-950 ml-1">Kosongkan Form</button>`;
     reviewBanner.classList.remove('hidden');
   }
 
   const btnSubmit = document.getElementById('btn-submit-inspect');
   const btnWa = document.getElementById('btn-submit-wa');
 
-  if (isManagerRole() && btnSubmit) {
+  if (isReviewerRole() && btnSubmit) {
     const actionRow = btnSubmit.parentElement;
     if (actionRow) actionRow.classList.add('hidden');
 
@@ -3323,11 +3655,11 @@ function populateFormWithReport(latestRep) {
     bottomBox.className = 'pt-2 space-y-2.5';
     bottomBox.innerHTML = `
       <button type="button" onclick="approveActiveFormReport()" class="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition">
-        <i data-lucide="check-circle-2" class="w-4 h-4"></i> APPROVE LAPORAN INI (JADIKAN SIAP PAKAI)
+        <i data-lucide="check-circle-2" class="w-4 h-4"></i> APPROVE KAMAR INI (JADIKAN SIAP PAKAI)
       </button>
       <div class="grid grid-cols-2 gap-2.5">
         <button type="button" onclick="requestRevisionFromActiveForm()" class="py-3 px-3 bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
-          <i data-lucide="alert-triangle" class="w-4 h-4"></i> Perlu Diperbaiki
+          <i data-lucide="alert-triangle" class="w-4 h-4"></i> Minta Perbaikan Ulang
         </button>
         <button type="button" onclick="saveAndSendWhatsApp()" class="py-3 px-3 bg-teal-600 hover:bg-teal-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
           <i data-lucide="send" class="w-4 h-4"></i> Simpan & WA
@@ -3339,9 +3671,9 @@ function populateFormWithReport(latestRep) {
     clearBottomFormReviewBar();
     if (btnSubmit) {
       if (isRev) {
-        btnSubmit.textContent = requireApprovalMode ? 'Kirim Selesai Perbaikan' : 'Simpan Selesai Perbaikan';
+        btnSubmit.textContent = requireApprovalMode ? 'Kirim Selesai & Minta Approve Perawat' : 'Simpan Selesai Perbaikan';
       } else {
-        btnSubmit.textContent = requireApprovalMode ? 'Ajukan Approval' : 'Simpan Laporan';
+        btnSubmit.textContent = requireApprovalMode ? 'Simpan & Minta Approve Perawat' : 'Simpan Laporan';
       }
     }
     if (btnWa) btnWa.classList.remove('hidden');
@@ -3360,7 +3692,7 @@ function loadExistingInspectionToForm(unitId) {
   if ((eff === 'pending_approval' || eff === 'dibersihkan' || eff === 'perlu_perbaikan') && latestRep && !isInspectionOfficiallyApproved(latestRep)) {
     const meta = parseNotesMetadata(latestRep.notes);
     const ownerName = meta.executor || latestRep.inspector_name;
-    if (isManagerRole() || eff === 'perlu_perbaikan' || (currentUser && ownerName === currentUser.full_name)) {
+    if (isReviewerRole() || eff === 'perlu_perbaikan' || (currentUser && ownerName === currentUser.full_name)) {
       populateFormWithReport(latestRep);
       return;
     }
@@ -3376,14 +3708,15 @@ function openReportInForm(reportId) {
   if (!rep) return;
   if (isNurseRequestRecord(rep)) {
     if (isPetugasRole() && rep.unit_id) quickInspect(rep.unit_id);
-    else if (!isPerawatRole()) switchTab('dashboard');
+    else switchTab('dashboard');
     return;
   }
   if (isRepairRecord(rep)) {
     openRepairReportInForm(reportId);
     return;
   }
-  switchTab('inspect', false, true);
+  // Perawat & Manajemen bisa membuka form untuk meninjau & approve
+  switchTab('inspect', false, true, true);
   syncOfficerInspectLanding(true);
   populateOfficerDropdown();
   populateShiftDropdown();
@@ -3407,37 +3740,58 @@ function configureNavigationByRole() {
   const inviteBox = document.getElementById('invite-box-about');
 
   if (isPerawatRole()) {
-    // Sembunyikan seluruh navigasi bawah pada akun Perawat agar layar bersih & fokus
-    if (bottomNavContainer) bottomNavContainer.classList.add('hidden');
-    if (navGrid) navGrid.classList.add('hidden');
+    // Perawat: Dasbor (Nurse Station + Approval) dan Tinjau Form
+    if (bottomNavContainer) bottomNavContainer.classList.remove('hidden');
+    if (navGrid) {
+      navGrid.classList.remove('hidden', 'grid-cols-3', 'grid-cols-4', 'grid-cols-5');
+      navGrid.classList.add('grid-cols-2');
+    }
+    btnDash?.classList.remove('hidden');
+    btnInspect?.classList.remove('hidden');
+    const inspectLabel = btnInspect?.querySelector('span');
+    if (inspectLabel) inspectLabel.textContent = 'Tinjau Form';
+    btnRepair?.classList.add('hidden');
+    btnAnalytics?.classList.add('hidden');
+    btnMaster?.classList.add('hidden');
+    inviteBox?.classList.add('hidden');
+  } else if (isTeknisiRole()) {
+    // Teknisi: Fokus pada Perbaikan Fasilitas, Cek Kamar, & Analitik
+    if (bottomNavContainer) bottomNavContainer.classList.remove('hidden');
+    if (navGrid) {
+      navGrid.classList.remove('hidden', 'grid-cols-2', 'grid-cols-4', 'grid-cols-5');
+      navGrid.classList.add('grid-cols-3');
+    }
+    btnDash?.classList.add('hidden');
+    btnRepair?.classList.remove('hidden');
+    btnInspect?.classList.remove('hidden');
+    btnAnalytics?.classList.remove('hidden');
+    btnMaster?.classList.add('hidden');
     inviteBox?.classList.add('hidden');
   } else if (isPetugasRole()) {
-    // Role Petugas: navigasi Cek Kamar (inspect) tetap tersedia,
-    // ditambah Perbaikan & Analitik; Dasbor & Pengaturan disembunyikan.
+    // Petugas Kebersihan: Cek Kamar, Perbaikan, & Analitik
     if (bottomNavContainer) bottomNavContainer.classList.remove('hidden');
-    if (navGrid) navGrid.classList.remove('hidden');
+    if (navGrid) {
+      navGrid.classList.remove('hidden', 'grid-cols-2', 'grid-cols-4', 'grid-cols-5');
+      navGrid.classList.add('grid-cols-3');
+    }
     btnDash?.classList.add('hidden');
     btnInspect?.classList.remove('hidden');
     btnRepair?.classList.remove('hidden');
     btnAnalytics?.classList.remove('hidden');
     btnMaster?.classList.add('hidden');
-    if (navGrid) {
-      navGrid.classList.remove('grid-cols-2', 'grid-cols-4', 'grid-cols-5');
-      navGrid.classList.add('grid-cols-3');
-    }
     inviteBox?.classList.add('hidden');
   } else {
+    // Manajemen: Semua 5 menu
     if (bottomNavContainer) bottomNavContainer.classList.remove('hidden');
-    if (navGrid) navGrid.classList.remove('hidden');
+    if (navGrid) {
+      navGrid.classList.remove('hidden', 'grid-cols-2', 'grid-cols-3', 'grid-cols-4');
+      navGrid.classList.add('grid-cols-5');
+    }
     btnDash?.classList.remove('hidden');
     btnInspect?.classList.remove('hidden');
     btnRepair?.classList.remove('hidden');
     btnAnalytics?.classList.remove('hidden');
     btnMaster?.classList.remove('hidden');
-    if (navGrid) {
-      navGrid.classList.remove('grid-cols-2', 'grid-cols-3', 'grid-cols-4');
-      navGrid.classList.add('grid-cols-5');
-    }
     inviteBox?.classList.remove('hidden');
   }
 }
@@ -3461,7 +3815,7 @@ async function enterApp() {
     ? 'shrink-0 text-[7.5px] font-extrabold uppercase px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 tracking-wide'
     : isPerawatRole()
       ? 'shrink-0 text-[7.5px] font-extrabold uppercase px-1 py-0.5 rounded bg-orange-100 text-orange-700 tracking-wide'
-      : (currentUser.role || '').toLowerCase() === 'teknisi'
+      : isTeknisiRole()
         ? 'shrink-0 text-[7.5px] font-extrabold uppercase px-1 py-0.5 rounded bg-purple-100 text-purple-800 tracking-wide'
         : 'shrink-0 text-[7.5px] font-extrabold uppercase px-1 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide';
 
@@ -3472,9 +3826,13 @@ async function enterApp() {
   const validTabs = isManagerRole()
     ? ['dashboard', 'inspect', 'repair', 'analytics', 'master']
     : isPerawatRole()
-      ? ['dashboard']
-      : ['inspect', 'repair', 'analytics'];
-  const startTab = validTabs.includes(savedTab) ? savedTab : ((isManagerRole() || isPerawatRole()) ? 'dashboard' : 'inspect');
+      ? ['dashboard', 'inspect']
+      : isTeknisiRole()
+        ? ['repair', 'inspect', 'analytics']
+        : ['inspect', 'repair', 'analytics'];
+  const startTab = validTabs.includes(savedTab)
+    ? savedTab
+    : ((isManagerRole() || isPerawatRole()) ? 'dashboard' : (isTeknisiRole() ? 'repair' : 'inspect'));
   try { window.history.replaceState({ tab: startTab }, ''); } catch (e) {}
   switchTab(startTab, true);
 
@@ -3491,6 +3849,7 @@ async function enterApp() {
 function logout() {
   stopNurseReminder();
   localStorage.removeItem('ck_user');
+  localStorage.removeItem('ck_session_ts');
   localStorage.removeItem('ck_last_tab');
   document.documentElement.classList.remove('has-session');
   location.reload();
@@ -3507,11 +3866,11 @@ function updateNetworkStatus() {
   }
 }
 
-async function switchTab(tabName, fromPopState = false, skipAutoPrefill = false) {
-  if (isPetugasRole() && (tabName === 'dashboard' || tabName === 'master')) {
-    tabName = 'inspect';
+async function switchTab(tabName, fromPopState = false, skipAutoPrefill = false, allowNurseInspect = false) {
+  if ((isPetugasRole() || isTeknisiRole()) && (tabName === 'dashboard' || tabName === 'master')) {
+    tabName = isTeknisiRole() ? 'repair' : 'inspect';
   }
-  if (isPerawatRole()) {
+  if (isPerawatRole() && tabName !== 'dashboard' && tabName !== 'inspect') {
     tabName = 'dashboard';
   }
   ensureRepairNavigationAndSection();
@@ -3535,7 +3894,7 @@ async function switchTab(tabName, fromPopState = false, skipAutoPrefill = false)
     btn.classList.toggle('text-slate-500', !isActive);
   });
 
-  const defaultTab = (isManagerRole() || isPerawatRole()) ? 'dashboard' : 'inspect';
+  const defaultTab = (isManagerRole() || isPerawatRole()) ? 'dashboard' : (isTeknisiRole() ? 'repair' : 'inspect');
   if (!fromPopState && tabName !== defaultTab) {
     try { window.history.pushState({ tab: tabName }, ''); } catch (e) {}
   }
@@ -3571,7 +3930,7 @@ async function loadAllData() {
   const [uRes, iRes, insRes, usrRes] = await Promise.all([
     db.from('master_units').select('*').order('unit_code', { ascending: true }),
     db.from('master_items').select('*').order('created_at', { ascending: true }),
-    db.from('room_inspections').select('*').order('created_at', { ascending: false }).limit(200),
+    db.from('room_inspections').select('*').order('created_at', { ascending: false }).limit(500),
     db.from('app_users').select('*').order('created_at', { ascending: true })
   ]);
   unitsData = uRes.data || [];
@@ -3611,7 +3970,6 @@ function applyNurseDashboardVisibility() {
   const dashSection = document.getElementById('tab-dashboard');
   if (!dashSection) return;
 
-  // Sembunyikan 3 kartu statistik atas (Siap Pakai, Kosong/Proses, Maintenance) & tombol Scan QR untuk akun Perawat
   const statSiapEl = document.getElementById('stat-siap');
   const statsRow = statSiapEl ? statSiapEl.closest('.grid') : null;
   if (statsRow) statsRow.classList.toggle('hidden', isPerawatRole());
@@ -3621,6 +3979,65 @@ function applyNurseDashboardVisibility() {
       btn.classList.toggle('hidden', isPerawatRole());
     }
   });
+
+  // Panel khusus Perawat: daftar laporan petugas yang menunggu approve perawat
+  const nurseApprovalBox = document.getElementById('nurse-pending-approval-box');
+  if (nurseApprovalBox) {
+    if (!isPerawatRole()) {
+      nurseApprovalBox.classList.add('hidden');
+      nurseApprovalBox.innerHTML = '';
+    } else {
+      const pendingUnits = unitsData.filter(u => getEffectiveUnitStatus(u) === 'pending_approval');
+      if (pendingUnits.length === 0) {
+        nurseApprovalBox.classList.add('hidden');
+        nurseApprovalBox.innerHTML = '';
+      } else {
+        nurseApprovalBox.classList.remove('hidden');
+        nurseApprovalBox.innerHTML = `
+          <div class="rounded-2xl bg-indigo-50 border-2 border-indigo-300 p-3.5 shadow-sm space-y-2.5">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-ping"></span>
+                <h3 class="text-xs font-extrabold text-indigo-950 uppercase tracking-wide">Menunggu Tinjauan & Approve Perawat (${pendingUnits.length} Kamar)</h3>
+              </div>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-200 text-indigo-900">Selesai Disiapkan Petugas</span>
+            </div>
+            <div class="space-y-2">
+              ${pendingUnits.map(u => {
+                const rep = getLatestInspectionForUnit(u.id, u.unit_name);
+                const meta = rep ? parseNotesMetadata(rep.notes) : null;
+                const executor = meta?.executor || rep?.inspector_name || 'Petugas';
+                const score = rep?.readiness_score ?? 100;
+                const safeUnit = escapeHtml(u.unit_name || '');
+                return `
+                  <div class="bg-white rounded-xl p-3 border border-indigo-200 space-y-2">
+                    <div class="flex items-center justify-between gap-2">
+                      <div>
+                        <p class="text-xs font-extrabold text-slate-900">${escapeHtml(u.unit_code)} - ${safeUnit}</p>
+                        <p class="text-[11px] text-indigo-800 font-semibold">Disiapkan oleh: <strong>${escapeHtml(executor)}</strong> • Skor Kesiapan: <strong>${score}%</strong></p>
+                      </div>
+                      <span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">Siap Ditinjau</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-1.5">
+                      <button type="button" onclick="${rep ? `openReportInForm('${escapeHtml(rep.id)}')` : `approveUnitByManagement('${escapeHtml(u.id)}', '${safeUnit}')`}" class="py-2 px-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-lg text-[10px] flex items-center justify-center gap-1">
+                        <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek Form & Foto
+                      </button>
+                      <button type="button" onclick="approveUnitByManagement('${escapeHtml(u.id)}', '${safeUnit}')" class="py-2 px-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-[10px] flex items-center justify-center gap-1">
+                        <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Approve Siap
+                      </button>
+                      <button type="button" onclick="requestRevisionByManagement('${escapeHtml(u.id)}', '${safeUnit}', '${rep ? escapeHtml(rep.id) : ''}')" class="py-2 px-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-extrabold rounded-lg text-[10px] flex items-center justify-center gap-1">
+                        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Perbaiki Ulang
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      }
+    }
+  }
 
   let banner = document.getElementById('nurse-station-banner');
   if (!banner) {
@@ -3637,8 +4054,8 @@ function applyNurseDashboardVisibility() {
     <div class="banner-gradient rounded-2xl text-white p-3.5 shadow-lg shadow-orange-500/25 mb-3 flex items-center justify-between gap-3">
       <div class="space-y-0.5">
         <span class="text-[9.5px] font-extrabold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full">Nurse Station</span>
-        <h3 class="text-xs sm:text-sm font-extrabold">Permintaan Layanan Kamar (1 Ketuk)</h3>
-        <p class="text-[11px] text-orange-50">Pilih kamar di bawah lalu ketuk tombol sesuai kebutuhan (suara notifikasi otomatis berbunyi di HP Petugas).</p>
+        <h3 class="text-xs sm:text-sm font-extrabold">Permintaan Kamar &amp; Tinjauan Approval</h3>
+        <p class="text-[11px] text-orange-50">Gunakan <strong>Siapkan Kamar</strong> (bisa tulis tambahan), <strong>Panggil Teknisi</strong>, <strong>Minta Dibersihkan</strong>, atau <strong>Pasien Pulang</strong>.</p>
       </div>
       <i data-lucide="volume-2" class="w-7 h-7 shrink-0 opacity-90"></i>
     </div>
@@ -3660,7 +4077,7 @@ function renderDashboard() {
   const mgmtBanner = document.getElementById('management-approval-alert');
   if (mgmtBanner) {
     if (isManagerRole() && pendingUnitsCount > 0) {
-      document.getElementById('approval-alert-title').textContent = `${pendingUnitsCount} Kamar Menunggu Approval`;
+      document.getElementById('approval-alert-title').textContent = `${pendingUnitsCount} Kamar Menunggu Approval Perawat`;
       mgmtBanner.classList.remove('hidden');
     } else {
       mgmtBanner.classList.add('hidden');
@@ -3678,30 +4095,30 @@ function renderDashboard() {
     const isWaitingApproval = (eff === 'pending_approval' || eff === 'dibersihkan');
     const isNeedsRevision = (eff === 'perlu_perbaikan');
     const isNurseMarked = isNurseMarkedUnit(u.last_checked_by);
-    const safeUnitName = (u.unit_name || '').replace(/'/g, "\\'");
+    const safeUnitName = escapeHtml(u.unit_name || '');
 
     const statusMap = {
       siap: { label: 'SIAP PAKAI', bg: 'bg-emerald-100 text-emerald-700', border: 'border-emerald-200' },
-      pending_approval: { label: 'MENUNGGU APPROVAL', bg: 'bg-indigo-100 text-indigo-800', border: 'border-indigo-300' },
+      pending_approval: { label: 'MENUNGGU APPROVE PERAWAT', bg: 'bg-indigo-100 text-indigo-800', border: 'border-indigo-300' },
       perlu_perbaikan: { label: 'PERLU PERBAIKAN', bg: 'bg-rose-100 text-rose-800', border: 'border-rose-300' },
       dibersihkan: { label: 'SEDANG DIBERSIHKAN', bg: 'bg-amber-100 text-amber-700', border: 'border-amber-200' },
       kosong: { label: isNurseMarked ? 'PERMINTAAN PERAWAT' : 'KOSONG', bg: isNurseMarked ? 'bg-orange-100 text-orange-800' : 'bg-slate-200 text-slate-700', border: isNurseMarked ? 'border-orange-300' : 'border-slate-300' },
-      maintenance: { label: 'MAINTENANCE', bg: 'bg-rose-100 text-rose-700', border: 'border-rose-200' }
+      maintenance: { label: 'MAINTENANCE / TEKNISI', bg: 'bg-purple-100 text-purple-800', border: 'border-purple-300' }
     };
     const st = statusMap[eff] || statusMap.kosong;
 
     const actorMeta = latestRep ? parseNotesMetadata(latestRep.notes) : null;
     const checkedInfo = eff === 'maintenance'
-      ? (u.last_checked_by || 'Dalam Perbaikan / Maintenance')
+      ? (u.last_checked_by || 'Dalam Perbaikan Teknisi')
       : isNeedsRevision
-        ? `⚠️ Komplain: ${actorMeta?.feedbackDetail || 'Menunggu perbaikan petugas'}`
+        ? `⚠️ Catatan: ${actorMeta?.feedbackDetail || 'Menunggu perbaikan petugas'}`
         : isWaitingApproval
-          ? `Diajukan: ${actorMeta?.executor || latestRep?.inspector_name || 'Petugas'} (${latestRep?.readiness_score ?? 0}%)`
+          ? `Selesai dicek: ${actorMeta?.executor || latestRep?.inspector_name || 'Petugas'} (${latestRep?.readiness_score ?? 0}%)`
           : isNurseMarked
             ? (u.last_checked_by || 'Permintaan Perawat')
             : (eff === 'siap' ? (u.last_checked_by || 'Siap Pakai') : 'Belum dicek (Kosong)');
 
-    // Tampilan khusus Perawat: 4 tombol aksi cepat langsung di kartu kamar
+    // Tampilan khusus Perawat: tombol + extrabed dihilangkan, Siapkan Kamar beri deskripsi tambahan, & Panggil Teknisi
     if (isPerawatRole()) {
       const siapkanLocked = isSiapkanLockedForUnit(u.id);
       const activeAdmission = latestSiapkanRecordForUnit(u.id);
@@ -3712,40 +4129,50 @@ function renderDashboard() {
         <div class="glass-card card-rise rounded-2xl p-4 shadow-sm border ${st.border} flex flex-col justify-between space-y-3" style="animation-delay:${Math.min(idx, 6) * 45}ms">
           <div class="flex items-start justify-between gap-2">
             <div class="min-w-0">
-              <span class="text-[10px] font-mono font-bold text-slate-400">${u.unit_code} • ${u.floor || ''}</span>
-              <h3 class="text-sm font-extrabold text-slate-900 truncate">${u.unit_name}</h3>
+              <span class="text-[10px] font-mono font-bold text-slate-400">${escapeHtml(u.unit_code)} • ${escapeHtml(u.floor || '')}</span>
+              <h3 class="text-sm font-extrabold text-slate-900 truncate">${safeUnitName}</h3>
             </div>
             <span class="shrink-0 badge-pulse text-[9px] font-extrabold px-2.5 py-1 rounded-full ${st.bg}">${st.label}</span>
           </div>
-          <p class="text-[11px] ${isNurseMarked ? 'text-orange-700 font-bold' : 'text-slate-500'} truncate">${checkedInfo}</p>
+          <p class="text-[11px] ${isNurseMarked ? 'text-orange-700 font-bold' : 'text-slate-500'} truncate">${escapeHtml(checkedInfo)}</p>
+
+          ${isWaitingApproval ? `
+            <div class="grid grid-cols-2 gap-1.5 bg-indigo-50 p-2 rounded-xl border border-indigo-200">
+              <button type="button" onclick="${latestRep ? `openReportInForm('${escapeHtml(latestRep.id)}')` : `approveUnitByManagement('${escapeHtml(u.id)}', '${safeUnitName}')`}" class="py-1.5 px-2 bg-indigo-600 text-white font-extrabold rounded-lg text-[10px] flex items-center justify-center gap-1">
+                <i data-lucide="file-check-2" class="w-3 h-3"></i> Cek Form
+              </button>
+              <button type="button" onclick="approveUnitByManagement('${escapeHtml(u.id)}', '${safeUnitName}')" class="py-1.5 px-2 bg-emerald-600 text-white font-extrabold rounded-lg text-[10px] flex items-center justify-center gap-1">
+                <i data-lucide="check-circle-2" class="w-3 h-3"></i> Approve
+              </button>
+            </div>
+          ` : ''}
+
           <div class="grid grid-cols-2 gap-1.5 pt-1">
-            <button type="button" ${siapkanLocked ? 'disabled title="Terkunci sampai Pasien Pulang"' : ''} onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'siapkan')" class="nurse-btn py-2.5 px-2 ${siapkanLocked ? 'bg-slate-300 text-slate-600' : 'bg-gradient-to-br from-sky-500 to-blue-700 text-white shadow-md shadow-sky-600/30'} font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 transition">
+            <button type="button" ${siapkanLocked ? 'disabled title="Terkunci sampai Pasien Pulang"' : ''} onclick="openNurseActionModal('${escapeHtml(u.id)}', '${safeUnitName}', 'siapkan')" class="nurse-btn py-2.5 px-2 ${siapkanLocked ? 'bg-slate-300 text-slate-600' : 'bg-gradient-to-br from-sky-500 to-blue-700 text-white shadow-md shadow-sky-600/30'} font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 transition">
               <span>🛏️</span> ${siapkanLocked ? 'Terkunci • Tunggu Pulang' : 'Siapkan Kamar'}
             </button>
-            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'extrabed')" class="nurse-btn py-2.5 px-2 bg-gradient-to-br from-purple-500 to-fuchsia-700 text-white shadow-md shadow-purple-600/30 font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 transition">
-              <span>➕</span> Tambah Extrabed
+            <button type="button" onclick="openNurseActionModal('${escapeHtml(u.id)}', '${safeUnitName}', 'teknisi')" class="nurse-btn py-2.5 px-2 bg-gradient-to-br from-purple-600 to-indigo-700 text-white shadow-md shadow-purple-600/30 font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 transition">
+              <span>🔧</span> Panggil Teknisi
             </button>
-            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'bersihkan')" class="nurse-btn py-2.5 px-2 bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md shadow-amber-600/30 font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 transition">
+            <button type="button" onclick="sendNurseRoomAction('${escapeHtml(u.id)}', '${safeUnitName}', 'bersihkan')" class="nurse-btn py-2.5 px-2 bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md shadow-amber-600/30 font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 transition">
               <span>🧹</span> Minta Dibersihkan
             </button>
-            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'pulang')" class="nurse-btn pulse-warm py-2.5 px-2 bg-gradient-to-br from-orange-500 to-rose-600 text-white shadow-md shadow-orange-600/30 font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 transition">
+            <button type="button" onclick="sendNurseRoomAction('${escapeHtml(u.id)}', '${safeUnitName}', 'pulang')" class="nurse-btn pulse-warm py-2.5 px-2 bg-gradient-to-br from-orange-500 to-rose-600 text-white shadow-md shadow-orange-600/30 font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 transition">
               <span>🚪</span> Pasien Pulang
             </button>
           </div>
           ${showCancelAdmission ? `
-            <button type="button" onclick="cancelAdmissionRequest('${u.id}', '${safeUnitName}')" class="nurse-btn w-full py-2 px-2 bg-rose-50 border-2 border-dashed border-rose-300 text-rose-700 hover:bg-rose-100 active:scale-[0.98] font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 transition">
+            <button type="button" onclick="cancelAdmissionRequest('${escapeHtml(u.id)}', '${safeUnitName}')" class="nurse-btn w-full py-2 px-2 bg-rose-50 border-2 border-dashed border-rose-300 text-rose-700 hover:bg-rose-100 active:scale-[0.98] font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 transition">
               <i data-lucide="x-circle" class="w-3.5 h-3.5"></i> Batalkan Pasien Masuk
             </button>
           ` : ''}
-          ${siapkanLocked && !showCancelAdmission ? '<p class="text-[9.5px] font-bold text-slate-500">Permintaan sedang berjalan • tombol dibuka lagi setelah Pasien Pulang</p>' : ''}
-          ${showCancelAdmission ? '<p class="text-[9.5px] font-bold text-rose-600">Permintaan pasien masuk aktif • tekan "Batalkan Pasien Masuk" bila jadwal dibatalkan</p>' : ''}
         </div>
       `;
     }
 
     const dropdownOptions = `
       <option value="siap" ${eff === 'siap' ? 'selected' : ''}>SIAP PAKAI</option>
-      <option value="pending_approval" ${eff === 'pending_approval' ? 'selected' : ''}>MENUNGGU APPROVAL</option>
+      <option value="pending_approval" ${eff === 'pending_approval' ? 'selected' : ''}>MENUNGGU APPROVE PERAWAT</option>
       <option value="perlu_perbaikan" ${eff === 'perlu_perbaikan' ? 'selected' : ''}>PERLU PERBAIKAN</option>
       <option value="dibersihkan" ${eff === 'dibersihkan' ? 'selected' : ''}>SEDANG DIBERSIHKAN</option>
       <option value="kosong" ${eff === 'kosong' ? 'selected' : ''}>KOSONG</option>
@@ -3753,19 +4180,19 @@ function renderDashboard() {
     `;
 
     const openAction = (latestRep && !isInspectionOfficiallyApproved(latestRep))
-      ? `openReportInForm('${latestRep.id}')`
-      : `quickInspect('${u.id}')`;
+      ? `openReportInForm('${escapeHtml(latestRep.id)}')`
+      : `quickInspect('${escapeHtml(u.id)}')`;
 
-    const showApprovalButtons = isManagerRole() && isWaitingApproval;
+    const showApprovalButtons = isReviewerRole() && isWaitingApproval;
 
     return `
       <div class="glass-card card-rise rounded-2xl p-4 shadow-sm border ${st.border} flex flex-col justify-between space-y-3" style="animation-delay:${Math.min(idx, 6) * 45}ms">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
-            <span class="text-[10px] font-mono font-bold text-slate-400">${u.unit_code} • ${u.floor || ''}</span>
-            <h3 class="text-sm font-extrabold text-slate-900 truncate">${u.unit_name}</h3>
+            <span class="text-[10px] font-mono font-bold text-slate-400">${escapeHtml(u.unit_code)} • ${escapeHtml(u.floor || '')}</span>
+            <h3 class="text-sm font-extrabold text-slate-900 truncate">${safeUnitName}</h3>
           </div>
-          <select onchange="quickChangeUnitStatus('${u.id}', this.value)" ${!isManagerRole() ? 'disabled' : ''} class="shrink-0 text-[9px] font-extrabold px-2 py-1 rounded-full ${st.bg} outline-none cursor-pointer">
+          <select onchange="quickChangeUnitStatus('${escapeHtml(u.id)}', this.value)" ${!isManagerRole() ? 'disabled' : ''} class="shrink-0 text-[9px] font-extrabold px-2 py-1 rounded-full ${st.bg} outline-none cursor-pointer">
             ${dropdownOptions}
           </select>
         </div>
@@ -3775,20 +4202,20 @@ function renderDashboard() {
               <button type="button" onclick="${openAction}" class="py-2 px-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 shadow-sm transition">
                 <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek Form
               </button>
-              <button type="button" onclick="approveUnitByManagement('${u.id}', '${safeUnitName}')" class="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 shadow-sm transition">
+              <button type="button" onclick="approveUnitByManagement('${escapeHtml(u.id)}', '${safeUnitName}')" class="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 shadow-sm transition">
                 <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Approve
               </button>
             </div>
-            <button type="button" onclick="requestRevisionByManagement('${u.id}', '${safeUnitName}', '${latestRep ? latestRep.id : ''}')" class="w-full py-1.5 px-2 bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 border border-rose-200 font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 transition">
-              <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Perlu Diperbaiki (Komplain)
+            <button type="button" onclick="requestRevisionByManagement('${escapeHtml(u.id)}', '${safeUnitName}', '${latestRep ? escapeHtml(latestRep.id) : ''}')" class="w-full py-1.5 px-2 bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 border border-rose-200 font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 transition">
+              <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Perlu Diperbaiki
             </button>
           </div>
         ` : ''}
         <div class="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-100">
-          <span class="text-[10px] ${isNeedsRevision ? 'text-rose-700 font-bold' : isNurseMarked ? 'text-orange-700 font-bold' : 'text-slate-500 font-medium'} truncate">${checkedInfo}</span>
+          <span class="text-[10px] ${isNeedsRevision ? 'text-rose-700 font-bold' : isNurseMarked ? 'text-orange-700 font-bold' : 'text-slate-500 font-medium'} truncate">${escapeHtml(checkedInfo)}</span>
           <div class="flex items-center gap-1.5 shrink-0">
-            ${(eff === 'siap' && isManagerRole()) ? `<button type="button" onclick="confirmPatientCheckout('${u.id}', '${safeUnitName}')" title="Konfirmasi Pasien Pulang / Kosongkan" class="px-2 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-lg text-[10px] font-bold">Pasien Pulang</button>` : ''}
-            <button type="button" onclick="quickInspect('${u.id}')" class="px-3 py-1 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-[11px] font-bold">Cek Sekarang</button>
+            ${(eff === 'siap' && isManagerRole()) ? `<button type="button" onclick="confirmPatientCheckout('${escapeHtml(u.id)}', '${safeUnitName}')" title="Konfirmasi Pasien Pulang / Kosongkan" class="px-2 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-lg text-[10px] font-bold">Pasien Pulang</button>` : ''}
+            <button type="button" onclick="quickInspect('${escapeHtml(u.id)}')" class="px-3 py-1 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-[11px] font-bold">Cek Sekarang</button>
           </div>
         </div>
       </div>
@@ -3798,11 +4225,10 @@ function renderDashboard() {
 }
 
 function quickInspect(unitId) {
-  if (isPerawatRole()) return;
   stopNurseReminder();
   const unit = unitsData.find(u => String(u.id) === String(unitId));
-  if (isManagerRole()) {
-    switchTab('inspect', false, true);
+  if (isReviewerRole()) {
+    switchTab('inspect', false, true, true);
     syncOfficerInspectLanding(true);
     const sel0 = document.getElementById('inspect-unit');
     if (sel0 && unit) sel0.value = String(unit.id);
@@ -3823,7 +4249,7 @@ function quickInspect(unitId) {
   const desc = document.getElementById('prefill-review-desc');
   if (banner && desc) {
     const reqLabel = req ? getNurseRequestTypeFromString((req.notes || '') + ' ' + (req.shift || '')).label : 'Permintaan Perawat';
-    desc.innerHTML = `<strong>${unit ? unit.unit_name : ''}</strong> • ${reqLabel}. Centang checklist kesiapan kamar di bawah, lengkapi foto, lalu simpan laporan. <button type="button" onclick="resetFormForFreshCheck()" class="underline font-extrabold text-indigo-950 ml-1">Kosongkan Form</button>`;
+    desc.innerHTML = `<strong>${escapeHtml(unit ? unit.unit_name : '')}</strong> • ${escapeHtml(reqLabel)}. Centang checklist kesiapan kamar di bawah, lengkapi foto, lalu kirim ke Perawat untuk di-approve. <button type="button" onclick="resetFormForFreshCheck()" class="underline font-extrabold text-indigo-950 ml-1">Kosongkan Form</button>`;
     banner.classList.remove('hidden');
   }
   if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
@@ -3843,7 +4269,7 @@ function startTimer() {
 
 function renderInspectForm() {
   const prevSelectedUnit = document.getElementById('inspect-unit')?.value;
-  document.getElementById('inspect-unit').innerHTML = unitsData.map(u => `<option value="${u.id}">${u.unit_code} - ${u.unit_name}</option>`).join('');
+  document.getElementById('inspect-unit').innerHTML = unitsData.map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.unit_code)} - ${escapeHtml(u.unit_name)}</option>`).join('');
   if (prevSelectedUnit && unitsData.some(u => String(u.id) === String(prevSelectedUnit))) {
     document.getElementById('inspect-unit').value = prevSelectedUnit;
   }
@@ -3853,11 +4279,11 @@ function renderInspectForm() {
   box.innerHTML = realChecklistItems.map(item => `
     <label class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer active:scale-[0.99] transition">
       <div>
-        <span class="text-xs font-bold text-slate-800">${item.item_name}</span>
-        <span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">${item.category}</span>
+        <span class="text-xs font-bold text-slate-800">${escapeHtml(item.item_name)}</span>
+        <span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">${escapeHtml(item.category)}</span>
         ${item.is_critical ? '<span class="ml-1 text-[10px] font-bold text-rose-600">*Wajib</span>' : ''}
       </div>
-      <input type="checkbox" class="inspect-chk w-5 h-5 rounded text-teal-600" data-id="${item.id}" data-name="${item.item_name}" data-critical="${item.is_critical}" onchange="updateScore()" />
+      <input type="checkbox" class="inspect-chk w-5 h-5 rounded text-teal-600" data-id="${escapeHtml(item.id)}" data-name="${escapeHtml(item.item_name)}" data-critical="${item.is_critical}" onchange="updateScore()" />
     </label>
   `).join('');
   updateScore();
@@ -3886,7 +4312,7 @@ function handlePhoto(e, type) {
       ctx.fillRect(0, canvas.height - 32, canvas.width, 32);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 12px sans-serif';
-      const officerName = isPetugasRole() ? currentUser.full_name : (document.getElementById('inspect-executor-select')?.value || currentUser.full_name);
+      const officerName = (isPetugasRole() || isTeknisiRole()) ? currentUser.full_name : (document.getElementById('inspect-executor-select')?.value || currentUser.full_name);
       ctx.fillText(`${new Date().toLocaleString('id-ID')} • ${officerName}`, 10, canvas.height - 12);
       watermarkedPhotos[type] = canvas.toDataURL('image/jpeg', 0.75);
       updatePhotoBoxUI(type, watermarkedPhotos[type]);
@@ -3907,12 +4333,12 @@ function buildWaMessage(data, includeChecklist, includeFullLink) {
   const statusText = isNurseReq
     ? `${reqType.shortTag} 🛏️`
     : isRepair
-      ? (data.final_status === 'siap' ? 'SUDAH DIPERBAIKI ✅' : 'PENGAJUAN PERBAIKAN FASILITAS 🔧')
+      ? (data.final_status === 'siap' ? 'SUDAH DIPERBAIKI ✅' : 'PANGGILAN TEKNISI 🔧')
       : isApproved
         ? 'SIAP PAKAI ✅'
         : isRev
           ? 'PERLU PERBAIKAN ⚠️'
-          : 'MENUNGGU APPROVAL MANAJEMEN ⏳';
+          : 'MENUNGGU APPROVE PERAWAT ⏳';
   const meta = parseNotesMetadata(data.notes);
   const cleanNotesText = meta.cleanNotes
     .replace(REPAIR_RECORD_TAG, '')
@@ -3923,16 +4349,16 @@ function buildWaMessage(data, includeChecklist, includeFullLink) {
   const titleText = isNurseReq
     ? `*PERMINTAAN LAYANAN KAMAR (${reqType.shortTag})*`
     : isRepair
-      ? '*LAPORAN CEK PERBAIKAN FASILITAS*'
+      ? '*LAPORAN PERBAIKAN TEKNISI*'
       : '*LAPORAN CEK KESIAPAN KAMAR*';
 
-  const lines = [titleText, '*RS Khusus Bedah SS Medika*', '--------------------------------', `• *Kamar:* ${data.unit_name}`, `• *Waktu / Shift:* ${data.shift}`, `• *${isNurseReq ? 'Perawat Pelapor' : isRepair ? 'Pengaju' : 'Pemeriksa'}:* ${data.inspector_name}`];
-  if (meta.executor && !isNurseReq) lines.push(`• *${isRepair ? 'Petugas Ditugaskan' : 'Pelaksana'}:* ${meta.executor}`);
+  const lines = [titleText, '*RS Khusus Bedah SS Medika*', '--------------------------------', `• *Kamar:* ${data.unit_name}`, `• *Waktu / Shift:* ${data.shift}`, `• *${isNurseReq ? 'Perawat Pelapor' : isRepair ? 'Pelapor' : 'Peninjau'}:* ${data.inspector_name}`];
+  if (meta.executor && !isNurseReq) lines.push(`• *${isRepair ? 'Teknisi Pelaksana' : 'Petugas Pelaksana'}:* ${meta.executor}`);
   if (!isRepair && !isNurseReq) lines.push(`• *Skor Kesiapan:* ${data.readiness_score}%`);
   lines.push(`• *Status:* ${statusText}`, `• *Waktu:* ${waktu}`);
   if (meta.feedbackStatus) {
     lines.push('--------------------------------', `• *Tanggapan / Status:* ${meta.feedbackStatus}`);
-    if (meta.feedbackDetail) lines.push(`• *${isNurseReq ? 'Instruksi' : isRepair ? 'Kategori' : 'Bagian Perbaikan'}:* ${meta.feedbackDetail}`);
+    if (meta.feedbackDetail) lines.push(`• *${isNurseReq ? 'Tambahan / Instruksi' : isRepair ? 'Kategori' : 'Bagian Perbaikan'}:* ${meta.feedbackDetail}`);
   }
   if (includeChecklist && Array.isArray(data.checklist_data) && data.checklist_data.length > 0 && !isNurseReq) {
     lines.push('--------------------------------', '*Rincian:*');
@@ -3974,753 +4400,831 @@ function normalizePhone(raw) {
 }
 
 function executeWhatsAppSend(usePhone) {
-  const text = document.getElementById('wa-message-preview').value;
-  const rawPhone = document.getElementById('wa-target-phone').value.trim();
-  let waUrl = '';
+  const msg = document.getElementById('wa-message-preview')?.value || '';
+  if (!msg.trim()) return;
   if (usePhone) {
-    const phone = normalizePhone(rawPhone);
-    if (!phone) return alert('Masukkan nomor WhatsApp tujuan terlebih dahulu, atau ketuk "Pilih Grup / Kontak".');
-    localStorage.setItem('ck_last_wa_phone', rawPhone);
-    waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+    const raw = document.getElementById('wa-target-phone')?.value.trim() || '';
+    const phone = normalizePhone(raw);
+    if (!phone) return alert('Masukkan nomor WhatsApp tujuan terlebih dahulu.');
+    localStorage.setItem('ck_last_wa_phone', raw);
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
   } else {
-    waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   }
   closeActiveModal('modal-wa-share');
-  window.open(waUrl, '_blank');
 }
 
 function shareHistoryWaById(reportId) {
-  const item = inspectionsData.find(r => String(r.id) === String(reportId));
-  if (item) openWaShareModal(item);
+  const rep = inspectionsData.find(r => String(r.id) === String(reportId));
+  if (rep) openWaShareModal(rep);
 }
 
-async function processInspectionSubmit(alsoSendWa = false) {
-  if (isPerawatRole()) return;
-  const unitId = document.getElementById('inspect-unit').value;
-  const unit = unitsData.find(u => u.id === unitId);
-  if (!unit) return alert('Pilih unit kamar terlebih dahulu');
+// ==================== SUBMIT FORM INSPEKSI KAMAR (PETUGAS -> APPROVE PERAWAT) ====================
 
-  const selectedShift = document.getElementById('inspect-shift').value;
-  const officerName = document.getElementById('inspect-officer-select')?.value || 'Supervisor Manajemen';
-  const executorVal = isPetugasRole()
+async function processInspectionSubmit(alsoSendWa = false) {
+  const unitId = document.getElementById('inspect-unit')?.value;
+  const unit = unitsData.find(u => String(u.id) === String(unitId));
+  if (!unit) return alert('Pilih unit kamar terlebih dahulu.');
+
+  const shiftVal = document.getElementById('inspect-shift')?.value || 'Shift Pagi';
+  const reviewerName = document.getElementById('inspect-officer-select')?.value || 'Perawat Nurse Station';
+  const executorName = (isPetugasRole() || isTeknisiRole())
     ? currentUser.full_name
     : (document.getElementById('inspect-executor-select')?.value || currentUser.full_name);
 
-  let feedbackStatus = document.getElementById('inspect-feedback-status')?.value || '';
-  const feedbackDetail = document.getElementById('inspect-feedback-detail')?.value.trim() || '';
-  const rawExtraNotes = document.getElementById('inspect-notes').value.trim();
-
   const chks = Array.from(document.querySelectorAll('.inspect-chk'));
-  const checkedCount = chks.filter(c => c.checked).length;
-  const score = chks.length ? Math.round((checkedCount / chks.length) * 100) : 100;
-  const missingCritical = chks.some(c => c.dataset.critical === 'true' && !c.checked);
+  const checklistData = chks.map(c => ({
+    item: c.dataset.name,
+    checked: c.checked,
+    critical: c.dataset.critical === 'true'
+  }));
+  const checkedCount = checklistData.filter(c => c.checked).length;
+  const score = chks.length > 0 ? Math.round((checkedCount / chks.length) * 100) : 100;
 
-  const isManagerSendingRevision = isManagerRole() && (
-    feedbackStatus.includes('Perlu Perbaikan') ||
-    feedbackStatus.includes('Wajib Diperbaiki')
-  );
+  let fbStatus = document.getElementById('inspect-feedback-status')?.value || 'Menunggu Approval Perawat';
+  const fbDetail = document.getElementById('inspect-feedback-detail')?.value.trim() || '';
+  const extraNotes = document.getElementById('inspect-notes')?.value.trim() || '';
 
-  let isApproved = false;
-  let finalFeedbackDetail = feedbackDetail;
+  let finalStatus = 'kotor';
+  let unitStamp = `${executorName} (Menunggu Approval Perawat)`;
 
-  if (isManagerSendingRevision) {
-    isApproved = false;
-    feedbackStatus = `Perlu Perbaikan (Komplain oleh ${currentUser.full_name || officerName})`;
-    if (!finalFeedbackDetail) {
-      finalFeedbackDetail = rawExtraNotes || 'Periksa kembali kelengkapan & kebersihan kamar';
+  if (isReviewerRole()) {
+    if (fbStatus.includes('Approved')) {
+      finalStatus = 'siap';
+      fbStatus = `Sesuai Standar (Approved oleh ${currentUser.full_name})`;
+      unitStamp = `Approved: ${currentUser.full_name}`;
+    } else {
+      finalStatus = 'kotor';
+      unitStamp = `Perlu Perbaikan: ${fbDetail || 'Ditinjau Perawat'}`;
     }
-  } else if (isManagerRole() && feedbackStatus.includes('Approved') && score === 100 && !missingCritical) {
-    isApproved = true;
-    finalFeedbackDetail = '';
-    feedbackStatus = `Sesuai Standar (Approved oleh ${currentUser.full_name || officerName})`;
-  } else if (!requireApprovalMode && score === 100 && !missingCritical) {
-    isApproved = true;
-    finalFeedbackDetail = '';
-    feedbackStatus = `Sesuai Standar (Otomatis Siap Pakai oleh ${executorVal})`;
+  } else if (!requireApprovalMode && score === 100) {
+    finalStatus = 'siap';
+    fbStatus = `Sesuai Standar (Otomatis Siap Pakai - ${executorName})`;
+    unitStamp = `Siap Pakai (${executorName})`;
   } else {
-    isApproved = false;
-    if (isPetugasRole()) {
-      finalFeedbackDetail = '';
-      if (requireApprovalMode) {
-        feedbackStatus = activeReviewReportId
-          ? `Menunggu Approval Manajemen (Selesai Perbaikan oleh ${executorVal})`
-          : 'Menunggu Approval Manajemen';
-      } else {
-        feedbackStatus = `Belum Lengkap (Skor ${score}%)`;
-      }
-    } else if (feedbackStatus.includes('Approved') || feedbackStatus.includes('Sesuai Standar')) {
-      feedbackStatus = requireApprovalMode ? 'Menunggu Approval Manajemen' : `Belum Lengkap (Skor ${score}%)`;
-    }
+    finalStatus = 'kotor';
+    fbStatus = `Menunggu Approval Perawat (Disiapkan oleh ${executorName})`;
+    unitStamp = `${executorName} (Menunggu Approval Perawat)`;
   }
 
-  const finalStatus = isApproved ? 'siap' : 'kotor';
-  const unitCheckedByLabel = isApproved
-    ? (isManagerRole() ? `Approved: ${currentUser.full_name || officerName}` : `Siap Pakai (${executorVal})`)
-    : isManagerSendingRevision
-      ? `Perlu Perbaikan: ${finalFeedbackDetail}`
-      : (requireApprovalMode ? `${executorVal} (Menunggu Approval)` : `${executorVal} (Belum Lengkap)`);
-
+  const composedNotes = composeNotesWithMetadata(executorName, fbStatus, fbDetail, extraNotes);
   const payload = {
     unit_id: unit.id,
     unit_name: unit.unit_name,
-    inspector_name: isApproved ? (isManagerRole() ? (currentUser.full_name || officerName) : executorVal) : officerName,
+    inspector_name: reviewerName,
     inspector_role: currentUser.role,
-    shift: selectedShift,
+    shift: shiftVal,
     readiness_score: score,
     final_status: finalStatus,
     duration_seconds: secondsElapsed,
-    checklist_data: chks.map(c => ({ item: c.dataset.name, checked: c.checked })),
-    notes: composeNotesWithMetadata(executorVal, feedbackStatus, finalFeedbackDetail, rawExtraNotes),
+    checklist_data: checklistData,
+    notes: composedNotes,
     photo_room_url: watermarkedPhotos.room,
     photo_toilet_url: watermarkedPhotos.toilet
   };
 
-  const btn = document.getElementById('btn-submit-inspect');
+  const btnSubmit = document.getElementById('btn-submit-inspect');
   const btnWa = document.getElementById('btn-submit-wa');
-  btn.disabled = true; btnWa.disabled = true; btn.textContent = 'Menyimpan...';
+  if (btnSubmit) btnSubmit.disabled = true;
+  if (btnWa) btnWa.disabled = true;
 
-  let savedOk = false;
   let savedRecord = { ...payload, created_at: new Date().toISOString() };
+  let savedOk = false;
 
   if (!navigator.onLine) {
     const q = JSON.parse(localStorage.getItem('ck_offline_queue') || '[]');
     q.push(payload);
     localStorage.setItem('ck_offline_queue', JSON.stringify(q));
     savedOk = true;
-  } else {
-    if (activeReviewReportId) {
-      const { data: updatedRows, error } = await db.from('room_inspections')
-        .update({ ...payload, created_at: new Date().toISOString() })
-        .eq('id', activeReviewReportId)
-        .select();
-      if (error) alert('Gagal memperbarui laporan: ' + error.message);
-      else {
-        if (updatedRows?.[0]) savedRecord = updatedRows[0];
-        await db.from('master_units').update({ status: finalStatus, last_checked_at: new Date().toISOString(), last_checked_by: unitCheckedByLabel }).eq('id', unit.id);
-        savedOk = true;
-      }
+  } else if (activeReviewReportId) {
+    const { data: updatedRows, error } = await db.from('room_inspections')
+      .update({ ...payload, created_at: new Date().toISOString() })
+      .eq('id', activeReviewReportId)
+      .select();
+    if (error) {
+      alert('Gagal memperbarui laporan: ' + error.message);
     } else {
-      const { data: insertedRows, error } = await db.from('room_inspections').insert([payload]).select();
-      if (error) alert('Gagal menyimpan laporan: ' + error.message);
-      else {
-        if (insertedRows?.[0]) {
-          savedRecord = insertedRows[0];
-          lastKnownReportId = savedRecord.id;
-          localStorage.setItem('ck_last_seen_id', savedRecord.id);
-        }
-        await db.from('master_units').update({ status: finalStatus, last_checked_at: new Date().toISOString(), last_checked_by: unitCheckedByLabel }).eq('id', unit.id);
-        savedOk = true;
+      if (updatedRows?.[0]) savedRecord = updatedRows[0];
+      await db.from('master_units').update({
+        status: finalStatus,
+        last_checked_by: unitStamp,
+        last_checked_at: new Date().toISOString()
+      }).eq('id', unit.id);
+      savedOk = true;
+    }
+  } else {
+    const { data: insertedRows, error } = await db.from('room_inspections').insert([payload]).select();
+    if (error) {
+      alert('Gagal menyimpan laporan: ' + error.message);
+    } else {
+      if (insertedRows?.[0]) {
+        savedRecord = insertedRows[0];
+        lastKnownReportId = savedRecord.id;
+        localStorage.setItem('ck_last_seen_id', savedRecord.id);
       }
+      await db.from('master_units').update({
+        status: finalStatus,
+        last_checked_by: unitStamp,
+        last_checked_at: new Date().toISOString()
+      }).eq('id', unit.id);
+      savedOk = true;
     }
   }
 
-  btn.disabled = false; btnWa.disabled = false;
+  if (btnSubmit) btnSubmit.disabled = false;
+  if (btnWa) btnWa.disabled = false;
 
   if (savedOk) {
-    clearBottomFormReviewBar();
-    activeReviewReportId = null;
-    document.getElementById('prefill-review-banner')?.classList.add('hidden');
-    document.getElementById('inspection-form').reset();
-    populateOfficerDropdown();
-    populateShiftDropdown();
-    document.getElementById('inspect-shift').value = selectedShift;
-    resetPhotoBoxes();
-    playNotificationChime();
+    clearPrefillFormState();
+    playNotificationChime(true);
     await loadAllData();
     restartNurseReminderIfNeeded();
-    syncOfficerInspectLanding(false);
-    switchTab(isManagerRole() ? 'dashboard' : 'analytics');
-    if (alsoSendWa) openWaShareModal(savedRecord);
-    else if (isManagerSendingRevision) alert('Komplain perbaikan terkirim ke Petugas! Status kamar kini ditandai PERLU PERBAIKAN.');
-    else if (!isApproved && requireApprovalMode) alert('Laporan tersimpan! Notifikasi telah dikirim ke bagian Manajemen agar segera di-approve menjadi SIAP PAKAI.');
-    else if (!isApproved) alert(`Laporan tersimpan dengan skor ${score}%. Lengkapi seluruh checklist wajib agar kamar berstatus SIAP PAKAI.`);
-    else alert('Berhasil! Laporan kesiapan kamar tersimpan dan kamar berstatus SIAP PAKAI.');
+    if (alsoSendWa) {
+      openWaShareModal(savedRecord);
+    } else {
+      alert(finalStatus === 'siap'
+        ? `Laporan tersimpan! ${unit.unit_name} berstatus SIAP PAKAI.`
+        : `Laporan tersimpan & otomatis terkirim ke Perawat untuk ditinjau & di-Approve!`);
+    }
   }
 }
 
-document.getElementById('inspection-form').addEventListener('submit', async (e) => { e.preventDefault(); await processInspectionSubmit(false); });
-async function saveAndSendWhatsApp() { await processInspectionSubmit(true); }
+document.getElementById('inspection-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await processInspectionSubmit(false);
+});
+
+async function saveAndSendWhatsApp() {
+  await processInspectionSubmit(true);
+}
 
 async function syncOfflineQueue() {
   const q = JSON.parse(localStorage.getItem('ck_offline_queue') || '[]');
-  if (q.length === 0) return;
-  for (const item of q) await db.from('room_inspections').insert([item]);
-  localStorage.removeItem('ck_offline_queue');
-  loadAllData();
-}
-
-function openQrScanner() {
-  openModalWithHistory('modal-qr-scanner');
-  if (qrScannerInstance) {
-    qrScannerInstance.stop().catch(() => {}).finally(() => {
-      qrScannerInstance = null;
-      startQrCamera();
-    });
-  } else {
-    startQrCamera();
+  if (q.length === 0 || !navigator.onLine) return;
+  for (const item of q) {
+    await db.from('room_inspections').insert([item]);
   }
+  localStorage.removeItem('ck_offline_queue');
+  await loadAllData();
 }
 
-function startQrCamera() {
-  qrScannerInstance = new Html5Qrcode("qr-reader");
-  qrScannerInstance.start({ facingMode: "environment" }, { fps: 10, qrbox: 220 }, (decodedText) => {
-    closeQrScanner();
-    const found = unitsData.find(u => u.unit_code === decodedText || u.id === decodedText);
-    if (found) {
-      if (isPerawatRole()) confirmPatientCheckout(found.id, found.unit_name);
-      else quickInspect(found.id);
-    } else alert('Kode QR tidak dikenali: ' + decodedText);
-  }).catch(err => alert('Kamera tidak dapat diakses: ' + err));
-}
+// ==================== ANALITIK, KEDISIPLINAN & EXPORT PDF / EXCEL ====================
 
-function closeQrScanner() {
-  closeActiveModal('modal-qr-scanner');
-  if (qrScannerInstance) qrScannerInstance.stop().catch(() => {});
-}
+function renderAnalytics() {
+  const { rows } = getFilteredExportData();
+  const countBadge = document.getElementById('export-filter-count');
+  if (countBadge) countBadge.textContent = `${rows.length} Data`;
 
-function showQrPrint(code, name) {
-  activeQrMeta = { code, name };
-  document.getElementById('qr-print-title').textContent = name;
-  document.getElementById('qr-print-code').textContent = code;
-  const box = document.getElementById('qr-code-box');
-  box.innerHTML = '';
-  new QRCode(box, { text: code, width: 200, height: 200 });
-  openModalWithHistory('modal-qr-print');
-}
+  const siapCount = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
+  const maintCount = unitsData.filter(u => getEffectiveUnitStatus(u) === 'maintenance').length;
+  const prosesCount = Math.max(0, unitsData.length - siapCount - maintCount);
 
-function downloadQrImage() {
-  const box = document.getElementById('qr-code-box');
-  const source = box.querySelector('canvas') || box.querySelector('img');
-  if (!source) return alert('Gambar QR belum siap.');
-  const out = document.createElement('canvas');
-  out.width = 320; out.height = 390;
-  const ctx = out.getContext('2d');
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, out.width, out.height);
-  ctx.strokeStyle = '#0d9488'; ctx.lineWidth = 8; ctx.strokeRect(10, 10, out.width - 20, out.height - 20);
-  ctx.fillStyle = '#0d9488'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('RS KHUSUS BEDAH SS MEDIKA', out.width / 2, 42);
-  ctx.fillStyle = '#0f172a'; ctx.font = 'bold 17px sans-serif'; ctx.fillText(activeQrMeta.name, out.width / 2, 68);
-  ctx.drawImage(source, 60, 88, 200, 200);
-  ctx.fillStyle = '#334155'; ctx.font = 'bold 16px monospace'; ctx.fillText(activeQrMeta.code, out.width / 2, 322);
-  ctx.fillStyle = '#64748b'; ctx.font = '11px sans-serif'; ctx.fillText('Scan untuk Cek Kesiapan Kamar', out.width / 2, 348);
-  const link = document.createElement('a');
-  link.download = `QR_${activeQrMeta.code.replace(/[^a-zA-Z0-9_-]/g, '_')}.png`;
-  link.href = out.toDataURL('image/png');
-  link.click();
-}
+  if (document.getElementById('chip-live-siap')) document.getElementById('chip-live-siap').textContent = siapCount;
+  if (document.getElementById('chip-live-proses')) document.getElementById('chip-live-proses').textContent = prosesCount;
+  if (document.getElementById('chip-live-maint')) document.getElementById('chip-live-maint').textContent = maintCount;
 
-function renderUsers() {
-  ensureAccountRoleOptions();
-  const list = document.getElementById('master-user-list');
-  if (!list) return;
-  list.innerHTML = usersData.map(u => {
-    const rLower = (u.role || '').toLowerCase();
-    const roleBadge = rLower === 'manajemen'
-      ? 'bg-indigo-100 text-indigo-700'
-      : rLower === 'perawat'
-        ? 'bg-orange-100 text-orange-700'
-        : rLower === 'teknisi'
-          ? 'bg-purple-100 text-purple-800'
-          : 'bg-teal-100 text-teal-700';
+  const ctx = document.getElementById('chart-status');
+  if (ctx && window.Chart) {
+    if (statusChart) statusChart.destroy();
+    statusChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Siap Pakai', 'Proses / Kotor', 'Maintenance'],
+        datasets: [{
+          data: [siapCount, prosesCount, maintCount],
+          backgroundColor: ['#10b981', '#f59e0b', '#e11d48'],
+          borderWidth: 0
+        }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '68%' }
+    });
+  }
+
+  const pureChecks = rows.filter(r => !isRepairRecord(r) && !isNurseRequestRecord(r));
+  const avgScore = pureChecks.length > 0
+    ? Math.round(pureChecks.reduce((s, r) => s + (Number(r.readiness_score) || 0), 0) / pureChecks.length)
+    : 0;
+  const avgSec = pureChecks.length > 0
+    ? Math.round(pureChecks.reduce((s, r) => s + (Number(r.duration_seconds) || 0), 0) / pureChecks.length)
+    : 0;
+  const occupancyPct = unitsData.length > 0
+    ? Math.round(((unitsData.length - siapCount) / unitsData.length) * 100)
+    : 0;
+
+  if (document.getElementById('analytic-total')) document.getElementById('analytic-total').textContent = `${rows.length} Laporan`;
+  if (document.getElementById('analytic-pure-score')) document.getElementById('analytic-pure-score').textContent = `${avgScore}%`;
+  if (document.getElementById('analytic-occupancy')) document.getElementById('analytic-occupancy').textContent = `${occupancyPct}%`;
+  if (document.getElementById('analytic-avg-time')) document.getElementById('analytic-avg-time').textContent = `${avgSec} Detik`;
+
+  // Render tabel rekap kamar dipakai & kosong (Harian, Mingguan, Bulanan, Tahunan)
+  const usageSummary = getRoomUsageByPeriodSummary();
+  const totalUnitBadge = document.getElementById('rekap-total-unit-badge');
+  if (totalUnitBadge) totalUnitBadge.textContent = String(unitsData.length);
+  const usageTbody = document.getElementById('room-usage-period-tbody');
+  if (usageTbody) {
+    usageTbody.innerHTML = usageSummary.map(item => `
+      <tr class="border-b border-slate-100">
+        <td class="py-2 pr-2 font-bold text-slate-800">${escapeHtml(item.periode)}</td>
+        <td class="py-2 pr-2 text-center font-extrabold text-orange-600">${item.dipakai} Kamar</td>
+        <td class="py-2 pr-2 text-center font-extrabold text-emerald-600">${item.kosong} Kamar</td>
+        <td class="py-2 text-right font-bold text-slate-500">${item.aktivitas}x</td>
+      </tr>
+    `).join('');
+  }
+
+  // Render tabel kedisiplinan petugas & teknisi
+  const staffStats = computeDisciplineStats(rows);
+  const discTbody = document.getElementById('discipline-tbody');
+  if (discTbody) {
+    if (staffStats.length === 0) {
+      discTbody.innerHTML = '<tr><td colspan="5" class="py-4 text-center text-slate-400">Belum ada data aktivitas petugas/teknisi pada periode ini.</td></tr>';
+    } else {
+      discTbody.innerHTML = staffStats.map(st => `
+        <tr class="border-b border-slate-100">
+          <td class="py-2 pr-2 font-extrabold text-slate-800">${escapeHtml(st.name)} <span class="text-[9.5px] font-semibold text-slate-400">(${escapeHtml(st.role)})</span></td>
+          <td class="py-2 pr-2 text-center font-bold">${st.total}</td>
+          <td class="py-2 pr-2 text-center font-bold text-emerald-600">${st.onTime}</td>
+          <td class="py-2 pr-2 text-center font-bold text-rose-600">${st.revisions}</td>
+          <td class="py-2 text-right font-extrabold ${st.score >= 85 ? 'text-emerald-600' : 'text-amber-600'}">${st.score}%</td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  // Render riwayat inspeksi
+  const histEl = document.getElementById('history-list');
+  if (!histEl) return;
+  if (rows.length === 0) {
+    histEl.innerHTML = '<div class="text-center py-6 text-xs text-slate-400 bg-white/70 rounded-2xl border border-slate-200/70">Tidak ada data laporan pada filter yang dipilih.</div>';
+    return;
+  }
+
+  histEl.innerHTML = rows.slice(0, 60).map(r => {
+    const waktu = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+    const meta = parseNotesMetadata(r.notes);
+    const isRepair = isRepairRecord(r);
+    const isNurseReq = isNurseRequestRecord(r);
+    const isApproved = isInspectionOfficiallyApproved(r);
+    const actor = meta.executor || r.inspector_name;
+
+    const statusBadge = isNurseReq
+      ? 'PERMINTAAN PERAWAT'
+      : isRepair
+        ? (r.final_status === 'siap' ? 'PERBAIKAN SELESAI ✅' : 'TUGAS TEKNISI 🔧')
+        : isApproved
+          ? 'SIAP PAKAI ✅'
+          : 'MENUNGGU APPROVE PERAWAT';
+
     return `
-      <div class="py-3 flex items-center justify-between gap-2">
-        <div>
-          <div class="flex items-center gap-2">
-            <p class="text-xs font-extrabold text-slate-900">${u.full_name}</p>
-            <span class="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full ${roleBadge}">${roleLabel(u.role)}</span>
+      <div class="glass-card rounded-2xl p-3.5 shadow-sm border border-slate-200/80 space-y-2">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <h4 class="text-xs font-extrabold text-slate-900">${escapeHtml(r.unit_name)}</h4>
+            <p class="text-[10.5px] text-slate-500">Pelaksana: <strong>${escapeHtml(actor)}</strong> • ${waktu}</p>
           </div>
-          <p class="text-[11px] text-slate-500 font-mono mt-0.5">User: ${u.username} • Pass: ${u.password}</p>
+          <span class="text-[9px] font-extrabold px-2 py-0.5 rounded-full ${isApproved || r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}">${statusBadge}</span>
         </div>
-        <div class="flex items-center gap-1.5">
-          <button type="button" onclick="editUser('${u.id}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-[11px] font-bold">Edit</button>
-          ${u.username !== 'admin' ? `<button type="button" onclick="deleteUser('${u.id}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-[11px] font-bold">Hapus</button>` : ''}
+        <div class="flex items-center justify-between pt-1 border-t border-slate-100">
+          <span class="text-[10.5px] font-bold text-slate-600">${(!isRepair && !isNurseReq) ? `Skor: ${r.readiness_score}% • Durasi: ${r.duration_seconds || 0} dtk` : escapeHtml(r.shift || '')}</span>
+          <div class="flex items-center gap-1.5">
+            ${creatorDeleteUnlocked ? `<button type="button" onclick="deleteHistoryRecord('${escapeHtml(r.id)}', '${escapeHtml(r.unit_name)}', '${escapeHtml(r.unit_id || '')}')" class="px-2 py-1 bg-rose-50 text-rose-600 rounded-lg text-[10px] font-bold">Hapus</button>` : ''}
+            <button type="button" onclick="openReportFullView('${escapeHtml(r.id)}')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold">Detail</button>
+            <button type="button" onclick="shareHistoryWaById('${escapeHtml(r.id)}')" class="px-2.5 py-1 bg-teal-600 text-white rounded-lg text-[10px] font-bold">WA</button>
+          </div>
         </div>
       </div>
     `;
   }).join('');
 }
 
+function computeDisciplineStats(rows) {
+  const map = new Map();
+  rows.forEach(r => {
+    if (isNurseRequestRecord(r)) return;
+    const meta = parseNotesMetadata(r.notes);
+    const isRep = isRepairRecord(r);
+    const name = (meta.executor && meta.executor !== 'Belum Ditugaskan') ? meta.executor : (r.inspector_name || 'Petugas');
+    const roleText = isRep ? 'Teknisi' : 'Petugas';
+
+    if (!map.has(name)) {
+      map.set(name, { name, role: roleText, total: 0, onTime: 0, revisions: 0 });
+    }
+    const entry = map.get(name);
+    entry.total += 1;
+    if (isRevisionRequested(r)) {
+      entry.revisions += 1;
+    } else if (isRep ? r.final_status === 'siap' : ((Number(r.duration_seconds) || 0) <= 1800 && (Number(r.readiness_score) || 0) >= 80)) {
+      entry.onTime += 1;
+    }
+  });
+
+  return Array.from(map.values()).map(item => {
+    const rawScore = item.total > 0 ? Math.round(((item.onTime - item.revisions * 0.5) / item.total) * 100) : 0;
+    return { ...item, score: Math.max(0, Math.min(100, rawScore)) };
+  }).sort((a, b) => b.total - a.total);
+}
+
+// ==================== DOWNLOAD EXCEL (.XLS DENGAN TABEL TERSTRUKTUR & PILIHAN DATA) ====================
+
+function exportCsv() {
+  const { rows, label, fileSuffix } = getFilteredExportData();
+  const incRoomUsage = document.getElementById('exp-opt-room-usage')?.checked ?? true;
+  const incDiscipline = document.getElementById('exp-opt-discipline')?.checked ?? true;
+  const incRecapTable = document.getElementById('exp-opt-recap-table')?.checked ?? true;
+
+  if (!incRoomUsage && !incDiscipline && !incRecapTable) {
+    return alert('Centang minimal satu pilihan data yang akan diambil sebelum mengunduh Excel.');
+  }
+
+  let htmlTables = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+    <head><meta charset="utf-8" /></head>
+    <body style="font-family: Arial, sans-serif;">
+      <h2>REKAP LAPORAN KESIAPAN KAMAR — RS KHUSUS BEDAH SS MEDIKA</h2>
+      <p><strong>Periode Data:</strong> ${escapeHtml(label)} | <strong>Dicetak pada:</strong> ${new Date().toLocaleString('id-ID')}</p>
+  `;
+
+  if (incRoomUsage) {
+    const usageSummary = getRoomUsageByPeriodSummary();
+    htmlTables += `
+      <h3>1. REKAP JUMLAH KAMAR DIPAKAI &amp; KOSONG (HARIAN, MINGGUAN, BULANAN, TAHUNAN)</h3>
+      <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; margin-bottom: 18px;">
+        <tr style="background-color: #0d9488; color: #ffffff; font-weight: bold;">
+          <th>Kurun Waktu</th>
+          <th>Total Kamar</th>
+          <th>Jumlah Kamar Dipakai</th>
+          <th>Jumlah Kamar Kosong / Siap</th>
+          <th>Total Aktivitas</th>
+        </tr>
+        ${usageSummary.map(u => `
+          <tr>
+            <td>${escapeHtml(u.periode)}</td>
+            <td align="center">${unitsData.length}</td>
+            <td align="center">${u.dipakai}</td>
+            <td align="center">${u.kosong}</td>
+            <td align="center">${u.aktivitas}</td>
+          </tr>
+        `).join('')}
+      </table>
+    `;
+  }
+
+  if (incDiscipline) {
+    const staffStats = computeDisciplineStats(rows);
+    htmlTables += `
+      <h3>2. TABEL KEDISIPLINAN PETUGAS &amp; TEKNISI</h3>
+      <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; margin-bottom: 18px;">
+        <tr style="background-color: #4f46e5; color: #ffffff; font-weight: bold;">
+          <th>No</th>
+          <th>Nama Petugas / Teknisi</th>
+          <th>Bagian</th>
+          <th>Total Tugas</th>
+          <th>Tepat Waktu &amp; Sesuai</th>
+          <th>Perbaikan Ulang</th>
+          <th>Nilai Kedisiplinan (%)</th>
+        </tr>
+        ${staffStats.length === 0
+          ? '<tr><td colspan="7" align="center">Tidak ada data pada periode ini</td></tr>'
+          : staffStats.map((st, idx) => `
+              <tr>
+                <td align="center">${idx + 1}</td>
+                <td>${escapeHtml(st.name)}</td>
+                <td>${escapeHtml(st.role)}</td>
+                <td align="center">${st.total}</td>
+                <td align="center">${st.onTime}</td>
+                <td align="center">${st.revisions}</td>
+                <td align="center">${st.score}%</td>
+              </tr>
+            `).join('')}
+      </table>
+    `;
+  }
+
+  if (incRecapTable) {
+    htmlTables += `
+      <h3>3. TABEL REKAPITULASI LAPORAN KESIAPAN KAMAR &amp; PERBAIKAN</h3>
+      <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse;">
+        <tr style="background-color: #0f172a; color: #ffffff; font-weight: bold;">
+          <th>No</th>
+          <th>Waktu</th>
+          <th>Unit Kamar</th>
+          <th>Jenis Laporan</th>
+          <th>Pelaksana (Petugas / Teknisi)</th>
+          <th>Peninjau / Pelapor</th>
+          <th>Shift</th>
+          <th>Skor (%)</th>
+          <th>Status Akhir</th>
+          <th>Keterangan / Catatan</th>
+        </tr>
+        ${rows.length === 0
+          ? '<tr><td colspan="10" align="center">Tidak ada data pada periode ini</td></tr>'
+          : rows.map((r, idx) => {
+              const meta = parseNotesMetadata(r.notes);
+              const jenis = isNurseRequestRecord(r) ? 'Permintaan Perawat' : isRepairRecord(r) ? 'Perbaikan Teknisi' : 'Cek Kesiapan Kamar';
+              const statusStr = isInspectionOfficiallyApproved(r) || r.final_status === 'siap' ? 'SIAP PAKAI / SELESAI' : 'PROSES / MENUNGGU';
+              const cleanNote = meta.cleanNotes.replace(REPAIR_RECORD_TAG, '').replace(NURSE_REQ_TAG, '').replace(CHECKOUT_RECORD_TAG, '').replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '').trim();
+              return `
+                <tr>
+                  <td align="center">${idx + 1}</td>
+                  <td>${r.created_at ? new Date(r.created_at).toLocaleString('id-ID') : '-'}</td>
+                  <td>${escapeHtml(r.unit_name)}</td>
+                  <td>${jenis}</td>
+                  <td>${escapeHtml(meta.executor || r.inspector_name)}</td>
+                  <td>${escapeHtml(r.inspector_name)}</td>
+                  <td>${escapeHtml(r.shift || '-')}</td>
+                  <td align="center">${r.readiness_score ?? 0}%</td>
+                  <td>${statusStr}</td>
+                  <td>${escapeHtml(cleanNote || meta.feedbackDetail || '-')}</td>
+                </tr>
+              `;
+            }).join('')}
+      </table>
+    `;
+  }
+
+  htmlTables += '</body></html>';
+  const blob = new Blob(['\ufeff', htmlTables], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Rekap_Kesiapan_Kamar_${fileSuffix}.xls`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ==================== DOWNLOAD / PRINT PDF LENGKAP ====================
+
+function exportPdf() {
+  const { rows, label, fileSuffix } = getFilteredExportData();
+  const incRoomUsage = document.getElementById('exp-opt-room-usage')?.checked ?? true;
+  const incDiscipline = document.getElementById('exp-opt-discipline')?.checked ?? true;
+  const incRecapTable = document.getElementById('exp-opt-recap-table')?.checked ?? true;
+  const includePhotos = document.getElementById('export-pdf-include-photos')?.checked ?? false;
+
+  if (!incRoomUsage && !incDiscipline && !incRecapTable) {
+    return alert('Centang minimal satu pilihan data yang akan diambil sebelum mengunduh PDF.');
+  }
+
+  const wrapper = document.createElement('div');
+  wrapper.style.padding = '16px';
+  wrapper.style.fontFamily = 'Arial, sans-serif';
+  wrapper.style.color = '#0f172a';
+  wrapper.style.fontSize = '11px';
+
+  let contentHtml = `
+    <div style="border-bottom: 2px solid #0d9488; padding-bottom: 10px; margin-bottom: 14px;">
+      <h1 style="margin:0; font-size: 16px; color: #0f172a;">LAPORAN REKAPITULASI KESIAPAN KAMAR</h1>
+      <p style="margin:2px 0 0; font-size: 12px; font-weight: bold; color: #0d9488;">RS Khusus Bedah SS Medika</p>
+      <p style="margin:4px 0 0; font-size: 10px; color: #475569;">Periode Data: <strong>${escapeHtml(label)}</strong> • Dicetak: ${new Date().toLocaleString('id-ID')}</p>
+    </div>
+  `;
+
+  if (incRoomUsage) {
+    const usageSummary = getRoomUsageByPeriodSummary();
+    contentHtml += `
+      <h2 style="font-size: 12px; margin: 12px 0 6px; color: #0f766e;">1. Rekap Jumlah Kamar Dipakai &amp; Kosong (Hari, Minggu, Bulan, Tahun)</h2>
+      <table style="width:100%; border-collapse: collapse; margin-bottom: 14px; font-size: 10px;">
+        <thead>
+          <tr style="background:#0d9488; color:#fff;">
+            <th style="border:1px solid #cbd5e1; padding:5px; text-align:left;">Kurun Waktu</th>
+            <th style="border:1px solid #cbd5e1; padding:5px; text-align:center;">Total Kamar</th>
+            <th style="border:1px solid #cbd5e1; padding:5px; text-align:center;">Kamar Dipakai</th>
+            <th style="border:1px solid #cbd5e1; padding:5px; text-align:center;">Kamar Kosong / Siap</th>
+            <th style="border:1px solid #cbd5e1; padding:5px; text-align:center;">Aktivitas</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${usageSummary.map(u => `
+            <tr>
+              <td style="border:1px solid #cbd5e1; padding:5px; font-weight:bold;">${escapeHtml(u.periode)}</td>
+              <td style="border:1px solid #cbd5e1; padding:5px; text-align:center;">${unitsData.length}</td>
+              <td style="border:1px solid #cbd5e1; padding:5px; text-align:center; color:#c2410c; font-weight:bold;">${u.dipakai}</td>
+              <td style="border:1px solid #cbd5e1; padding:5px; text-align:center; color:#047857; font-weight:bold;">${u.kosong}</td>
+              <td style="border:1px solid #cbd5e1; padding:5px; text-align:center;">${u.aktivitas}x</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  if (incDiscipline) {
+    const staffStats = computeDisciplineStats(rows);
+    contentHtml += `
+      <h2 style="font-size: 12px; margin: 12px 0 6px; color: #4338ca;">2. Tabel Kedisiplinan Petugas &amp; Teknisi</h2>
+      <table style="width:100%; border-collapse: collapse; margin-bottom: 14px; font-size: 10px;">
+        <thead>
+          <tr style="background:#4f46e5; color:#fff;">
+            <th style="border:1px solid #cbd5e1; padding:5px;">No</th>
+            <th style="border:1px solid #cbd5e1; padding:5px; text-align:left;">Nama Petugas / Teknisi</th>
+            <th style="border:1px solid #cbd5e1; padding:5px;">Bagian</th>
+            <th style="border:1px solid #cbd5e1; padding:5px;">Tugas</th>
+            <th style="border:1px solid #cbd5e1; padding:5px;">Tepat Waktu</th>
+            <th style="border:1px solid #cbd5e1; padding:5px;">Perbaikan Ulang</th>
+            <th style="border:1px solid #cbd5e1; padding:5px;">Kedisiplinan</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${staffStats.length === 0
+            ? '<tr><td colspan="7" style="border:1px solid #cbd5e1; padding:6px; text-align:center;">Tidak ada data pada periode ini.</td></tr>'
+            : staffStats.map((st, i) => `
+                <tr>
+                  <td style="border:1px solid #cbd5e1; padding:5px; text-align:center;">${i + 1}</td>
+                  <td style="border:1px solid #cbd5e1; padding:5px; font-weight:bold;">${escapeHtml(st.name)}</td>
+                  <td style="border:1px solid #cbd5e1; padding:5px; text-align:center;">${escapeHtml(st.role)}</td>
+                  <td style="border:1px solid #cbd5e1; padding:5px; text-align:center;">${st.total}</td>
+                  <td style="border:1px solid #cbd5e1; padding:5px; text-align:center;">${st.onTime}</td>
+                  <td style="border:1px solid #cbd5e1; padding:5px; text-align:center;">${st.revisions}</td>
+                  <td style="border:1px solid #cbd5e1; padding:5px; text-align:center; font-weight:bold;">${st.score}%</td>
+                </tr>
+              `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  if (incRecapTable) {
+    contentHtml += `
+      <h2 style="font-size: 12px; margin: 12px 0 6px; color: #0f172a;">3. Tabel Rekapitulasi Laporan Kesiapan Kamar</h2>
+      <table style="width:100%; border-collapse: collapse; font-size: 9.5px;">
+        <thead>
+          <tr style="background:#0f172a; color:#fff;">
+            <th style="border:1px solid #cbd5e1; padding:4px;">No</th>
+            <th style="border:1px solid #cbd5e1; padding:4px;">Waktu</th>
+            <th style="border:1px solid #cbd5e1; padding:4px;">Kamar</th>
+            <th style="border:1px solid #cbd5e1; padding:4px;">Pelaksana</th>
+            <th style="border:1px solid #cbd5e1; padding:4px;">Peninjau</th>
+            <th style="border:1px solid #cbd5e1; padding:4px;">Skor</th>
+            <th style="border:1px solid #cbd5e1; padding:4px;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.length === 0
+            ? '<tr><td colspan="7" style="border:1px solid #cbd5e1; padding:6px; text-align:center;">Tidak ada data laporan pada periode ini.</td></tr>'
+            : rows.map((r, i) => {
+                const meta = parseNotesMetadata(r.notes);
+                const statusStr = isInspectionOfficiallyApproved(r) || r.final_status === 'siap' ? 'SIAP PAKAI' : 'PROSES';
+                return `
+                  <tr>
+                    <td style="border:1px solid #cbd5e1; padding:4px; text-align:center;">${i + 1}</td>
+                    <td style="border:1px solid #cbd5e1; padding:4px;">${r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
+                    <td style="border:1px solid #cbd5e1; padding:4px; font-weight:bold;">${escapeHtml(r.unit_name)}</td>
+                    <td style="border:1px solid #cbd5e1; padding:4px;">${escapeHtml(meta.executor || r.inspector_name)}</td>
+                    <td style="border:1px solid #cbd5e1; padding:4px;">${escapeHtml(r.inspector_name)}</td>
+                    <td style="border:1px solid #cbd5e1; padding:4px; text-align:center;">${r.readiness_score ?? 0}%</td>
+                    <td style="border:1px solid #cbd5e1; padding:4px; text-align:center; font-weight:bold;">${statusStr}</td>
+                  </tr>
+                `;
+              }).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  if (includePhotos) {
+    const withPhotos = rows.filter(r => r.photo_room_url || r.photo_toilet_url).slice(0, 15);
+    if (withPhotos.length > 0) {
+      contentHtml += `<h2 style="font-size: 12px; margin: 14px 0 6px;">4. Lampiran Foto Dokumentasi</h2>`;
+      withPhotos.forEach(r => {
+        contentHtml += `
+          <div style="margin-bottom:10px; border:1px solid #cbd5e1; padding:6px; border-radius:6px; page-break-inside: avoid;">
+            <p style="margin:0 0 4px; font-weight:bold;">${escapeHtml(r.unit_name)} (${r.created_at ? new Date(r.created_at).toLocaleString('id-ID') : ''})</p>
+            <div style="display:flex; gap:8px;">
+              ${r.photo_room_url ? `<img src="${r.photo_room_url}" style="width:180px; height:120px; object-fit:cover; border-radius:4px;" />` : ''}
+              ${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" style="width:180px; height:120px; object-fit:cover; border-radius:4px;" />` : ''}
+            </div>
+          </div>
+        `;
+      });
+    }
+  }
+
+  wrapper.innerHTML = contentHtml;
+  html2pdf().set({
+    margin: 8,
+    filename: `Rekap_Kesiapan_Kamar_${fileSuffix}.pdf`,
+    image: { type: 'jpeg', quality: 0.95 },
+    html2canvas: { scale: 2 },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  }).from(wrapper).save();
+}
+
+// ==================== MASTER DATA: AKUN, UNIT KAMAR, & ITEM CHECKLIST ====================
+
+function renderUsers() {
+  const list = document.getElementById('master-user-list');
+  if (!list) return;
+  list.innerHTML = usersData.map(u => `
+    <div class="py-2.5 flex items-center justify-between gap-2">
+      <div>
+        <p class="text-xs font-extrabold text-slate-900">${escapeHtml(u.full_name)}</p>
+        <p class="text-[11px] text-slate-500">@${escapeHtml(u.username)} • <span class="font-bold text-indigo-700">${escapeHtml(roleLabel(u.role))}</span></p>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button type="button" onclick="editUser('${escapeHtml(u.id)}')" class="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold">Edit</button>
+        <button type="button" onclick="deleteUser('${escapeHtml(u.id)}')" class="px-2.5 py-1 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>
+      </div>
+    </div>
+  `).join('');
+}
+
 function editUser(id) {
-  if (!requireManagerAction('mengubah data akun')) return;
-  ensureAccountRoleOptions();
-  const u = usersData.find(item => item.id === id);
+  if (!requireManagerAction('mengubah akun')) return;
+  const u = usersData.find(x => String(x.id) === String(id));
   if (!u) return;
   document.getElementById('edit-user-id').value = u.id;
   document.getElementById('new-user-fullname').value = u.full_name;
   document.getElementById('new-user-username').value = u.username;
   document.getElementById('new-user-password').value = u.password;
   document.getElementById('new-user-role').value = u.role;
-  document.getElementById('btn-save-user').textContent = 'Simpan';
+  document.getElementById('btn-save-user').textContent = 'Perbarui Akun';
 }
 
 async function deleteUser(id) {
-  if (!requireManagerAction('menghapus akun ini')) return;
-  if (!confirm('Hapus akun ini?')) return;
-  const { error } = await db.from('app_users').delete().eq('id', id);
-  if (error) return alert('Gagal menghapus akun: ' + error.message);
+  if (!requireManagerAction('menghapus akun')) return;
+  if (!confirm('Hapus akun pengguna ini?')) return;
+  await db.from('app_users').delete().eq('id', id);
   await loadAllData();
 }
 
-const formAddUserEl = document.getElementById('form-add-user');
-if (formAddUserEl) formAddUserEl.addEventListener('submit', async (e) => {
+document.getElementById('form-add-user')?.addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (!requireManagerAction('menambah atau mengubah akun petugas')) return;
-
-  const btn = document.getElementById('btn-save-user');
-  const idInput = document.getElementById('edit-user-id');
-  const id = idInput.value;
-  const fullName = document.getElementById('new-user-fullname').value.trim();
+  if (!requireManagerAction('menyimpan akun')) return;
+  const id = document.getElementById('edit-user-id').value;
+  const full_name = document.getElementById('new-user-fullname').value.trim();
   const username = document.getElementById('new-user-username').value.trim();
   const password = document.getElementById('new-user-password').value.trim();
   const role = document.getElementById('new-user-role').value;
 
-  if (!fullName || !username || !password) return alert('Lengkapi Nama Lengkap, Username Login, dan Password terlebih dahulu.');
-  if (!role) return alert('Pilih Role terlebih dahulu: Petugas Kebersihan, Teknisi, Perawat, atau Manajemen.');
-  if (!id && usersData.some(u => (u.username || '').toLowerCase() === username.toLowerCase())) {
-    return alert('Username "' + username + '" sudah digunakan. Silakan gunakan username lain.');
-  }
+  if (password.length < 6) return alert('Demi keamanan, password minimal 6 karakter.');
 
-  const payload = { full_name: fullName, username, password, role };
-  if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan...'; }
-  try {
-    const { error } = id
-      ? await db.from('app_users').update(payload).eq('id', id)
-      : await db.from('app_users').insert([payload]);
-    if (error) return alert('Gagal menyimpan akun: ' + error.message);
-
-    if (currentUser && String(currentUser.id) === String(id)) {
-      currentUser = { ...currentUser, ...payload };
-      localStorage.setItem('ck_user', JSON.stringify(currentUser));
-      const greeting = document.getElementById('user-greeting');
-      if (greeting) greeting.textContent = 'Halo, ' + currentUser.full_name;
-    }
-    alert('Akun "' + fullName + '" berhasil disimpan sebagai ' + roleLabel(role) + '.');
-    e.target.reset();
-    idInput.value = '';
-    await loadAllData();
-  } catch (err) {
-    alert('Gagal menyimpan akun: ' + (err.message || 'Periksa koneksi internet Anda lalu coba lagi.'));
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '+ Tambah Akun'; }
+  if (id) {
+    await db.from('app_users').update({ full_name, username, password, role }).eq('id', id);
+  } else {
+    await db.from('app_users').insert([{ full_name, username, password, role }]);
   }
+  e.target.reset();
+  document.getElementById('edit-user-id').value = '';
+  document.getElementById('btn-save-user').textContent = '+ Tambah Akun';
+  await loadAllData();
 });
 
 function renderMasterUnits() {
-  document.getElementById('master-unit-list').innerHTML = unitsData.map(u => {
-    const safeCode = String(u.unit_code || '').replace(/'/g, "\\'");
-    const safeName = String(u.unit_name || '').replace(/'/g, "\\'");
-    return `
-    <div class="py-3 flex items-center justify-between gap-2">
+  const list = document.getElementById('master-unit-list');
+  if (!list) return;
+  list.innerHTML = unitsData.map(u => `
+    <div class="py-2.5 flex items-center justify-between gap-2">
       <div>
-        <p class="text-xs font-extrabold text-slate-900">${u.unit_code} — ${u.unit_name}</p>
-        <p class="text-[11px] text-slate-500">${u.floor || ''} • Status: <strong class="uppercase">${getEffectiveUnitStatus(u)}</strong></p>
+        <p class="text-xs font-extrabold text-slate-900">${escapeHtml(u.unit_code)} - ${escapeHtml(u.unit_name)}</p>
+        <p class="text-[11px] text-slate-500">${escapeHtml(u.floor || '-')}</p>
       </div>
       <div class="flex items-center gap-1.5">
-        <button type="button" onclick="showQrPrint('${safeCode}', '${safeName}')" class="px-2.5 py-1.5 bg-teal-50 text-teal-700 rounded-lg text-[11px] font-bold">QR</button>
-        <button type="button" onclick="editUnit('${u.id}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold">Edit</button>
-        <button type="button" onclick="deleteUnit('${u.id}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>
+        <button type="button" onclick="openQrPrintModal('${escapeHtml(u.unit_code)}', '${escapeHtml(u.unit_name)}')" class="px-2.5 py-1 bg-teal-50 text-teal-700 rounded-lg text-[11px] font-bold">QR</button>
+        <button type="button" onclick="editUnit('${escapeHtml(u.id)}')" class="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold">Edit</button>
+        <button type="button" onclick="deleteUnit('${escapeHtml(u.id)}')" class="px-2.5 py-1 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>
       </div>
     </div>
-  `;
-  }).join('');
+  `).join('');
+}
+
+function editUnit(id) {
+  if (!requireManagerAction('mengubah unit kamar')) return;
+  const u = unitsData.find(x => String(x.id) === String(id));
+  if (!u) return;
+  document.getElementById('edit-unit-id').value = u.id;
+  document.getElementById('unit-code').value = u.unit_code;
+  document.getElementById('unit-name').value = u.unit_name;
+  document.getElementById('unit-floor').value = u.floor || '';
+  document.getElementById('btn-save-unit').textContent = 'Perbarui Unit Kamar';
+}
+
+async function deleteUnit(id) {
+  if (!requireManagerAction('menghapus unit kamar')) return;
+  if (!confirm('Hapus unit kamar ini?')) return;
+  await db.from('master_units').delete().eq('id', id);
+  await loadAllData();
 }
 
 document.getElementById('form-add-unit')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!requireManagerAction('menyimpan unit kamar')) return;
   const id = document.getElementById('edit-unit-id').value;
-  const payload = { unit_code: document.getElementById('unit-code').value.trim(), unit_name: document.getElementById('unit-name').value.trim(), floor: document.getElementById('unit-floor').value.trim(), status: 'kotor' };
-  try {
-    if (id) { delete payload.status; const { error } = await db.from('master_units').update(payload).eq('id', id); if (error) return alert('Gagal menyimpan unit: ' + error.message); }
-    else { const { error } = await db.from('master_units').insert([payload]); if (error) return alert('Gagal menyimpan unit: ' + error.message); }
-  } catch (err) { return alert('Gagal menyimpan unit: ' + (err.message || 'Periksa koneksi internet Anda.')); }
-  e.target.reset(); document.getElementById('edit-unit-id').value = ''; document.getElementById('btn-save-unit').textContent = '+ Simpan Unit';
+  const unit_code = document.getElementById('unit-code').value.trim();
+  const unit_name = document.getElementById('unit-name').value.trim();
+  const floor = document.getElementById('unit-floor').value.trim();
+
+  if (id) {
+    await db.from('master_units').update({ unit_code, unit_name, floor }).eq('id', id);
+  } else {
+    await db.from('master_units').insert([{ unit_code, unit_name, floor, status: 'kotor' }]);
+  }
+  e.target.reset();
+  document.getElementById('edit-unit-id').value = '';
+  document.getElementById('btn-save-unit').textContent = '+ Simpan Unit Kamar';
   await loadAllData();
 });
 
-function editUnit(id) {
-  if (!requireManagerAction('mengubah unit kamar')) return;
-  const u = unitsData.find(x => x.id === id);
-  if (!u) return;
-  document.getElementById('edit-unit-id').value = u.id;
-  document.getElementById('unit-code').value = u.unit_code;
-  document.getElementById('unit-name').value = u.unit_name;
-  document.getElementById('unit-floor').value = u.floor;
-  document.getElementById('btn-save-unit').textContent = 'Perbarui';
-}
-
-async function deleteUnit(id) { if (isManagerRole() && confirm('Hapus unit kamar ini?')) { await db.from('master_units').delete().eq('id', id); loadAllData(); } }
-
 function renderMasterItems() {
-  const realChecklistItems = itemsData.filter(i => !isSystemMetaCategory(i.category));
-  document.getElementById('master-item-list').innerHTML = realChecklistItems.map(i => `
-    <div class="py-3 flex items-center justify-between gap-2">
+  const list = document.getElementById('master-item-list');
+  if (!list) return;
+  const realItems = itemsData.filter(i => !isSystemMetaCategory(i.category));
+  list.innerHTML = realItems.map(item => `
+    <div class="py-2.5 flex items-center justify-between gap-2">
       <div>
-        <p class="text-xs font-extrabold text-slate-900">${i.item_name} ${i.is_critical ? '<span class="text-rose-600">*Wajib</span>' : ''}</p>
-        <p class="text-[11px] text-slate-500">Kategori: ${i.category}</p>
+        <p class="text-xs font-extrabold text-slate-900">${escapeHtml(item.item_name)}</p>
+        <p class="text-[11px] text-slate-500">${escapeHtml(item.category)} ${item.is_critical ? '• *Wajib' : ''}</p>
       </div>
       <div class="flex items-center gap-1.5">
-        <button onclick="editItem('${i.id}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold">Edit</button>
-        <button onclick="deleteItem('${i.id}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>
+        <button type="button" onclick="editItem('${escapeHtml(item.id)}')" class="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold">Edit</button>
+        <button type="button" onclick="deleteItem('${escapeHtml(item.id)}')" class="px-2.5 py-1 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>
       </div>
     </div>
   `).join('');
+}
+
+function editItem(id) {
+  if (!requireManagerAction('mengubah item checklist')) return;
+  const item = itemsData.find(x => String(x.id) === String(id));
+  if (!item) return;
+  document.getElementById('edit-item-id').value = item.id;
+  document.getElementById('item-name').value = item.item_name;
+  document.getElementById('item-category').value = item.category;
+  document.getElementById('item-critical').checked = Boolean(item.is_critical);
+  document.getElementById('btn-save-item').textContent = 'Perbarui Item Checklist';
+}
+
+async function deleteItem(id) {
+  if (!requireManagerAction('menghapus item checklist')) return;
+  if (!confirm('Hapus item checklist ini?')) return;
+  await db.from('master_items').delete().eq('id', id);
+  await loadAllData();
 }
 
 document.getElementById('form-add-item')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!requireManagerAction('menyimpan item checklist')) return;
   const id = document.getElementById('edit-item-id').value;
-  const payload = { item_name: document.getElementById('item-name').value.trim(), category: document.getElementById('item-category').value, is_critical: document.getElementById('item-critical').checked };
-  try {
-    if (id) { const { error } = await db.from('master_items').update(payload).eq('id', id); if (error) return alert('Gagal menyimpan item: ' + error.message); }
-    else { const { error } = await db.from('master_items').insert([payload]); if (error) return alert('Gagal menyimpan item: ' + error.message); }
-  } catch (err) { return alert('Gagal menyimpan item: ' + (err.message || 'Periksa koneksi internet Anda.')); }
-  e.target.reset(); document.getElementById('edit-item-id').value = ''; document.getElementById('btn-save-item').textContent = '+ Item';
+  const item_name = document.getElementById('item-name').value.trim();
+  const category = document.getElementById('item-category').value;
+  const is_critical = document.getElementById('item-critical').checked;
+
+  if (id) {
+    await db.from('master_items').update({ item_name, category, is_critical }).eq('id', id);
+  } else {
+    await db.from('master_items').insert([{ item_name, category, is_critical }]);
+  }
+  e.target.reset();
+  document.getElementById('edit-item-id').value = '';
+  document.getElementById('btn-save-item').textContent = '+ Simpan Item Checklist';
   await loadAllData();
 });
 
-function editItem(id) {
-  if (!requireManagerAction('mengubah item checklist')) return;
-  const i = itemsData.find(x => x.id === id);
-  if (!i) return;
-  document.getElementById('edit-item-id').value = i.id;
-  document.getElementById('item-name').value = i.item_name;
-  document.getElementById('item-category').value = i.category;
-  document.getElementById('item-critical').checked = i.is_critical;
-  document.getElementById('btn-save-item').textContent = 'Perbarui';
-}
+// ==================== QR SCANNER & PRINT QR ====================
 
-async function deleteItem(id) { if (isManagerRole() && confirm('Hapus item kelengkapan ini?')) { await db.from('master_items').delete().eq('id', id); loadAllData(); } }
-
-function getDisciplineStats(filteredRows) {
-  const pool = (filteredRows || []).filter(r => !isNurseRequestRecord(r));
-  const byName = new Map();
-  pool.forEach(r => {
-    const meta = parseNotesMetadata(r.notes);
-    const baseName = (meta.executor || r.inspector_name || '').trim();
-    if (!baseName) return;
-    const isRepair = isRepairRecord(r);
-    const roleTag = isRepair ? 'Teknisi' : 'Petugas';
-    if (!byName.has(baseName)) byName.set(baseName, { name: baseName, role: roleTag, total: 0, good: 0, late: 0 });
-    const d = byName.get(baseName);
-    d.total++;
-    const good = isRepair
-      ? (r.final_status === 'siap')
-      : (isInspectionOfficiallyApproved(r) || (Number(r.readiness_score) || 0) >= 80);
-    if (good) d.good++; else d.late++;
-  });
-  return [...byName.values()]
-    .map(d => ({ ...d, pct: d.total ? Math.round((d.good / d.total) * 100) : 0 }))
-    .sort((a, b) => (b.pct - a.pct) || (b.good - a.good));
-}
-
-function renderDisciplineTable(filteredRows) {
-  const tbody = document.getElementById('discipline-tbody');
-  if (!tbody) return;
-  const stats = getDisciplineStats(filteredRows);
-  if (stats.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="py-4 text-center text-[11px] text-slate-400">Belum ada laporan checklist / perbaikan pada filter ini.</td></tr>';
-    return;
-  }
-  tbody.innerHTML = stats.map(d => {
-    const cls = d.pct >= 85 ? 'bg-emerald-100 text-emerald-700' : d.pct >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700';
-    return `<tr class="border-b border-slate-50 last:border-0">
-      <td class="py-2 pr-2"><p class="font-bold text-slate-800">${d.name}</p><p class="text-[9px] text-slate-400">${d.role}</p></td>
-      <td class="py-2 pr-2 text-center font-bold text-slate-700">${d.total}</td>
-      <td class="py-2 pr-2 text-center font-bold text-emerald-600">${d.good}</td>
-      <td class="py-2 pr-2 text-center font-bold text-rose-500">${d.late}</td>
-      <td class="py-2 text-right"><span class="inline-block text-[10px] font-extrabold px-2 py-1 rounded-full ${cls}">${d.pct}%</span></td>
-    </tr>`;
-  }).join('');
-}
-
-function setAnalyticsText(id, value) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = value;
-}
-
-function renderAnalytics() {
-  const siap = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
-  const proses = unitsData.filter(u => ['kosong', 'dibersihkan', 'pending_approval', 'perlu_perbaikan'].includes(getEffectiveUnitStatus(u))).length;
-  const maint = unitsData.filter(u => getEffectiveUnitStatus(u) === 'maintenance').length;
-  const terpakai = proses + maint;
-
-  const ctx = document.getElementById('chart-status');
-  if (statusChart) statusChart.destroy();
-  if (ctx) {
-    statusChart = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels: ['Siap Pakai', 'Belum Siap / Terpakai'],
-        datasets: [{ data: [siap, terpakai], backgroundColor: ['#10b981', '#f59e0b'], borderWidth: 2, borderColor: '#ffffff' }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: '55%',
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (item) => {
-                const total = item.dataset.data.reduce((a, b) => a + b, 0);
-                const pct = total ? Math.round(item.parsed / total * 100) : 0;
-                return `${item.label}: ${item.parsed} kamar (${pct}%)`;
-              }
-            }
-          }
-        }
-      }
-    });
-  }
-  setAnalyticsText('chip-live-siap', siap);
-  setAnalyticsText('chip-live-proses', proses);
-  setAnalyticsText('chip-live-maint', maint);
-
-  const { rows: filteredRows } = getFilteredExportData();
-  const countBadge = document.getElementById('export-filter-count');
-  if (countBadge) countBadge.textContent = `${filteredRows.length} Data Terpilih`;
-
-  const total = filteredRows.length;
-  setAnalyticsText('analytic-total', `${total} Laporan`);
-
-  const pureRows = filteredRows.filter(r => !isNurseRequestRecord(r) && !isRepairRecord(r));
-  const pureAvg = pureRows.length ? Math.round(pureRows.reduce((a, b) => a + (Number(b.readiness_score) || 0), 0) / pureRows.length) : 0;
-  setAnalyticsText('analytic-pure-score', `${pureAvg}%`);
-
-  const occPct = unitsData.length ? Math.round((terpakai / unitsData.length) * 100) : 0;
-  setAnalyticsText('analytic-occupancy', `${occPct}%`);
-
-  const avgTime = total ? Math.round(filteredRows.reduce((a, b) => a + (Number(b.duration_seconds) || 0), 0) / total) : 0;
-  setAnalyticsText('analytic-avg-time', `${avgTime} Detik`);
-
-  renderDisciplineTable(filteredRows);
-
-  const historyBox = document.getElementById('history-list');
-  if (filteredRows.length === 0) {
-    historyBox.innerHTML = '<div class="text-center py-6 text-xs text-slate-400 bg-slate-50 rounded-2xl border border-slate-100">Tidak ada riwayat inspeksi pada filter periode/kamar ini.</div>';
-    return;
-  }
-
-  const resolveBtnLabel = requireApprovalMode ? 'Selesai Perbaikan & Minta Approve Manajemen' : 'Selesai Perbaikan (Siap Pakai)';
-
-  historyBox.innerHTML = filteredRows.map((r) => {
-    const waktuStr = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
-    const meta = parseNotesMetadata(r.notes);
-    const isNurseReq = isNurseRequestRecord(r);
-    const isRepair = isRepairRecord(r);
-    const isApproved = isInspectionOfficiallyApproved(r);
-    const needsFix = isRevisionRequested(r);
-    const isPendingApproval = !isApproved && !needsFix && !isRepair && !isNurseReq;
-    const ownerName = meta.executor || r.inspector_name;
-    const canResolveFix = !isRepair && !isNurseReq && needsFix && r.id && (isManagerRole() || isPetugasRole() || (currentUser && ownerName === currentUser.full_name));
-    const safeUnitName = (r.unit_name || '').replace(/'/g, "\\'");
-    const cleanNotesText = meta.cleanNotes
-      .replace(REPAIR_RECORD_TAG, '')
-      .replace(CHECKOUT_RECORD_TAG, '')
-      .replace(NURSE_REQ_TAG, '')
-      .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
-      .trim();
-    const reqType = isNurseReq ? getNurseRequestTypeFromString((r.notes || '') + ' ' + (r.shift || '')) : null;
-    const isCancelled = isCancelledNurseRecord(r);
-
-    const pillClass = isCancelled
-      ? 'bg-slate-200 text-slate-500'
-      : isNurseReq
-      ? reqType.badgeClass
-      : isRepair
-        ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')
-        : isApproved
-          ? 'bg-emerald-100 text-emerald-700'
-          : isPendingApproval
-            ? 'bg-indigo-100 text-indigo-800'
-            : 'bg-rose-100 text-rose-800';
-    const pillText = isCancelled
-      ? 'DIBATALKAN'
-      : isNurseReq
-      ? reqType.shortTag
-      : isRepair
-        ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI' : 'CEK PERBAIKAN')
-        : isApproved
-          ? `SIAP PAKAI (${r.readiness_score}%)`
-          : isPendingApproval
-            ? `MENUNGGU APPROVAL (${r.readiness_score}%)`
-            : `PERLU PERBAIKAN (${r.readiness_score}%)`;
-
-    return `
-      <div class="glass-card rounded-2xl p-4 shadow-sm space-y-2.5">
-        <div class="flex items-start justify-between gap-2">
-          <div>
-            <h4 class="text-xs font-extrabold text-slate-900">${r.unit_name}</h4>
-            <p class="text-[11px] text-slate-500">${isNurseReq ? 'Perawat' : isRepair ? 'Pengaju' : 'Pemeriksa'}: <strong>${r.inspector_name}</strong> • ${r.shift}</p>
-            ${(meta.executor && !isNurseReq) ? `<p class="text-[11px] text-indigo-700 font-semibold">${isRepair ? 'Ditugaskan ke' : 'Pelaksana'}: <strong>${meta.executor}</strong></p>` : ''}
-            <p class="text-[10px] text-slate-400 mt-0.5">${waktuStr}</p>
-          </div>
-          <span class="shrink-0 text-[9.5px] font-extrabold px-2.5 py-1 rounded-full ${pillClass}">${pillText}</span>
-        </div>
-        <div class="text-[11px] px-2.5 py-2 rounded-xl border ${isNurseReq ? 'bg-orange-50/70 border-orange-200 text-orange-900' : isRepair ? 'bg-amber-50/70 border-amber-200 text-amber-900' : isApproved ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' : isPendingApproval ? 'bg-indigo-50/80 border-indigo-200 text-indigo-900' : 'bg-rose-50/80 border-rose-200 text-rose-900'} space-y-1.5">
-          <div>
-            <p class="font-extrabold">Status: ${meta.feedbackStatus || (isApproved ? 'Sesuai Standar (Approved)' : 'Menunggu Approval Manajemen')}</p>
-            ${meta.feedbackDetail ? `<p class="text-[10.5px] mt-0.5">${isNurseReq ? 'Instruksi' : isRepair ? 'Kategori' : 'Bagian Perbaikan'}: <strong>${meta.feedbackDetail}</strong></p>` : ''}
-          </div>
-          ${canResolveFix ? `
-            <button type="button" onclick="markIssueResolvedByOfficer('${r.id}')" class="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> ${isManagerRole() ? 'Masalah Selesai & Approve Siap Pakai' : resolveBtnLabel}
-            </button>
-          ` : ''}
-          ${(isManagerRole() && !isApproved && !isRepair && !isNurseReq && r.id) ? `
-            <div class="grid grid-cols-2 gap-1.5">
-              <button type="button" onclick="openReportInForm('${r.id}')" class="py-2 px-2 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
-                <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek & Approve
-              </button>
-              <button type="button" onclick="requestRevisionByManagement('${r.unit_id || ''}', '${safeUnitName}', '${r.id}')" class="py-2 px-2 bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
-                <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Perlu Diperbaiki
-              </button>
-            </div>
-          ` : ''}
-          ${(isRepair && r.final_status !== 'siap' && r.id && !isPerawatRole()) ? `
-            <div class="grid grid-cols-2 gap-1.5">
-              <button type="button" onclick="openRepairReportInForm('${r.id}')" class="py-2 px-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
-                <i data-lucide="wrench" class="w-3.5 h-3.5"></i> Kelola Perbaikan
-              </button>
-              <button type="button" onclick="markRepairCompletedById('${r.id}')" class="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
-                <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Sudah Diperbaiki
-              </button>
-            </div>
-          ` : ''}
-        </div>
-        ${cleanNotesText ? `<p class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg">Catatan: ${cleanNotesText}</p>` : ''}
-        <div class="grid grid-cols-2 gap-2">
-          ${r.photo_room_url ? `<img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />` : ''}
-          ${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />` : ''}
-        </div>
-        <div class="pt-1 flex items-center justify-end gap-2 flex-wrap">
-          ${(creatorDeleteUnlocked && isManagerRole() && r.id) ? `<button type="button" onclick="deleteHistoryRecord('${r.id}', '${safeUnitName}', '${r.unit_id || ''}')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-[11px] font-bold rounded-xl flex items-center gap-1 transition"><i data-lucide="trash-2" class="w-3 h-3"></i> Hapus</button>` : ''}
-          ${r.id ? `<button type="button" onclick="openReportFullView('${r.id}')" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl flex items-center gap-1 transition"><i data-lucide="maximize-2" class="w-3 h-3"></i> Mode Penuh</button>` : ''}
-          <button type="button" onclick="shareHistoryWaById('${r.id}')" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-[11px] font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition">
-            <i data-lucide="send" class="w-3.5 h-3.5"></i> Kirim ke WhatsApp
-          </button>
-        </div>
-      </div>
-    `;
-  }).join('');
-  lucide.createIcons();
-}
-
-function exportCsv() {
-  const { rows: filteredRows, label, fileSuffix } = getFilteredExportData();
-  if (filteredRows.length === 0) return alert(`Tidak ada data laporan pada filter (${label}).`);
-  const siapLive = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
-  const terpakaiLive = unitsData.length - siapLive;
-  const occPct = unitsData.length ? Math.round((terpakaiLive / unitsData.length) * 100) : 0;
-  const pureRows = filteredRows.filter(r => !isNurseRequestRecord(r) && !isRepairRecord(r));
-  const pureAvg = pureRows.length ? Math.round(pureRows.reduce((a, b) => a + (Number(b.readiness_score) || 0), 0) / pureRows.length) : 0;
-  const avgTime = filteredRows.length ? Math.round(filteredRows.reduce((a, b) => a + (Number(b.duration_seconds) || 0), 0) / filteredRows.length) : 0;
-  const stats = getDisciplineStats(filteredRows);
-  const summaryLines = [
-    'REKAP KESIAPAN KAMAR',
-    ['Filter Periode', `"${(label || '').replace(/"/g, '""')}"`].join(','),
-    ['Total Laporan', filteredRows.length].join(','),
-    ['Skor Kesiapan Murni (%)', pureAvg].join(','),
-    ['Kamar Terpakai (%)', occPct].join(','),
-    ['Kamar Siap Pakai', siapLive].join(','),
-    ['Total Unit Kamar', unitsData.length].join(','),
-    ['Rata-rata Waktu (Detik)', avgTime].join(','),
-    ''
-  ];
-  const headers = ['No,Waktu,Unit Kamar,Pemeriksa,Pelaksana,Shift,Skor (%),Status,Tanggapan Pemeriksa,Bagian Perbaikan,Durasi (Detik),Rincian Checklist,Catatan'];
-  const rows = filteredRows.map((r, idx) => {
-    const meta = parseNotesMetadata(r.notes);
-    const cleanNotesText = meta.cleanNotes
-      .replace(REPAIR_RECORD_TAG, '')
-      .replace(CHECKOUT_RECORD_TAG, '')
-      .replace(NURSE_REQ_TAG, '')
-      .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
-      .trim();
-    const checklistStr = Array.isArray(r.checklist_data) ? r.checklist_data.map(c => `${c.item}: ${c.checked ? 'OK' : 'BELUM'}`).join(' | ') : '';
-    return `${idx + 1},"${new Date(r.created_at).toLocaleString('id-ID')}","${r.unit_name}","${r.inspector_name}","${meta.executor || r.inspector_name}","${r.shift}",${r.readiness_score},"${r.final_status.toUpperCase()}","${(meta.feedbackStatus || '-').replace(/"/g, '""')}","${(meta.feedbackDetail || '-').replace(/"/g, '""')}",${r.duration_seconds || 0},"${checklistStr.replace(/"/g, '""')}","${cleanNotesText.replace(/"/g, '""')}"`;
-  });
-  const discLines = [
-    '',
-    'KEDISIPLINAN PETUGAS & TEKNISI',
-    'Nama,Peran,Tugas,Tepat Waktu,Perlu Ulang,Persentase (%)',
-    ...stats.map(d => [d.name, d.role, d.total, d.good, d.late, `${d.pct}%`].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
-  ];
-  const blob = new Blob(['\uFEFF' + summaryLines.concat(headers).concat(rows).concat(discLines).join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `Rekap_Kesiapan_Kamar_${fileSuffix}.csv`;
-  a.click();
-}
-
-function exportPdf() {
-  const { rows: filteredRows, label, fileSuffix } = getFilteredExportData();
-  if (filteredRows.length === 0) return alert(`Tidak ada data laporan pada filter (${label}).`);
-  const includePhotos = document.getElementById('export-pdf-include-photos')?.checked || false;
-  const total = filteredRows.length;
-  const pureRowsPdf = filteredRows.filter(r => !isNurseRequestRecord(r) && !isRepairRecord(r));
-  const pureAvg = pureRowsPdf.length ? Math.round(pureRowsPdf.reduce((a, b) => a + (Number(b.readiness_score) || 0), 0) / pureRowsPdf.length) : 0;
-  const siapLive = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
-  const terpakaiLive = unitsData.length - siapLive;
-  const occPct = unitsData.length ? Math.round((terpakaiLive / unitsData.length) * 100) : 0;
-  const avgTime = total ? Math.round(filteredRows.reduce((a, b) => a + (Number(b.duration_seconds) || 0), 0) / total) : 0;
-  const stats = getDisciplineStats(filteredRows);
-  const discRowsHtml = stats.map(d => `<tr><td>${d.name}</td><td>${d.role}</td><td style="text-align:center">${d.total}</td><td style="text-align:center">${d.good}</td><td style="text-align:center">${d.late}</td><td style="text-align:center"><strong>${d.pct}%</strong></td></tr>`).join('');
-  const discTableHtml = stats.length ? `<h3 style="margin:18px 0 6px;font-size:13px;color:#0f172a">Tabel Kedisiplinan Petugas &amp; Teknisi</h3><table><thead><tr><th>Nama</th><th>Peran</th><th>Tugas</th><th>Tepat Waktu</th><th>Perlu Ulang</th><th>Kedisiplinan</th></tr></thead><tbody>${discRowsHtml}</tbody></table>` : '';
-  const printWin = window.open('', '_blank');
-  if (!printWin) return alert('Izinkan pop-up browser untuk mengekspor PDF.');
-
-  const rowsHtml = filteredRows.map((r, i) => {
-    const meta = parseNotesMetadata(r.notes);
-    const cleanNotesText = meta.cleanNotes
-      .replace(REPAIR_RECORD_TAG, '')
-      .replace(CHECKOUT_RECORD_TAG, '')
-      .replace(NURSE_REQ_TAG, '')
-      .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
-      .trim();
-    const feedbackFull = [meta.feedbackStatus, meta.feedbackDetail ? `Keterangan: ${meta.feedbackDetail}` : ''].filter(Boolean).join(' • ') || '-';
-    return `<tr><td>${i + 1}</td><td>${new Date(r.created_at).toLocaleString('id-ID')}</td><td>${r.unit_name}</td><td>${r.inspector_name}</td><td>${meta.executor || r.inspector_name}</td><td>${r.shift}</td><td>${r.readiness_score}%</td><td>${r.final_status.toUpperCase()}</td><td>${feedbackFull}</td><td>${cleanNotesText || '-'}</td>${includePhotos ? `<td><div style="display:flex;gap:4px;">${r.photo_room_url ? `<img src="${r.photo_room_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}</div></td>` : ''}</tr>`;
-  }).join('');
-
-  printWin.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8" /><title>Rekap Kesiapan Kamar</title><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script><style>body{font-family:Arial,sans-serif;padding:20px;color:#1e293b;background:#f8fafc;margin:0}.toolbar{display:flex;gap:10px;margin-bottom:16px;background:#fff;padding:12px 16px;border-radius:12px;border:1px solid #e2e8f0}.btn{padding:10px 16px;border:none;border-radius:10px;font-weight:bold;font-size:13px;cursor:pointer}.btn-download{background:#0d9488;color:#fff}.btn-print{background:#334155;color:#fff}.report-box{background:#fff;padding:24px;border-radius:12px;border:1px solid #e2e8f0}h2{margin:0 0 4px;color:#0d9488;font-size:18px}p{margin:0 0 14px;font-size:12px;color:#64748b}.summary{display:flex;gap:16px;margin-bottom:14px;font-size:12px;background:#f1f5f9;padding:10px 14px;border-radius:8px}table{width:100%;border-collapse:collapse;font-size:10.5px}th,td{border:1px solid #cbd5e1;padding:6px;text-align:left;vertical-align:middle}th{background-color:#f1f5f9;font-weight:bold}@media print{.no-print{display:none!important}body{background:#fff;padding:0}.report-box{border:none;padding:0}}</style></head><body><div class="toolbar no-print"><button type="button" id="btn-dl-pdf" class="btn btn-download" onclick="downloadDirectPdf()">⬇ Download PDF</button><button type="button" id="btn-print" class="btn btn-print" onclick="window.print()">🖨 Cetak / Print</button></div><div id="pdf-content" class="report-box"><h2>REKAPITULASI LAPORAN KESIAPAN KAMAR</h2><p>RS Khusus Bedah SS Medika • Filter: <strong>${label}</strong> • Dicetak: ${new Date().toLocaleString('id-ID')}</p><div class="summary"><span><strong>Total Laporan:</strong> ${total}</span><span><strong>Skor Kesiapan Murni:</strong> ${pureAvg}%</span><span><strong>Kamar Terpakai:</strong> ${occPct}%</span><span><strong>Rata-rata Waktu:</strong> ${avgTime} Detik</span></div><table><thead><tr><th>No</th><th>Waktu</th><th>Unit Kamar</th><th>Pemeriksa</th><th>Pelaksana</th><th>Shift</th><th>Skor</th><th>Status</th><th>Tanggapan Pemeriksa</th><th>Catatan</th>${includePhotos ? '<th>Foto</th>' : ''}</tr></thead><tbody>${rowsHtml}</tbody></table>${discTableHtml}</div><script>function downloadDirectPdf(){const btn=document.getElementById('btn-dl-pdf');btn.textContent='Memproses PDF...';btn.disabled=true;html2pdf().set({margin:10,filename:'Rekap_Kesiapan_Kamar_${fileSuffix}.pdf',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'landscape'}}).from(document.getElementById('pdf-content')).save().then(()=>{btn.textContent='⬇ Download PDF';btn.disabled=false;});}<\/script></body></html>`);
-  printWin.document.close();
-}
-
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=6.7').catch(() => {});
-    navigator.serviceWorker.ready.then(reg => {
-      try {
-        if (reg.periodicSync && Notification.permission === 'granted') {
-          reg.periodicSync.register('cek-kamar-sync', { minInterval: 12 * 60 * 60 * 1000 }).catch(() => {});
-        }
-      } catch (e) {}
-    }).catch(() => {});
-  });
-}
-
-// v6.7: lanjutkan pengingat saat aplikasi kembali ke depan
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) restartNurseReminderIfNeeded();
-});
-
-// v6.7: animasi pop pada setiap tombol yang ditekan
-document.addEventListener('click', (e) => {
-  const btn = e.target.closest('button');
-  if (!btn || btn.disabled) return;
-  btn.classList.remove('btn-pop');
-  void btn.offsetWidth;
-  btn.classList.add('btn-pop');
-});
-
-// Pesan dari Service Worker (periodic sync / ketuk notifikasi push)
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.addEventListener('message', (e) => {
-    if (e.data && e.data.type === 'PERIODIC_RECHECK') restartNurseReminderIfNeeded();
-    if (e.data && e.data.type === 'OPEN_NOTIF') {
-      const d = e.data.data || {};
-      if (d.unitId && isPetugasRole()) quickInspect(d.unitId);
-      else if (isManagerRole()) switchTab('dashboard');
+function openQrScanner() {
+  openModalWithHistory('modal-qr-scanner');
+  if (!window.Html5Qrcode) return;
+  qrScannerInstance = new Html5Qrcode('qr-reader');
+  qrScannerInstance.start(
+    { facingMode: 'environment' },
+    { fps: 10, qrbox: { width: 220, height: 220 } },
+    (decodedText) => {
+      closeQrScanner();
+      const matched = unitsData.find(u => normalizeText(u.unit_code) === normalizeText(decodedText) || normalizeText(u.unit_name) === normalizeText(decodedText));
+      if (matched) quickInspect(matched.id);
+      else alert('QR Code terbaca: ' + decodedText);
     }
-  });
+  ).catch(() => {});
+}
+
+function closeQrScanner() {
+  if (qrScannerInstance) {
+    qrScannerInstance.stop().catch(() => {});
+    qrScannerInstance = null;
+  }
+  closeActiveModal('modal-qr-scanner');
+}
+
+function openQrPrintModal(code, name) {
+  activeQrMeta = { code, name };
+  document.getElementById('qr-print-title').textContent = name;
+  document.getElementById('qr-print-code').textContent = code;
+  const box = document.getElementById('qr-code-box');
+  box.innerHTML = '';
+  if (window.QRCode) {
+    new QRCode(box, { text: code, width: 180, height: 180 });
+  }
+  openModalWithHistory('modal-qr-print');
+}
+
+function downloadQrImage() {
+  const img = document.querySelector('#qr-code-box img') || document.querySelector('#qr-code-box canvas');
+  if (!img) return;
+  const dataUrl = img.tagName === 'CANVAS' ? img.toDataURL('image/png') : img.src;
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = `QR_${activeQrMeta.code}.png`;
+  a.click();
 }
