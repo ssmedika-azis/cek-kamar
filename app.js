@@ -1,4 +1,4 @@
-const APP_VERSION = '6.5';
+const APP_VERSION = '6.6';
 const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteHB4cnJqeG51anlnYWJyaHNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MDk0MjAsImV4cCI6MjExMDQ4NTQyMH0.tFMCbg1_R-I08KEIs-h6wwxXhYLP2Z0oYgnDGC7T2YU';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -382,7 +382,7 @@ function renderMasterShifts() {
 }
 
 function editShift(id) {
-  if (!isManagerRole()) return;
+  if (!requireManagerAction('mengubah shift kerja')) return;
   const s = shiftsData.find(item => String(item.id) === String(id));
   if (!s) return;
   document.getElementById('edit-shift-id').value = s.id;
@@ -393,7 +393,7 @@ function editShift(id) {
 }
 
 async function deleteShift(id) {
-  if (!isManagerRole()) return;
+  if (!requireManagerAction('menghapus shift kerja')) return;
   if (shiftsData.length <= 1) return alert('Minimal harus ada 1 shift kerja yang terdaftar.');
   if (!confirm('Hapus shift kerja ini?')) return;
 
@@ -412,7 +412,7 @@ async function deleteShift(id) {
 
 document.getElementById('form-add-shift')?.addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (!isManagerRole()) return;
+  if (!requireManagerAction('menyimpan shift kerja')) return;
   const id = document.getElementById('edit-shift-id').value;
   const name = document.getElementById('shift-name').value.trim();
   const hours = document.getElementById('shift-hours').value.trim();
@@ -472,15 +472,43 @@ function isPetugasRole() {
   return currentUser && !isManagerRole() && !isPerawatRole();
 }
 
-function ensurePerawatRoleOptionInAccountForm() {
+const ACCOUNT_ROLE_OPTIONS = [
+  { value: 'petugas', label: 'Role: Petugas Kebersihan' },
+  { value: 'teknisi', label: 'Role: Teknisi Perbaikan' },
+  { value: 'perawat', label: 'Role: Perawat (Permintaan Kamar & Pasien Pulang)' },
+  { value: 'manajemen', label: 'Role: Manajemen' }
+];
+
+function roleLabel(role) {
+  const r = (role || '').toLowerCase();
+  if (r === 'manajemen') return 'Manajemen';
+  if (r === 'perawat') return 'Perawat';
+  if (r === 'teknisi') return 'Teknisi';
+  if (r === 'petugas') return 'Petugas Kebersihan';
+  return role || '-';
+}
+
+function requireManagerAction(actionLabel) {
+  if (isManagerRole()) return true;
+  alert('Hanya akun Manajemen yang dapat ' + (actionLabel || 'menyimpan data ini') + '. Silakan masuk dengan akun Manajemen.');
+  return false;
+}
+
+function ensureAccountRoleOptions() {
   const roleSel = document.getElementById('new-user-role');
   if (!roleSel) return;
-  if (!Array.from(roleSel.options).some(o => o.value === 'perawat')) {
-    const opt = document.createElement('option');
-    opt.value = 'perawat';
-    opt.textContent = 'Perawat (Permintaan Kamar & Pasien Pulang)';
-    roleSel.appendChild(opt);
-  }
+  ACCOUNT_ROLE_OPTIONS.forEach(({ value, label }) => {
+    if (!Array.from(roleSel.options).some(o => o.value === value)) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      roleSel.appendChild(opt);
+    }
+  });
+}
+
+function ensurePerawatRoleOptionInAccountForm() {
+  ensureAccountRoleOptions();
 }
 
 function isRevisionRequested(rep) {
@@ -2127,6 +2155,10 @@ function getLocalYmd(dateStr) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function getLocalYmdFromDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function getFilteredExportData() {
   const type = document.getElementById('export-period-type')?.value || 'all';
   const selectedUnit = document.getElementById('export-filter-unit')?.value || 'all';
@@ -2137,7 +2169,33 @@ function getFilteredExportData() {
 
   if (selectedUnit !== 'all') rows = rows.filter(r => r.unit_name === selectedUnit);
 
-  if (type === 'day') {
+  if (type === 'today') {
+    const todayYmd = getLocalYmdFromDate(new Date());
+    rows = rows.filter(r => r.created_at && getLocalYmd(r.created_at) === todayYmd);
+    periodLabel = 'Hari Ini';
+    fileSuffix = `HariIni_${todayYmd}`;
+  } else if (type === 'yesterday') {
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    const yYmd = getLocalYmdFromDate(y);
+    rows = rows.filter(r => r.created_at && getLocalYmd(r.created_at) === yYmd);
+    periodLabel = 'Kemarin';
+    fileSuffix = `Kemarin_${yYmd}`;
+  } else if (type === 'week') {
+    const now = new Date();
+    const dow = now.getDay() || 7;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - dow + 1);
+    monday.setHours(0, 0, 0, 0);
+    rows = rows.filter(r => {
+      if (!r.created_at) return false;
+      const t = new Date(r.created_at);
+      return t >= monday && t <= now;
+    });
+    const fmtD = d => d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
+    periodLabel = `Minggu Ini (${fmtD(monday)} – ${fmtD(now)})`;
+    fileSuffix = `Mingguan_${getLocalYmdFromDate(monday)}`;
+  } else if (type === 'day') {
     const targetDay = document.getElementById('export-filter-day')?.value || '';
     rows = rows.filter(r => r.created_at && getLocalYmd(r.created_at) === targetDay);
     periodLabel = `Tanggal ${targetDay}`;
@@ -2154,6 +2212,16 @@ function getFilteredExportData() {
     });
     periodLabel = `${startDay} s/d ${endDay}`;
     fileSuffix = `Periode_${startDay}_sd_${endDay}`;
+  } else if (type === 'thismonth') {
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    rows = rows.filter(r => {
+      if (!r.created_at) return false;
+      const d = new Date(r.created_at);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === ym;
+    });
+    periodLabel = 'Bulan Ini';
+    fileSuffix = `BulanIni_${ym}`;
   } else if (type === 'month') {
     const targetMonth = document.getElementById('export-filter-month')?.value || '';
     rows = rows.filter(r => {
@@ -2650,11 +2718,11 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   try {
     const { data, error } = await db.from('app_users').select('*').eq('username', username).eq('password', password).single();
     if (error || !data) {
-      if ((username === 'admin' && password === 'azis123') || (username === 'petugas1' && password === 'petugas123') || (username === 'perawat1' && password === 'perawat123')) {
+      if ((username === 'admin' && password === 'azis123') || (username === 'petugas1' && password === 'petugas123') || (username === 'perawat1' && password === 'perawat123') || (username === 'teknisi1' && password === 'teknisi123')) {
         currentUser = {
           username,
-          full_name: username === 'admin' ? 'Supervisor Manajemen' : username === 'perawat1' ? 'Perawat Nurse Station' : 'Petugas Shift Pagi',
-          role: username === 'admin' ? 'manajemen' : username === 'perawat1' ? 'perawat' : 'petugas'
+          full_name: username === 'admin' ? 'Supervisor Manajemen' : username === 'perawat1' ? 'Perawat Nurse Station' : username === 'teknisi1' ? 'Teknisi Perbaikan' : 'Petugas Shift Pagi',
+          role: username === 'admin' ? 'manajemen' : username === 'perawat1' ? 'perawat' : username === 'teknisi1' ? 'teknisi' : 'petugas'
         };
       } else throw new Error('Username atau password salah!');
     } else currentUser = data;
@@ -2706,7 +2774,7 @@ function populateOfficerDropdown() {
       if (execBadge) execBadge.textContent = '🔒 Terkunci';
     } else {
       const prevExec = execSel.value;
-      const petugasOnly = list.filter(u => (u.role || '').toLowerCase() === 'petugas');
+      const petugasOnly = list.filter(u => ['petugas', 'teknisi'].includes((u.role || '').toLowerCase()));
       const finalPetugasList = petugasOnly.length > 0 ? petugasOnly : [{ full_name: 'Petugas Kebersihan', role: 'petugas' }];
       execSel.innerHTML = finalPetugasList.map(u => `<option value="${u.full_name}">${u.full_name}</option>`).join('');
       if (prevExec && finalPetugasList.some(u => u.full_name === prevExec)) execSel.value = prevExec;
@@ -3065,7 +3133,9 @@ async function enterApp() {
     ? 'shrink-0 text-[7.5px] font-extrabold uppercase px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 tracking-wide'
     : isPerawatRole()
       ? 'shrink-0 text-[7.5px] font-extrabold uppercase px-1 py-0.5 rounded bg-orange-100 text-orange-700 tracking-wide'
-      : 'shrink-0 text-[7.5px] font-extrabold uppercase px-1 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide';
+      : (currentUser.role || '').toLowerCase() === 'teknisi'
+        ? 'shrink-0 text-[7.5px] font-extrabold uppercase px-1 py-0.5 rounded bg-purple-100 text-purple-800 tracking-wide'
+        : 'shrink-0 text-[7.5px] font-extrabold uppercase px-1 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide';
 
   const userCard = document.getElementById('user-management-card');
   if (userCard) userCard.style.display = isManagerRole() ? 'block' : 'none';
@@ -3765,7 +3835,7 @@ function downloadQrImage() {
 }
 
 function renderUsers() {
-  ensurePerawatRoleOptionInAccountForm();
+  ensureAccountRoleOptions();
   const list = document.getElementById('master-user-list');
   if (!list) return;
   list.innerHTML = usersData.map(u => {
@@ -3774,13 +3844,15 @@ function renderUsers() {
       ? 'bg-indigo-100 text-indigo-700'
       : rLower === 'perawat'
         ? 'bg-orange-100 text-orange-700'
-        : 'bg-teal-100 text-teal-700';
+        : rLower === 'teknisi'
+          ? 'bg-purple-100 text-purple-800'
+          : 'bg-teal-100 text-teal-700';
     return `
       <div class="py-3 flex items-center justify-between gap-2">
         <div>
           <div class="flex items-center gap-2">
             <p class="text-xs font-extrabold text-slate-900">${u.full_name}</p>
-            <span class="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full ${roleBadge}">${u.role}</span>
+            <span class="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full ${roleBadge}">${roleLabel(u.role)}</span>
           </div>
           <p class="text-[11px] text-slate-500 font-mono mt-0.5">User: ${u.username} • Pass: ${u.password}</p>
         </div>
@@ -3794,8 +3866,8 @@ function renderUsers() {
 }
 
 function editUser(id) {
-  if (!isManagerRole()) return;
-  ensurePerawatRoleOptionInAccountForm();
+  if (!requireManagerAction('mengubah data akun')) return;
+  ensureAccountRoleOptions();
   const u = usersData.find(item => item.id === id);
   if (!u) return;
   document.getElementById('edit-user-id').value = u.id;
@@ -3807,27 +3879,55 @@ function editUser(id) {
 }
 
 async function deleteUser(id) {
-  if (!isManagerRole()) return;
+  if (!requireManagerAction('menghapus akun ini')) return;
   if (!confirm('Hapus akun ini?')) return;
   const { error } = await db.from('app_users').delete().eq('id', id);
   if (error) return alert('Gagal menghapus akun: ' + error.message);
   await loadAllData();
 }
 
-document.getElementById('form-add-user').addEventListener('submit', async (e) => {
+const formAddUserEl = document.getElementById('form-add-user');
+if (formAddUserEl) formAddUserEl.addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (!isManagerRole()) return;
-  const id = document.getElementById('edit-user-id').value;
-  const payload = { full_name: document.getElementById('new-user-fullname').value.trim(), username: document.getElementById('new-user-username').value.trim(), password: document.getElementById('new-user-password').value.trim(), role: document.getElementById('new-user-role').value };
-  const { error } = id ? await db.from('app_users').update(payload).eq('id', id) : await db.from('app_users').insert([payload]);
-  if (error) return alert('Gagal menyimpan akun: ' + error.message);
-  if (currentUser && currentUser.id === id) {
-    currentUser = { ...currentUser, ...payload };
-    localStorage.setItem('ck_user', JSON.stringify(currentUser));
-    document.getElementById('user-greeting').textContent = 'Halo, ' + currentUser.full_name;
+  if (!requireManagerAction('menambah atau mengubah akun petugas')) return;
+
+  const btn = document.getElementById('btn-save-user');
+  const idInput = document.getElementById('edit-user-id');
+  const id = idInput.value;
+  const fullName = document.getElementById('new-user-fullname').value.trim();
+  const username = document.getElementById('new-user-username').value.trim();
+  const password = document.getElementById('new-user-password').value.trim();
+  const role = document.getElementById('new-user-role').value;
+
+  if (!fullName || !username || !password) return alert('Lengkapi Nama Lengkap, Username Login, dan Password terlebih dahulu.');
+  if (!role) return alert('Pilih Role terlebih dahulu: Petugas Kebersihan, Teknisi, Perawat, atau Manajemen.');
+  if (!id && usersData.some(u => (u.username || '').toLowerCase() === username.toLowerCase())) {
+    return alert('Username "' + username + '" sudah digunakan. Silakan gunakan username lain.');
   }
-  e.target.reset(); document.getElementById('edit-user-id').value = ''; document.getElementById('btn-save-user').textContent = '+ Akun';
-  await loadAllData();
+
+  const payload = { full_name: fullName, username, password, role };
+  if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan...'; }
+  try {
+    const { error } = id
+      ? await db.from('app_users').update(payload).eq('id', id)
+      : await db.from('app_users').insert([payload]);
+    if (error) return alert('Gagal menyimpan akun: ' + error.message);
+
+    if (currentUser && String(currentUser.id) === String(id)) {
+      currentUser = { ...currentUser, ...payload };
+      localStorage.setItem('ck_user', JSON.stringify(currentUser));
+      const greeting = document.getElementById('user-greeting');
+      if (greeting) greeting.textContent = 'Halo, ' + currentUser.full_name;
+    }
+    alert('Akun "' + fullName + '" berhasil disimpan sebagai ' + roleLabel(role) + '.');
+    e.target.reset();
+    idInput.value = '';
+    await loadAllData();
+  } catch (err) {
+    alert('Gagal menyimpan akun: ' + (err.message || 'Periksa koneksi internet Anda lalu coba lagi.'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '+ Tambah Akun'; }
+  }
 });
 
 function renderMasterUnits() {
@@ -3850,19 +3950,21 @@ function renderMasterUnits() {
   }).join('');
 }
 
-document.getElementById('form-add-unit').addEventListener('submit', async (e) => {
+document.getElementById('form-add-unit')?.addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (!isManagerRole()) return;
+  if (!requireManagerAction('menyimpan unit kamar')) return;
   const id = document.getElementById('edit-unit-id').value;
   const payload = { unit_code: document.getElementById('unit-code').value.trim(), unit_name: document.getElementById('unit-name').value.trim(), floor: document.getElementById('unit-floor').value.trim(), status: 'kotor' };
-  if (id) { delete payload.status; await db.from('master_units').update(payload).eq('id', id); }
-  else await db.from('master_units').insert([payload]);
+  try {
+    if (id) { delete payload.status; const { error } = await db.from('master_units').update(payload).eq('id', id); if (error) return alert('Gagal menyimpan unit: ' + error.message); }
+    else { const { error } = await db.from('master_units').insert([payload]); if (error) return alert('Gagal menyimpan unit: ' + error.message); }
+  } catch (err) { return alert('Gagal menyimpan unit: ' + (err.message || 'Periksa koneksi internet Anda.')); }
   e.target.reset(); document.getElementById('edit-unit-id').value = ''; document.getElementById('btn-save-unit').textContent = '+ Simpan Unit';
-  loadAllData();
+  await loadAllData();
 });
 
 function editUnit(id) {
-  if (!isManagerRole()) return;
+  if (!requireManagerAction('mengubah unit kamar')) return;
   const u = unitsData.find(x => x.id === id);
   if (!u) return;
   document.getElementById('edit-unit-id').value = u.id;
@@ -3890,19 +3992,21 @@ function renderMasterItems() {
   `).join('');
 }
 
-document.getElementById('form-add-item').addEventListener('submit', async (e) => {
+document.getElementById('form-add-item')?.addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (!isManagerRole()) return;
+  if (!requireManagerAction('menyimpan item checklist')) return;
   const id = document.getElementById('edit-item-id').value;
   const payload = { item_name: document.getElementById('item-name').value.trim(), category: document.getElementById('item-category').value, is_critical: document.getElementById('item-critical').checked };
-  if (id) await db.from('master_items').update(payload).eq('id', id);
-  else await db.from('master_items').insert([payload]);
+  try {
+    if (id) { const { error } = await db.from('master_items').update(payload).eq('id', id); if (error) return alert('Gagal menyimpan item: ' + error.message); }
+    else { const { error } = await db.from('master_items').insert([payload]); if (error) return alert('Gagal menyimpan item: ' + error.message); }
+  } catch (err) { return alert('Gagal menyimpan item: ' + (err.message || 'Periksa koneksi internet Anda.')); }
   e.target.reset(); document.getElementById('edit-item-id').value = ''; document.getElementById('btn-save-item').textContent = '+ Item';
-  loadAllData();
+  await loadAllData();
 });
 
 function editItem(id) {
-  if (!isManagerRole()) return;
+  if (!requireManagerAction('mengubah item checklist')) return;
   const i = itemsData.find(x => x.id === id);
   if (!i) return;
   document.getElementById('edit-item-id').value = i.id;
@@ -3914,39 +4018,109 @@ function editItem(id) {
 
 async function deleteItem(id) { if (isManagerRole() && confirm('Hapus item kelengkapan ini?')) { await db.from('master_items').delete().eq('id', id); loadAllData(); } }
 
+function getDisciplineStats(filteredRows) {
+  const pool = (filteredRows || []).filter(r => !isNurseRequestRecord(r));
+  const byName = new Map();
+  pool.forEach(r => {
+    const meta = parseNotesMetadata(r.notes);
+    const baseName = (meta.executor || r.inspector_name || '').trim();
+    if (!baseName) return;
+    const isRepair = isRepairRecord(r);
+    const roleTag = isRepair ? 'Teknisi' : 'Petugas';
+    if (!byName.has(baseName)) byName.set(baseName, { name: baseName, role: roleTag, total: 0, good: 0, late: 0 });
+    const d = byName.get(baseName);
+    d.total++;
+    const good = isRepair
+      ? (r.final_status === 'siap')
+      : (isInspectionOfficiallyApproved(r) || (Number(r.readiness_score) || 0) >= 80);
+    if (good) d.good++; else d.late++;
+  });
+  return [...byName.values()]
+    .map(d => ({ ...d, pct: d.total ? Math.round((d.good / d.total) * 100) : 0 }))
+    .sort((a, b) => (b.pct - a.pct) || (b.good - a.good));
+}
+
+function renderDisciplineTable(filteredRows) {
+  const tbody = document.getElementById('discipline-tbody');
+  if (!tbody) return;
+  const stats = getDisciplineStats(filteredRows);
+  if (stats.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="py-4 text-center text-[11px] text-slate-400">Belum ada laporan checklist / perbaikan pada filter ini.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = stats.map(d => {
+    const cls = d.pct >= 85 ? 'bg-emerald-100 text-emerald-700' : d.pct >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700';
+    return `<tr class="border-b border-slate-50 last:border-0">
+      <td class="py-2 pr-2"><p class="font-bold text-slate-800">${d.name}</p><p class="text-[9px] text-slate-400">${d.role}</p></td>
+      <td class="py-2 pr-2 text-center font-bold text-slate-700">${d.total}</td>
+      <td class="py-2 pr-2 text-center font-bold text-emerald-600">${d.good}</td>
+      <td class="py-2 pr-2 text-center font-bold text-rose-500">${d.late}</td>
+      <td class="py-2 text-right"><span class="inline-block text-[10px] font-extrabold px-2 py-1 rounded-full ${cls}">${d.pct}%</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function setAnalyticsText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
 function renderAnalytics() {
   const siap = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
-  const kotor = unitsData.filter(u => ['kosong', 'dibersihkan', 'pending_approval', 'perlu_perbaikan'].includes(getEffectiveUnitStatus(u))).length;
+  const proses = unitsData.filter(u => ['kosong', 'dibersihkan', 'pending_approval', 'perlu_perbaikan'].includes(getEffectiveUnitStatus(u))).length;
   const maint = unitsData.filter(u => getEffectiveUnitStatus(u) === 'maintenance').length;
+  const terpakai = proses + maint;
+
   const ctx = document.getElementById('chart-status');
   if (statusChart) statusChart.destroy();
-  statusChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: ['Siap Pakai', 'Kosong / Proses', 'Maintenance'],
-      datasets: [{ data: [siap, kotor, maint], backgroundColor: ['#10b981', '#f59e0b', '#e11d48'], borderWidth: 2, borderColor: '#ffffff' }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      cutout: '62%',
-      plugins: {
-        legend: {
-          position: 'bottom',
-          labels: { boxWidth: 10, padding: 10, font: { size: 10.5, weight: 'bold' } }
+  if (ctx) {
+    statusChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Siap Pakai', 'Belum Siap / Terpakai'],
+        datasets: [{ data: [siap, terpakai], backgroundColor: ['#10b981', '#f59e0b'], borderWidth: 2, borderColor: '#ffffff' }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '55%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (item) => {
+                const total = item.dataset.data.reduce((a, b) => a + b, 0);
+                const pct = total ? Math.round(item.parsed / total * 100) : 0;
+                return `${item.label}: ${item.parsed} kamar (${pct}%)`;
+              }
+            }
+          }
         }
       }
-    }
-  });
+    });
+  }
+  setAnalyticsText('chip-live-siap', siap);
+  setAnalyticsText('chip-live-proses', proses);
+  setAnalyticsText('chip-live-maint', maint);
 
   const { rows: filteredRows } = getFilteredExportData();
   const countBadge = document.getElementById('export-filter-count');
   if (countBadge) countBadge.textContent = `${filteredRows.length} Data Terpilih`;
 
   const total = filteredRows.length;
-  document.getElementById('analytic-total').textContent = `${total} Laporan`;
-  document.getElementById('analytic-avg-score').textContent = `${total ? Math.round(filteredRows.reduce((a, b) => a + b.readiness_score, 0) / total) : 0}%`;
-  document.getElementById('analytic-avg-time').textContent = `${total ? Math.round(filteredRows.reduce((a, b) => a + (b.duration_seconds || 0), 0) / total) : 0} Detik`;
+  setAnalyticsText('analytic-total', `${total} Laporan`);
+
+  const pureRows = filteredRows.filter(r => !isNurseRequestRecord(r) && !isRepairRecord(r));
+  const pureAvg = pureRows.length ? Math.round(pureRows.reduce((a, b) => a + (Number(b.readiness_score) || 0), 0) / pureRows.length) : 0;
+  setAnalyticsText('analytic-pure-score', `${pureAvg}%`);
+
+  const occPct = unitsData.length ? Math.round((terpakai / unitsData.length) * 100) : 0;
+  setAnalyticsText('analytic-occupancy', `${occPct}%`);
+
+  const avgTime = total ? Math.round(filteredRows.reduce((a, b) => a + (Number(b.duration_seconds) || 0), 0) / total) : 0;
+  setAnalyticsText('analytic-avg-time', `${avgTime} Detik`);
+
+  renderDisciplineTable(filteredRows);
 
   const historyBox = document.getElementById('history-list');
   if (filteredRows.length === 0) {
@@ -4057,6 +4231,24 @@ function renderAnalytics() {
 function exportCsv() {
   const { rows: filteredRows, label, fileSuffix } = getFilteredExportData();
   if (filteredRows.length === 0) return alert(`Tidak ada data laporan pada filter (${label}).`);
+  const siapLive = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
+  const terpakaiLive = unitsData.length - siapLive;
+  const occPct = unitsData.length ? Math.round((terpakaiLive / unitsData.length) * 100) : 0;
+  const pureRows = filteredRows.filter(r => !isNurseRequestRecord(r) && !isRepairRecord(r));
+  const pureAvg = pureRows.length ? Math.round(pureRows.reduce((a, b) => a + (Number(b.readiness_score) || 0), 0) / pureRows.length) : 0;
+  const avgTime = filteredRows.length ? Math.round(filteredRows.reduce((a, b) => a + (Number(b.duration_seconds) || 0), 0) / filteredRows.length) : 0;
+  const stats = getDisciplineStats(filteredRows);
+  const summaryLines = [
+    'REKAP KESIAPAN KAMAR',
+    ['Filter Periode', `"${(label || '').replace(/"/g, '""')}"`].join(','),
+    ['Total Laporan', filteredRows.length].join(','),
+    ['Skor Kesiapan Murni (%)', pureAvg].join(','),
+    ['Kamar Terpakai (%)', occPct].join(','),
+    ['Kamar Siap Pakai', siapLive].join(','),
+    ['Total Unit Kamar', unitsData.length].join(','),
+    ['Rata-rata Waktu (Detik)', avgTime].join(','),
+    ''
+  ];
   const headers = ['No,Waktu,Unit Kamar,Pemeriksa,Pelaksana,Shift,Skor (%),Status,Tanggapan Pemeriksa,Bagian Perbaikan,Durasi (Detik),Rincian Checklist,Catatan'];
   const rows = filteredRows.map((r, idx) => {
     const meta = parseNotesMetadata(r.notes);
@@ -4069,7 +4261,13 @@ function exportCsv() {
     const checklistStr = Array.isArray(r.checklist_data) ? r.checklist_data.map(c => `${c.item}: ${c.checked ? 'OK' : 'BELUM'}`).join(' | ') : '';
     return `${idx + 1},"${new Date(r.created_at).toLocaleString('id-ID')}","${r.unit_name}","${r.inspector_name}","${meta.executor || r.inspector_name}","${r.shift}",${r.readiness_score},"${r.final_status.toUpperCase()}","${(meta.feedbackStatus || '-').replace(/"/g, '""')}","${(meta.feedbackDetail || '-').replace(/"/g, '""')}",${r.duration_seconds || 0},"${checklistStr.replace(/"/g, '""')}","${cleanNotesText.replace(/"/g, '""')}"`;
   });
-  const blob = new Blob(['\uFEFF' + headers.concat(rows).join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const discLines = [
+    '',
+    'KEDISIPLINAN PETUGAS & TEKNISI',
+    'Nama,Peran,Tugas,Tepat Waktu,Perlu Ulang,Persentase (%)',
+    ...stats.map(d => [d.name, d.role, d.total, d.good, d.late, `${d.pct}%`].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+  ];
+  const blob = new Blob(['\uFEFF' + summaryLines.concat(headers).concat(rows).concat(discLines).join('\n')], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `Rekap_Kesiapan_Kamar_${fileSuffix}.csv`;
@@ -4081,7 +4279,15 @@ function exportPdf() {
   if (filteredRows.length === 0) return alert(`Tidak ada data laporan pada filter (${label}).`);
   const includePhotos = document.getElementById('export-pdf-include-photos')?.checked || false;
   const total = filteredRows.length;
-  const avgScore = Math.round(filteredRows.reduce((a, b) => a + b.readiness_score, 0) / total);
+  const pureRowsPdf = filteredRows.filter(r => !isNurseRequestRecord(r) && !isRepairRecord(r));
+  const pureAvg = pureRowsPdf.length ? Math.round(pureRowsPdf.reduce((a, b) => a + (Number(b.readiness_score) || 0), 0) / pureRowsPdf.length) : 0;
+  const siapLive = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
+  const terpakaiLive = unitsData.length - siapLive;
+  const occPct = unitsData.length ? Math.round((terpakaiLive / unitsData.length) * 100) : 0;
+  const avgTime = total ? Math.round(filteredRows.reduce((a, b) => a + (Number(b.duration_seconds) || 0), 0) / total) : 0;
+  const stats = getDisciplineStats(filteredRows);
+  const discRowsHtml = stats.map(d => `<tr><td>${d.name}</td><td>${d.role}</td><td style="text-align:center">${d.total}</td><td style="text-align:center">${d.good}</td><td style="text-align:center">${d.late}</td><td style="text-align:center"><strong>${d.pct}%</strong></td></tr>`).join('');
+  const discTableHtml = stats.length ? `<h3 style="margin:18px 0 6px;font-size:13px;color:#0f172a">Tabel Kedisiplinan Petugas &amp; Teknisi</h3><table><thead><tr><th>Nama</th><th>Peran</th><th>Tugas</th><th>Tepat Waktu</th><th>Perlu Ulang</th><th>Kedisiplinan</th></tr></thead><tbody>${discRowsHtml}</tbody></table>` : '';
   const printWin = window.open('', '_blank');
   if (!printWin) return alert('Izinkan pop-up browser untuk mengekspor PDF.');
 
@@ -4097,12 +4303,12 @@ function exportPdf() {
     return `<tr><td>${i + 1}</td><td>${new Date(r.created_at).toLocaleString('id-ID')}</td><td>${r.unit_name}</td><td>${r.inspector_name}</td><td>${meta.executor || r.inspector_name}</td><td>${r.shift}</td><td>${r.readiness_score}%</td><td>${r.final_status.toUpperCase()}</td><td>${feedbackFull}</td><td>${cleanNotesText || '-'}</td>${includePhotos ? `<td><div style="display:flex;gap:4px;">${r.photo_room_url ? `<img src="${r.photo_room_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}</div></td>` : ''}</tr>`;
   }).join('');
 
-  printWin.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8" /><title>Rekap Kesiapan Kamar</title><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script><style>body{font-family:Arial,sans-serif;padding:20px;color:#1e293b;background:#f8fafc;margin:0}.toolbar{display:flex;gap:10px;margin-bottom:16px;background:#fff;padding:12px 16px;border-radius:12px;border:1px solid #e2e8f0}.btn{padding:10px 16px;border:none;border-radius:10px;font-weight:bold;font-size:13px;cursor:pointer}.btn-download{background:#0d9488;color:#fff}.btn-print{background:#334155;color:#fff}.report-box{background:#fff;padding:24px;border-radius:12px;border:1px solid #e2e8f0}h2{margin:0 0 4px;color:#0d9488;font-size:18px}p{margin:0 0 14px;font-size:12px;color:#64748b}.summary{display:flex;gap:16px;margin-bottom:14px;font-size:12px;background:#f1f5f9;padding:10px 14px;border-radius:8px}table{width:100%;border-collapse:collapse;font-size:10.5px}th,td{border:1px solid #cbd5e1;padding:6px;text-align:left;vertical-align:middle}th{background-color:#f1f5f9;font-weight:bold}@media print{.no-print{display:none!important}body{background:#fff;padding:0}.report-box{border:none;padding:0}}</style></head><body><div class="toolbar no-print"><button type="button" id="btn-dl-pdf" class="btn btn-download" onclick="downloadDirectPdf()">⬇ Download PDF</button><button type="button" id="btn-print" class="btn btn-print" onclick="window.print()">🖨 Cetak / Print</button></div><div id="pdf-content" class="report-box"><h2>REKAPITULASI LAPORAN KESIAPAN KAMAR</h2><p>RS Khusus Bedah SS Medika • Filter: <strong>${label}</strong> • Dicetak: ${new Date().toLocaleString('id-ID')}</p><div class="summary"><span><strong>Total Laporan:</strong> ${total}</span><span><strong>Rata-Rata Skor Kesiapan:</strong> ${avgScore}%</span></div><table><thead><tr><th>No</th><th>Waktu</th><th>Unit Kamar</th><th>Pemeriksa</th><th>Pelaksana</th><th>Shift</th><th>Skor</th><th>Status</th><th>Tanggapan Pemeriksa</th><th>Catatan</th>${includePhotos ? '<th>Foto</th>' : ''}</tr></thead><tbody>${rowsHtml}</tbody></table></div><script>function downloadDirectPdf(){const btn=document.getElementById('btn-dl-pdf');btn.textContent='Memproses PDF...';btn.disabled=true;html2pdf().set({margin:10,filename:'Rekap_Kesiapan_Kamar_${fileSuffix}.pdf',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'landscape'}}).from(document.getElementById('pdf-content')).save().then(()=>{btn.textContent='⬇ Download PDF';btn.disabled=false;});}<\/script></body></html>`);
+  printWin.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8" /><title>Rekap Kesiapan Kamar</title><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script><style>body{font-family:Arial,sans-serif;padding:20px;color:#1e293b;background:#f8fafc;margin:0}.toolbar{display:flex;gap:10px;margin-bottom:16px;background:#fff;padding:12px 16px;border-radius:12px;border:1px solid #e2e8f0}.btn{padding:10px 16px;border:none;border-radius:10px;font-weight:bold;font-size:13px;cursor:pointer}.btn-download{background:#0d9488;color:#fff}.btn-print{background:#334155;color:#fff}.report-box{background:#fff;padding:24px;border-radius:12px;border:1px solid #e2e8f0}h2{margin:0 0 4px;color:#0d9488;font-size:18px}p{margin:0 0 14px;font-size:12px;color:#64748b}.summary{display:flex;gap:16px;margin-bottom:14px;font-size:12px;background:#f1f5f9;padding:10px 14px;border-radius:8px}table{width:100%;border-collapse:collapse;font-size:10.5px}th,td{border:1px solid #cbd5e1;padding:6px;text-align:left;vertical-align:middle}th{background-color:#f1f5f9;font-weight:bold}@media print{.no-print{display:none!important}body{background:#fff;padding:0}.report-box{border:none;padding:0}}</style></head><body><div class="toolbar no-print"><button type="button" id="btn-dl-pdf" class="btn btn-download" onclick="downloadDirectPdf()">⬇ Download PDF</button><button type="button" id="btn-print" class="btn btn-print" onclick="window.print()">🖨 Cetak / Print</button></div><div id="pdf-content" class="report-box"><h2>REKAPITULASI LAPORAN KESIAPAN KAMAR</h2><p>RS Khusus Bedah SS Medika • Filter: <strong>${label}</strong> • Dicetak: ${new Date().toLocaleString('id-ID')}</p><div class="summary"><span><strong>Total Laporan:</strong> ${total}</span><span><strong>Skor Kesiapan Murni:</strong> ${pureAvg}%</span><span><strong>Kamar Terpakai:</strong> ${occPct}%</span><span><strong>Rata-rata Waktu:</strong> ${avgTime} Detik</span></div><table><thead><tr><th>No</th><th>Waktu</th><th>Unit Kamar</th><th>Pemeriksa</th><th>Pelaksana</th><th>Shift</th><th>Skor</th><th>Status</th><th>Tanggapan Pemeriksa</th><th>Catatan</th>${includePhotos ? '<th>Foto</th>' : ''}</tr></thead><tbody>${rowsHtml}</tbody></table>${discTableHtml}</div><script>function downloadDirectPdf(){const btn=document.getElementById('btn-dl-pdf');btn.textContent='Memproses PDF...';btn.disabled=true;html2pdf().set({margin:10,filename:'Rekap_Kesiapan_Kamar_${fileSuffix}.pdf',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'landscape'}}).from(document.getElementById('pdf-content')).save().then(()=>{btn.textContent='⬇ Download PDF';btn.disabled=false;});}<\/script></body></html>`);
   printWin.document.close();
 }
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=6.4').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=6.6').catch(() => {});
   });
 }
