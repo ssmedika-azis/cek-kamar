@@ -1,6 +1,6 @@
 const APP_VERSION = '6.5';
 const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInJlZiI6InlteHB4cnJqeG51anlnYWJyaHNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MDk0MjAsImV4cCI6MjExMDQ4NTQyMH0.tFMCbg1_R-I08KEIs-h6wwxXhYLP2Z0oYgnDGC7T2YU';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteHB4cnJqeG51anlnYWJyaHNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MDk0MjAsImV4cCI6MjExMDQ4NTQyMH0.tFMCbg1_R-I08KEIs-h6wwxXhYLP2Z0oYgnDGC7T2YU';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 (async function autoClearOldCache() {
@@ -29,54 +29,7 @@ const APPROVAL_CONFIG_KEY = '__CONFIG_APPROVAL__';
 const REPAIR_RECORD_TAG = '[JENIS_LAPORAN: CEK_PERBAIKAN]';
 const CHECKOUT_RECORD_TAG = '[JENIS_LAPORAN: PASIEN_PULANG]';
 const NURSE_REQ_TAG = '[JENIS_LAPORAN: PERMINTAAN_PERAWAT]';
-const TECH_CHECK_TAG = '[JENIS_LAPORAN: CEK_TEKNISI]';
-
-// 4 Mode Approval: 'off' | 'perawat' | 'manajemen' | 'all'
-function normalizeApprovalMode(raw) {
-  const val = String(raw || '').trim().toLowerCase();
-  if (val === 'off' || val === 'false') return 'off';
-  if (val === 'perawat') return 'perawat';
-  if (val === 'all') return 'all';
-  return 'manajemen';
-}
-
-let approvalMode = normalizeApprovalMode(localStorage.getItem('ck_approval_mode') || (localStorage.getItem('ck_require_approval') === 'false' ? 'off' : 'manajemen'));
-let requireApprovalMode = approvalMode !== 'off';
-
-const APPROVAL_MODE_OPTIONS = {
-  off: {
-    key: 'off',
-    title: '1. OFF (Langsung Siap Pakai)',
-    shortLabel: 'OFF (Langsung Siap Pakai)',
-    desc: 'Petugas simpan laporan 100% → kamar otomatis SIAP PAKAI. Perawat & Manajemen hanya terima laporan.'
-  },
-  perawat: {
-    key: 'perawat',
-    title: '2. ON untuk Perawat',
-    shortLabel: 'ON untuk Perawat',
-    desc: 'Laporan masuk ke akun Perawat untuk di-Approve. Manajemen hanya mendapatkan laporannya saja.'
-  },
-  manajemen: {
-    key: 'manajemen',
-    title: '3. ON untuk Manajemen',
-    shortLabel: 'ON untuk Manajemen',
-    desc: 'Laporan masuk ke akun Manajemen untuk di-Approve. Perawat hanya mendapatkan laporannya saja.'
-  },
-  all: {
-    key: 'all',
-    title: '4. ON All (Perawat & Manajemen)',
-    shortLabel: 'ON All (Perawat & Manajemen)',
-    desc: 'Perawat maupun Manajemen sama-sama mendapat tombol Approve untuk mengesahkan kamar.'
-  }
-};
-
-const TECHNICIAN_CHECKLIST_ITEMS = [
-  { id: 'tech-ac', label: 'AC & Suhu Ruangan Berfungsi Dingin Normal' },
-  { id: 'tech-tv', label: 'TV & Remote Berfungsi Baik' },
-  { id: 'tech-electric', label: 'Lampu & Stopkontak Menyala Normal' },
-  { id: 'tech-water', label: 'Air & Sanitasi (Keran, Shower, Closet) Lancar' },
-  { id: 'tech-nursecall', label: 'Nurse Call / Bel Panggil Perawat Berfungsi' }
-];
+let requireApprovalMode = localStorage.getItem('ck_require_approval') !== 'false';
 
 const NURSE_REQUEST_TYPES = {
   siapkan: {
@@ -101,7 +54,7 @@ const NURSE_REQUEST_TYPES = {
     shortTag: 'MINTA DIBERSIHKAN',
     badgeClass: 'bg-amber-100 text-amber-800 border-amber-300',
     toastTitle: 'MINTA DIBERSIHKAN 🧹',
-    speak: (roomLabel) => `Ruangan kamar ${roomLabel} minta dibersihkan.`
+    speak: (roomLabel) => `Kamar ${roomLabel} minta dibersihkan segera.`
   },
   pulang: {
     key: 'pulang',
@@ -146,11 +99,9 @@ let activeWaPayload = null;
 let currentPublicReport = null;
 let activeTabName = 'dashboard';
 let activeReviewReportId = null;
-let officerFormUnlocked = false;
 
 let realtimeChannel = null;
 let pollingInterval = null;
-let reminderRepeatInterval = null;
 let lastKnownReportId = localStorage.getItem('ck_last_seen_id') || null;
 let unreadNotifCount = 0;
 let latestNotifReport = null;
@@ -158,25 +109,81 @@ let toastTimeout = null;
 
 if (window.lucide) lucide.createIcons();
 
-// ==================== MESIN SUARA NOTIFIKASI BAHASA INDONESIA + LANTAI + PENGINGAT 25 DETIK ====================
+// ==================== MESIN SUARA NOTIFIKASI BAHASA INDONESIA ====================
 
-function extractSpokenRoomLabel(unitName, floorName = '') {
+function extractSpokenRoomLabel(unitName) {
   const raw = String(unitName || '').trim();
-  const matchedUnit = unitsData.find(u =>
-    normalizeText(u.unit_name) === normalizeText(raw) ||
-    (u.unit_code && normalizeText(raw).includes(normalizeText(u.unit_code)))
-  );
-  const resolvedFloor = String(floorName || matchedUnit?.floor || '').trim();
-  const floorPart = resolvedFloor
-    ? (resolvedFloor.toLowerCase().startsWith('lantai') ? `, ${resolvedFloor}` : `, Lantai ${resolvedFloor}`)
-    : '';
-
   const numMatch = raw.match(/(?:kamar|kmr|ruang)?\s*(\d+[a-zA-Z]?)/i);
   if (numMatch && numMatch[1]) {
-    return `nomor ${numMatch[1]}${floorPart}`;
+    return `nomor ${numMatch[1]}`;
   }
-  return `${raw.replace(/^kamar\s*/i, '')}${floorPart}`;
+  return raw.replace(/^kamar\s*/i, '');
 }
+
+// Alamat suara: nomor kamar + lantai dari data master_units
+function getUnitAddress(report) {
+  if (!report) return { number: '', floor: '' };
+  const meta = unitsData.find(u => String(u.id) === String(report.unit_id))
+    || unitsData.find(u => normalizeText(u.unit_name) === normalizeText(report.unit_name || ''));
+  const rawCode = String(meta?.unit_code || report.unit_name || '');
+  const numMatch = rawCode.match(/(\d+[a-zA-Z]?)/);
+  const number = numMatch ? numMatch[1] : '';
+  const floorRaw = String(meta?.floor || '').trim();
+  const floor = floorRaw.replace(/^(lantai|lt\.?|l\.?)\s*/i, '').trim();
+  return { number, floor, meta };
+}
+
+function spokenAddress(report) {
+  const { number, floor } = getUnitAddress(report);
+  if (!number) return extractSpokenRoomLabel(report?.unit_name);
+  return floor ? `nomor ${number}, lantai ${floor}` : `nomor ${number}`;
+}
+
+// ===== Pengingat suara berulang (25 detik) sampai tugas dibuka =====
+const REMINDER_INTERVAL_MS = 25000;
+let reminderTimer = null;
+let reminderReportId = null;
+
+function shouldRepeatForCurrentUser(report) {
+  if (!report || !currentUser) return false;
+  if (isNurseRequestRecord(report)) return isPetugasRole();
+  if (isRepairRecord(report)) return !isPerawatRole();
+  if (isRevisionRequested(report)) return isPetugasRole();
+  if (!isInspectionOfficiallyApproved(report) && requireApprovalMode) return isManagerRole();
+  return false;
+}
+
+function speakPendingReminder() {
+  if (!reminderReportId) return;
+  const rep = inspectionsData.find(r => String(r.id) === String(reminderReportId));
+  if (!rep) return;
+  if (!shouldRepeatForCurrentUser(rep)) { stopVoiceReminder(true); return; }
+  speakIndonesianAlert(getSpokenTextForReport(rep));
+}
+
+function startVoiceReminder(report) {
+  if (!shouldRepeatForCurrentUser(report)) return;
+  if (reminderReportId === report.id && reminderTimer) return;
+  stopVoiceReminder(true);
+  reminderReportId = report.id;
+  const fire = () => {
+    if (document.hidden) return;
+    if (reminderReportId !== report.id) return;
+    speakIndonesianAlert(getSpokenTextForReport(report));
+  };
+  fire();
+  reminderTimer = setInterval(fire, REMINDER_INTERVAL_MS);
+}
+
+function stopVoiceReminder(silent) {
+  if (reminderTimer) { clearInterval(reminderTimer); reminderTimer = null; }
+  reminderReportId = null;
+  if (!silent) { try { window.speechSynthesis.cancel(); } catch (e) {} }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) speakPendingReminder();
+});
 
 function speakIndonesianAlert(text) {
   if (!text || !('speechSynthesis' in window)) return;
@@ -206,14 +213,10 @@ if ('speechSynthesis' in window) {
 
 function getSpokenTextForReport(report) {
   if (!report) return '';
-  const unitObj = unitsData.find(u => String(u.id) === String(report.unit_id));
-  const roomLabel = extractSpokenRoomLabel(report.unit_name, unitObj?.floor || '');
+  const roomLabel = spokenAddress(report);
   const notesStr = String(report.notes || '');
   const shiftStr = String(report.shift || '');
 
-  if (isTechCheckRecord(report)) {
-    return `Perhatian Teknisi, tolong cek AC, TV, lampu, air, dan nurse call di kamar ${roomLabel}.`;
-  }
   if (notesStr.includes('[REQ_TYPE: siapkan]') || shiftStr.startsWith('Siapkan Kamar')) {
     return NURSE_REQUEST_TYPES.siapkan.speak(roomLabel);
   }
@@ -237,51 +240,7 @@ function getSpokenTextForReport(report) {
   if (isRevisionRequested(report)) {
     return `Perhatian, kamar ${roomLabel} perlu perbaikan kebersihan.`;
   }
-  return `Laporan cek kesiapan kamar ${roomLabel} menunggu approval.`;
-}
-
-function startPeriodicTaskReminder() {
-  clearInterval(reminderRepeatInterval);
-  reminderRepeatInterval = setInterval(() => {
-    if (!currentUser) return;
-
-    if (isPetugasRole()) {
-      // Hentikan pengingat jika petugas sedang membuka form checklist
-      if (officerFormUnlocked) return;
-      const nurseUnits = unitsData.filter(u => isNurseMarkedUnit(u.last_checked_by));
-      const revReports = getRoomChecklistReports().filter(r => isRevisionRequested(r));
-      if (nurseUnits.length > 0) {
-        const u = nurseUnits[0];
-        const roomLabel = extractSpokenRoomLabel(u.unit_name, u.floor);
-        playNotificationChime();
-        speakIndonesianAlert(`Pengingat petugas, masih ada permintaan untuk kamar ${roomLabel}.`);
-      } else if (revReports.length > 0) {
-        const r = revReports[0];
-        const roomLabel = extractSpokenRoomLabel(r.unit_name);
-        playNotificationChime();
-        speakIndonesianAlert(`Pengingat petugas, kamar ${roomLabel} perlu perbaikan kebersihan.`);
-      }
-    } else if (isTeknisiRole()) {
-      const pendingTech = getTechCheckReports().filter(r => r.final_status !== 'siap');
-      const pendingRepair = getRepairReports().filter(r => r.final_status !== 'siap');
-      if (pendingTech.length > 0) {
-        const roomLabel = extractSpokenRoomLabel(pendingTech[0].unit_name);
-        playNotificationChime();
-        speakIndonesianAlert(`Pengingat teknisi, cek fasilitas teknis di kamar ${roomLabel}.`);
-      } else if (pendingRepair.length > 0) {
-        const roomLabel = extractSpokenRoomLabel(pendingRepair[0].unit_name);
-        playNotificationChime();
-        speakIndonesianAlert(`Pengingat teknisi, ada pengajuan perbaikan di kamar ${roomLabel}.`);
-      }
-    } else if (canCurrentUserApprove()) {
-      const pendingUnits = unitsData.filter(u => getEffectiveUnitStatus(u) === 'pending_approval');
-      if (pendingUnits.length > 0) {
-        const roomLabel = extractSpokenRoomLabel(pendingUnits[0].unit_name, pendingUnits[0].floor);
-        playNotificationChime();
-        speakIndonesianAlert(`Pengingat approval, kamar ${roomLabel} menunggu persetujuan.`);
-      }
-    }
-  }, 25000);
+  return `Laporan cek kesiapan kamar ${roomLabel} menunggu approval manajemen.`;
 }
 
 // =================================================================================
@@ -293,11 +252,6 @@ function isSystemMetaCategory(category) {
 function isRepairRecord(rep) {
   if (!rep) return false;
   return String(rep.notes || '').includes(REPAIR_RECORD_TAG) || String(rep.shift || '').startsWith('Perbaikan');
-}
-
-function isTechCheckRecord(rep) {
-  if (!rep) return false;
-  return String(rep.notes || '').includes(TECH_CHECK_TAG) || String(rep.shift || '').startsWith('Cek Teknis');
 }
 
 function isNurseRequestRecord(rep) {
@@ -323,36 +277,17 @@ function getNurseRequestTypeFromString(str) {
 }
 
 function getRoomChecklistReports() {
-  return inspectionsData.filter(r => !isRepairRecord(r) && !isNurseRequestRecord(r) && !isTechCheckRecord(r));
+  return inspectionsData.filter(r => !isRepairRecord(r) && !isNurseRequestRecord(r));
 }
 
 function getRepairReports() {
   return inspectionsData.filter(r => isRepairRecord(r));
 }
 
-function getTechCheckReports() {
-  return inspectionsData.filter(r => isTechCheckRecord(r));
-}
-
-function canCurrentUserApprove() {
-  if (!currentUser || approvalMode === 'off') return false;
-  if (approvalMode === 'all') return isManagerRole() || isPerawatRole();
-  if (approvalMode === 'perawat') return isPerawatRole();
-  return isManagerRole();
-}
-
-function getApprovalTargetLabel() {
-  if (approvalMode === 'perawat') return 'Perawat';
-  if (approvalMode === 'all') return 'Perawat / Manajemen';
-  return 'Manajemen';
-}
-
 function syncApprovalConfigFromItems() {
   const cfgRow = itemsData.find(i => i.category === APPROVAL_CONFIG_KEY);
   if (cfgRow) {
-    approvalMode = normalizeApprovalMode(cfgRow.item_name);
-    requireApprovalMode = approvalMode !== 'off';
-    localStorage.setItem('ck_approval_mode', approvalMode);
+    requireApprovalMode = String(cfgRow.item_name).toUpperCase() !== 'OFF';
     localStorage.setItem('ck_require_approval', requireApprovalMode ? 'true' : 'false');
   }
   renderApprovalToggleCard();
@@ -376,47 +311,45 @@ function renderApprovalToggleCard() {
 
   card.classList.remove('hidden');
   card.innerHTML = `
-    <div class="glass-card rounded-3xl p-4 sm:p-5 shadow-sm border border-indigo-200/80 mb-4 space-y-3">
-      <div>
-        <h2 class="text-sm font-extrabold text-slate-900">Pengaturan Alur Approval Kamar</h2>
-        <p class="text-[11px] text-slate-500 mt-0.5">Pilih siapa yang berwenang melakukan Approve setelah petugas selesai menyiapkan kamar:</p>
-      </div>
-      <div class="space-y-2">
-        ${Object.values(APPROVAL_MODE_OPTIONS).map(opt => {
-          const isSelected = approvalMode === opt.key;
-          return `
-            <button type="button" onclick="setApprovalMode('${opt.key}')" class="w-full text-left p-3 rounded-2xl border-2 transition flex items-start justify-between gap-3 ${isSelected ? 'border-teal-600 bg-teal-50/60 shadow-sm' : 'border-slate-200 bg-white hover:bg-slate-50'}">
-              <div class="space-y-0.5">
-                <p class="text-xs font-extrabold text-slate-900">${opt.title}</p>
-                <p class="text-[11px] text-slate-600 leading-relaxed">${opt.desc}</p>
-              </div>
-              <span class="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${isSelected ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-300 bg-white'}">
-                ${isSelected ? '<i data-lucide="check" class="w-3 h-3"></i>' : ''}
-              </span>
-            </button>
-          `;
-        }).join('')}
+    <div class="glass-card rounded-3xl p-4 sm:p-5 shadow-sm border ${requireApprovalMode ? 'border-indigo-200 bg-indigo-50/40' : 'border-emerald-200 bg-emerald-50/40'} mb-4">
+      <div class="flex items-center justify-between gap-3">
+        <div class="space-y-1">
+          <div class="flex items-center gap-2">
+            <span class="text-xs sm:text-sm font-extrabold text-slate-900">Permintaan Approval Manajemen</span>
+            <span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full ${requireApprovalMode ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'}">
+              ${requireApprovalMode ? 'ON (AKTIF)' : 'OFF (NONAKTIF)'}
+            </span>
+          </div>
+          <p class="text-[11px] text-slate-600 leading-relaxed">
+            ${requireApprovalMode
+              ? 'Laporan petugas harus diperiksa & di-Approve Manajemen terlebih dahulu sebelum kamar berstatus <strong>SIAP PAKAI</strong>.'
+              : 'Mode langsung aktif: Laporan petugas dengan skor 100% langsung otomatis berstatus <strong>SIAP PAKAI</strong> tanpa menunggu Approve.'}
+          </p>
+        </div>
+        <button type="button" id="btn-toggle-approval-mode" onclick="toggleApprovalMode()" aria-label="Toggle Permintaan Approval"
+          class="relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${requireApprovalMode ? 'bg-indigo-600' : 'bg-slate-300'}">
+          <span class="pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${requireApprovalMode ? 'translate-x-6' : 'translate-x-0'}"></span>
+        </button>
       </div>
     </div>
   `;
-  lucide.createIcons();
 }
 
-async function setApprovalMode(nextMode) {
+async function toggleApprovalMode() {
   if (!isManagerRole()) return;
-  const normalized = normalizeApprovalMode(nextMode);
-  approvalMode = normalized;
-  requireApprovalMode = approvalMode !== 'off';
-  localStorage.setItem('ck_approval_mode', approvalMode);
-  localStorage.setItem('ck_require_approval', requireApprovalMode ? 'true' : 'false');
+  const btn = document.getElementById('btn-toggle-approval-mode');
+  if (btn) btn.disabled = true;
 
+  const nextState = !requireApprovalMode;
+  requireApprovalMode = nextState;
+  localStorage.setItem('ck_require_approval', nextState ? 'true' : 'false');
   renderApprovalToggleCard();
   populateOfficerDropdown();
   renderDashboard();
 
   if (navigator.onLine) {
     try {
-      const valueStr = approvalMode.toUpperCase();
+      const valueStr = nextState ? 'ON' : 'OFF';
       const existingCfg = itemsData.find(i => i.category === APPROVAL_CONFIG_KEY);
       if (existingCfg) {
         await db.from('master_items').update({ item_name: valueStr }).eq('id', existingCfg.id);
@@ -432,12 +365,8 @@ async function setApprovalMode(nextMode) {
     } catch (e) {}
   }
 
+  if (btn) btn.disabled = false;
   playNotificationChime();
-}
-
-async function toggleApprovalMode() {
-  const next = approvalMode === 'off' ? 'manajemen' : 'off';
-  await setApprovalMode(next);
 }
 
 async function ensureDefaultShiftsInDb() {
@@ -604,31 +533,19 @@ function isPerawatRole() {
   return currentUser && (currentUser.role || '').toLowerCase() === 'perawat';
 }
 
-function isTeknisiRole() {
-  return currentUser && (currentUser.role || '').toLowerCase() === 'teknisi';
-}
-
 function isPetugasRole() {
-  return currentUser && !isManagerRole() && !isPerawatRole() && !isTeknisiRole();
+  return currentUser && !isManagerRole() && !isPerawatRole();
 }
 
 function ensurePerawatRoleOptionInAccountForm() {
   const roleSel = document.getElementById('new-user-role');
   if (!roleSel) return;
-  const requiredOptions = [
-    { value: 'petugas', text: 'Role: Petugas Kebersihan' },
-    { value: 'teknisi', text: 'Role: Teknisi (Cek AC, TV, Lampu, Air, Nurse Call)' },
-    { value: 'perawat', text: 'Role: Perawat (Permintaan Kamar & Pasien Pulang)' },
-    { value: 'manajemen', text: 'Role: Manajemen' }
-  ];
-  requiredOptions.forEach(item => {
-    if (!Array.from(roleSel.options).some(o => o.value === item.value)) {
-      const opt = document.createElement('option');
-      opt.value = item.value;
-      opt.textContent = item.text;
-      roleSel.appendChild(opt);
-    }
-  });
+  if (!Array.from(roleSel.options).some(o => o.value === 'perawat')) {
+    const opt = document.createElement('option');
+    opt.value = 'perawat';
+    opt.textContent = 'Perawat (Permintaan Kamar & Pasien Pulang)';
+    roleSel.appendChild(opt);
+  }
 }
 
 function isRevisionRequested(rep) {
@@ -677,7 +594,7 @@ window.addEventListener('popstate', () => {
       return;
     }
   }
-  const defaultTab = (isManagerRole() || isPerawatRole()) ? 'dashboard' : isTeknisiRole() ? 'repair' : 'inspect';
+  const defaultTab = (isManagerRole() || isPerawatRole()) ? 'dashboard' : 'inspect';
   if (activeTabName !== defaultTab) switchTab(defaultTab, true);
 });
 
@@ -708,24 +625,6 @@ function isInspectionOfficiallyApproved(rep) {
 function isNurseMarkedUnit(checkedByStr) {
   const s = String(checkedByStr || '');
   return s.startsWith('Pasien Pulang:') || s.startsWith('Siapkan Kamar:') || s.startsWith('Tambahan Extrabed:') || s.startsWith('Minta Dibersihkan:');
-}
-
-function isRoomBookedByNurse(u) {
-  const s = String(u?.last_checked_by || '');
-  if (s.startsWith('Siapkan Kamar:')) return true;
-  const latestNurse = getNurseRequestReportsForUnit(u.id, u.unit_name)[0];
-  if (!latestNurse) return false;
-  const reqType = getNurseRequestTypeFromString((latestNurse.notes || '') + ' ' + (latestNurse.shift || ''));
-  return reqType.key === 'siapkan';
-}
-
-function getNurseRequestReportsForUnit(unitId, unitName = '') {
-  const targetName = normalizeText(unitName);
-  return inspectionsData.filter(r => {
-    if (!isNurseRequestRecord(r)) return false;
-    if (unitId && r.unit_id && String(r.unit_id) === String(unitId)) return true;
-    return targetName && normalizeText(r.unit_name) === targetName;
-  });
 }
 
 function getEffectiveUnitStatus(u) {
@@ -778,8 +677,8 @@ function openFirstPendingApproval() {
 }
 
 async function requestRevisionByManagement(unitId, unitName, reportId = null) {
-  if (!canCurrentUserApprove()) {
-    return alert('Anda tidak memiliki wewenang Approve/Komplain pada mode approval yang aktif saat ini.');
+  if (!isManagerRole()) {
+    return alert('Hanya akun Manajemen / Supervisor yang dapat mengirim komplain / permintaan perbaikan.');
   }
 
   let targetRep = reportId
@@ -800,8 +699,7 @@ async function requestRevisionByManagement(unitId, unitName, reportId = null) {
     return alert('Mohon isi keterangan bagian mana yang perlu diperbaiki agar petugas mengetahui detail komplain.');
   }
 
-  const approverRoleLabel = isPerawatRole() ? 'Perawat' : 'Supervisor Manajemen';
-  const supervisorName = currentUser.full_name || approverRoleLabel;
+  const supervisorName = currentUser.full_name || 'Supervisor Manajemen';
 
   if (targetRep) {
     const meta = parseNotesMetadata(targetRep.notes);
@@ -856,15 +754,15 @@ async function requestRevisionFromActiveForm() {
 }
 
 async function approveReportById(reportId) {
-  if (!canCurrentUserApprove()) {
-    return alert('Akun Anda tidak memiliki tombol Approve pada pengaturan mode approval saat ini.');
+  if (!isManagerRole()) {
+    return alert('Hanya akun Manajemen / Supervisor yang dapat menyetujui (Approve) form laporan ini.');
   }
   const rep = inspectionsData.find(r => String(r.id) === String(reportId));
   if (!rep) return alert('Data laporan form tidak ditemukan.');
 
   if (!confirm(`Approve form laporan "${rep.unit_name}" (Skor ${rep.readiness_score}%) menjadi SIAP PAKAI sekarang?`)) return;
 
-  const approverName = currentUser.full_name || (isPerawatRole() ? 'Perawat' : 'Supervisor Manajemen');
+  const approverName = currentUser.full_name || 'Supervisor Manajemen';
   const meta = parseNotesMetadata(rep.notes);
   const updatedNotes = composeNotesWithMetadata(
     meta.executor || rep.inspector_name,
@@ -894,14 +792,15 @@ async function approveReportById(reportId) {
   clearBottomFormReviewBar();
   activeReviewReportId = null;
   document.getElementById('prefill-review-banner')?.classList.add('hidden');
+  stopVoiceReminder();
   playNotificationChime();
   await loadAllData();
   alert(`Berhasil! Form laporan ${rep.unit_name} telah di-Approve menjadi SIAP PAKAI.`);
 }
 
 async function approveUnitByManagement(unitId, unitName) {
-  if (!canCurrentUserApprove()) {
-    return alert('Akun Anda tidak memiliki wewenang Approve pada pengaturan mode approval saat ini.');
+  if (!isManagerRole()) {
+    return alert('Hanya akun Manajemen / Supervisor yang dapat menyetujui (Approve) kamar menjadi Siap Pakai.');
   }
   const latestRep = getLatestInspectionForUnit(unitId, unitName);
   if (latestRep && !isInspectionOfficiallyApproved(latestRep)) {
@@ -909,7 +808,7 @@ async function approveUnitByManagement(unitId, unitName) {
   }
 
   if (!confirm(`Approve "${unitName}" sebagai SIAP PAKAI sekarang?`)) return;
-  const approverName = currentUser.full_name || (isPerawatRole() ? 'Perawat' : 'Supervisor Manajemen');
+  const approverName = currentUser.full_name || 'Supervisor Manajemen';
   const { error } = await db.from('master_units').update({
     status: 'siap',
     last_checked_by: `Approved: ${approverName}`,
@@ -936,57 +835,15 @@ async function approveActiveFormReport() {
   }
 }
 
-// ==================== AKSI CEPAT PERAWAT (4 TOMBOL + PENGUNCIAN + TUGAS OTOMATIS TEKNISI) ====================
-
-async function createAutomaticTechnicianTask(unitId, unitName, nurseName, jamReq, triggerLabel) {
-  if (!navigator.onLine) return;
-  try {
-    const existingOpenTech = getTechCheckReports().find(r =>
-      r.final_status !== 'siap' &&
-      (String(r.unit_id) === String(unitId) || normalizeText(r.unit_name) === normalizeText(unitName))
-    );
-    if (existingOpenTech) return;
-
-    const unitObj = unitsData.find(u => String(u.id) === String(unitId));
-    const roomLabel = extractSpokenRoomLabel(unitName, unitObj?.floor || '');
-    const techChecklist = TECHNICIAN_CHECKLIST_ITEMS.map(it => ({ item: it.label, checked: false }));
-
-    const techPayload = {
-      unit_id: unitId,
-      unit_name: unitName,
-      inspector_name: nurseName,
-      inspector_role: 'perawat',
-      shift: `Cek Teknis • ${jamReq} WIB`,
-      readiness_score: 0,
-      final_status: 'kotor',
-      duration_seconds: 0,
-      checklist_data: techChecklist,
-      notes: composeNotesWithMetadata(
-        'Tim Teknisi',
-        `Tugas Cek Teknis (${triggerLabel} oleh ${nurseName})`,
-        'AC, TV, Lampu, Air/Sanitasi, Nurse Call',
-        `${TECH_CHECK_TAG}\nPengecekan teknis otomatis untuk kamar ${roomLabel}.`
-      ),
-      photo_room_url: null,
-      photo_toilet_url: null
-    };
-    await db.from('room_inspections').insert([techPayload]);
-  } catch (e) {}
-}
+// ==================== AKSI CEPAT PERAWAT (4 TOMBOL + SUARA) ====================
 
 async function sendNurseRoomAction(unitId, unitName, actionKey) {
   if (!isManagerRole() && !isPerawatRole()) return;
-  const currentUnit = unitsData.find(u => String(u.id) === String(unitId));
-
-  // Cegah tekan ulang Siapkan Kamar jika kamar sudah dipesan / sedang dipakai sampai Pasien Pulang ditekan
-  if (actionKey === 'siapkan' && currentUnit && isRoomBookedByNurse(currentUnit)) {
-    return alert(`Tombol "Siapkan Kamar" untuk ${unitName} sedang terkunci karena kamar sudah dipesan / terisi. Tekan "Pasien Pulang" terlebih dahulu untuk membukanya kembali.`);
-  }
-
   const cfg = NURSE_REQUEST_TYPES[actionKey] || NURSE_REQUEST_TYPES.pulang;
-  const roomLabel = extractSpokenRoomLabel(unitName, currentUnit?.floor || '');
+  const roomLabel = extractSpokenRoomLabel(unitName);
+  const addrLabel = spokenAddress({ unit_id: unitId, unit_name: unitName });
 
-  const ok = confirm(`Kirim permintaan "${cfg.label}" untuk ${unitName} sekarang?`);
+  const ok = confirm(`Kirim permintaan "${cfg.label}" untuk ${unitName} ke Petugas sekarang?`);
   if (!ok) return;
 
   const nurseName = currentUser?.full_name || 'Perawat';
@@ -1001,6 +858,8 @@ async function sendNurseRoomAction(unitId, unitName, actionKey) {
   const prefixTitle = prefixMap[cfg.key] || 'Pasien Pulang';
   const unitStamp = `${prefixTitle}: ${nurseName} (${jamReq})`;
 
+  // Untuk tambahan extrabed atau minta dibersihkan saat pasien masih dirawat, pertahankan status siap jika sebelumnya siap, selain itu kotor
+  const currentUnit = unitsData.find(u => String(u.id) === String(unitId));
   const currentEff = currentUnit ? getEffectiveUnitStatus(currentUnit) : 'kosong';
   const nextDbStatus = (cfg.key === 'extrabed' && currentEff === 'siap') ? 'siap' : 'kotor';
 
@@ -1013,7 +872,7 @@ async function sendNurseRoomAction(unitId, unitName, actionKey) {
   if (error) return alert('Gagal mengirim permintaan kamar: ' + error.message);
 
   try {
-    const spokenMessage = cfg.speak(roomLabel);
+    const spokenMessage = cfg.speak(addrLabel);
     const reqPayload = {
       unit_id: unitId,
       unit_name: unitName,
@@ -1040,17 +899,12 @@ async function sendNurseRoomAction(unitId, unitName, actionKey) {
       lastKnownReportId = insertedRows[0].id;
       localStorage.setItem('ck_last_seen_id', insertedRows[0].id);
     }
-
-    // Jika Siapkan Kamar atau Minta Dibersihkan -> otomatis buat tugas untuk Teknisi
-    if (cfg.key === 'siapkan' || cfg.key === 'bersihkan') {
-      await createAutomaticTechnicianTask(unitId, unitName, nurseName, jamReq, cfg.label);
-    }
   } catch (e) {}
 
   playNotificationChime();
-  speakIndonesianAlert(`Permintaan ${cfg.label} kamar ${roomLabel} terkirim.`);
+  speakIndonesianAlert(`Permintaan ${cfg.label} kamar ${addrLabel} terkirim.`);
   await loadAllData();
-  alert(`Terkirim! Permintaan "${cfg.label}" untuk ${unitName} sudah masuk ke layar & suara notifikasi tim.`);
+  alert(`Terkirim ke Petugas! Permintaan "${cfg.label}" untuk ${unitName} sudah masuk ke layar & suara notifikasi petugas.`);
 }
 
 async function confirmPatientCheckout(unitId, unitName) {
@@ -1101,17 +955,17 @@ async function markIssueResolvedByOfficer(reportId) {
   const report = inspectionsData.find(r => String(r.id) === String(reportId));
   if (!report) return;
 
-  const autoApprove = !requireApprovalMode;
+  const autoApprove = isManagerRole() || !requireApprovalMode;
   const confirmMsg = autoApprove
     ? `Konfirmasi perbaikan pada "${report.unit_name}" sudah selesai? Status kamar akan langsung menjadi SIAP PAKAI.`
-    : `Konfirmasi perbaikan pada "${report.unit_name}" sudah selesai?\n\nNotifikasi akan dikirim ke ${getApprovalTargetLabel()} agar segera di-approve menjadi Siap Pakai.`;
+    : `Konfirmasi perbaikan pada "${report.unit_name}" sudah selesai?\n\nNotifikasi akan dikirim ke bagian Manajemen agar segera di-approve menjadi Siap Pakai.`;
 
   if (!confirm(confirmMsg)) return;
 
   const meta = parseNotesMetadata(report.notes);
   const actorName = currentUser ? currentUser.full_name : 'Petugas';
 
-  if (canCurrentUserApprove() && isManagerRole()) {
+  if (isManagerRole()) {
     await approveReportById(report.id);
   } else if (!requireApprovalMode) {
     const autoNote = composeNotesWithMetadata(
@@ -1142,16 +996,15 @@ async function markIssueResolvedByOfficer(reportId) {
 
     clearBottomFormReviewBar();
     activeReviewReportId = null;
-    officerFormUnlocked = false;
     document.getElementById('prefill-review-banner')?.classList.add('hidden');
+    stopVoiceReminder();
     playNotificationChime();
     await loadAllData();
     alert(`Berhasil! Perbaikan pada ${report.unit_name} selesai dan kamar langsung berstatus SIAP PAKAI.`);
   } else {
-    const targetApprovalLabel = getApprovalTargetLabel();
     const pendingNote = composeNotesWithMetadata(
       actorName,
-      `Menunggu Approval ${targetApprovalLabel} (Selesai Perbaikan oleh ${actorName})`,
+      `Menunggu Approval Manajemen (Selesai Perbaikan oleh ${actorName})`,
       '',
       meta.cleanNotes
     );
@@ -1177,11 +1030,11 @@ async function markIssueResolvedByOfficer(reportId) {
 
     clearBottomFormReviewBar();
     activeReviewReportId = null;
-    officerFormUnlocked = false;
     document.getElementById('prefill-review-banner')?.classList.add('hidden');
+    stopVoiceReminder();
     playNotificationChime();
     await loadAllData();
-    alert(`Terkirim ke ${targetApprovalLabel}! Perbaikan pada ${report.unit_name} sudah dilaporkan selesai dan menunggu approval.`);
+    alert(`Terkirim ke Manajemen! Perbaikan pada ${report.unit_name} sudah dilaporkan selesai dan menunggu approval Manajemen.`);
   }
 }
 
@@ -1196,26 +1049,6 @@ async function acknowledgeNurseTask(unitId, unitName) {
   await loadAllData();
 }
 
-function closeOfficerChecklistForm() {
-  officerFormUnlocked = false;
-  clearPrefillFormState();
-  renderOfficerRevisionBanner();
-}
-
-function updateInspectFormVisibilityForRole() {
-  const formWrapper = document.getElementById('inspect-form-wrapper');
-  const closeBtn = document.getElementById('btn-close-officer-form');
-  if (!formWrapper) return;
-
-  if (isPetugasRole()) {
-    formWrapper.classList.toggle('hidden', !officerFormUnlocked);
-    if (closeBtn) closeBtn.classList.toggle('hidden', !officerFormUnlocked);
-  } else {
-    formWrapper.classList.remove('hidden');
-    if (closeBtn) closeBtn.classList.add('hidden');
-  }
-}
-
 function renderOfficerRevisionBanner() {
   const inspectSection = document.getElementById('tab-inspect');
   if (!inspectSection) return;
@@ -1227,8 +1060,6 @@ function renderOfficerRevisionBanner() {
     inspectSection.insertBefore(container, inspectSection.firstChild);
   }
 
-  updateInspectFormVisibilityForRole();
-
   if (!isPetugasRole()) {
     container.innerHTML = '';
     container.classList.add('hidden');
@@ -1239,17 +1070,8 @@ function renderOfficerRevisionBanner() {
   const nurseTaskUnits = unitsData.filter(u => isNurseMarkedUnit(u.last_checked_by));
 
   if (revisionReports.length === 0 && nurseTaskUnits.length === 0) {
-    container.classList.remove('hidden');
-    container.innerHTML = `
-      <div class="glass-card rounded-2xl p-6 text-center space-y-2 border border-slate-200">
-        <div class="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
-          <i data-lucide="check-circle-2" class="w-6 h-6"></i>
-        </div>
-        <h3 class="text-xs font-extrabold text-slate-900">Belum Ada Permintaan Kamar Masuk</h3>
-        <p class="text-[11px] text-slate-500">Form checklist akan otomatis muncul saat ada permintaan dari Perawat atau komplain revisi.</p>
-      </div>
-    `;
-    lucide.createIcons();
+    container.innerHTML = '';
+    container.classList.add('hidden');
     return;
   }
 
@@ -1272,7 +1094,7 @@ function renderOfficerRevisionBanner() {
             <div class="bg-white rounded-xl p-3 border border-amber-200 space-y-2">
               <div class="flex items-start justify-between gap-2">
                 <div class="min-w-0">
-                  <p class="text-xs font-extrabold text-slate-900">${u.unit_code} - ${u.unit_name} ${u.floor ? `(${u.floor})` : ''}</p>
+                  <p class="text-xs font-extrabold text-slate-900">${u.unit_code} - ${u.unit_name}</p>
                   <p class="text-[11px] font-bold text-amber-800">${u.last_checked_by || ''}</p>
                 </div>
               </div>
@@ -1300,7 +1122,7 @@ function renderOfficerRevisionBanner() {
           <span class="w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping"></span>
           <h3 class="text-xs font-extrabold text-rose-900 uppercase tracking-wide">Perlu Perbaikan (${revisionReports.length} Kamar)</h3>
         </div>
-        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-200 text-rose-900">Komplain Revisi</span>
+        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-200 text-rose-900">Komplain Manajemen</span>
       </div>
       <div class="space-y-2">
         ${revisionReports.map(rep => {
@@ -1335,120 +1157,7 @@ function renderOfficerRevisionBanner() {
   lucide.createIcons();
 }
 
-// ==================== MODUL TEKNISI & FORM CEK PERBAIKAN FASILITAS ====================
-
-async function completeTechCheckTask(reportId) {
-  const rep = getTechCheckReports().find(r => String(r.id) === String(reportId));
-  if (!rep) return;
-
-  const chks = Array.from(document.querySelectorAll(`.tech-chk-${reportId}`));
-  const updatedChecklist = TECHNICIAN_CHECKLIST_ITEMS.map((item, idx) => ({
-    item: item.label,
-    checked: chks[idx] ? chks[idx].checked : true
-  }));
-  const checkedCount = updatedChecklist.filter(c => c.checked).length;
-  const score = Math.round((checkedCount / updatedChecklist.length) * 100);
-
-  if (checkedCount < updatedChecklist.length) {
-    if (!confirm(`Baru ${checkedCount} dari ${updatedChecklist.length} item teknis yang dicentang. Tetap tandai tugas teknis "${rep.unit_name}" selesai?`)) return;
-  } else {
-    if (!confirm(`Konfirmasi seluruh fasilitas teknis (AC, TV, Lampu, Air, Nurse Call) di "${rep.unit_name}" sudah dicek & normal?`)) return;
-  }
-
-  const techName = currentUser?.full_name || 'Teknisi';
-  const meta = parseNotesMetadata(rep.notes);
-  const updatedNotes = composeNotesWithMetadata(
-    techName,
-    `Selesai Cek Teknis oleh ${techName} (Skor ${score}%)`,
-    'AC, TV, Lampu, Air/Sanitasi, Nurse Call',
-    meta.cleanNotes
-  );
-
-  const { error } = await db.from('room_inspections').update({
-    final_status: 'siap',
-    readiness_score: score,
-    checklist_data: updatedChecklist,
-    notes: updatedNotes,
-    created_at: new Date().toISOString()
-  }).eq('id', rep.id);
-
-  if (error) return alert('Gagal menyimpan laporan teknisi: ' + error.message);
-
-  playNotificationChime();
-  await loadAllData();
-  alert(`Berhasil! Pengecekan teknis kamar ${rep.unit_name} selesai dicatat oleh ${techName}.`);
-}
-
-function renderTechnicianTaskSection() {
-  const repairSection = document.getElementById('tab-repair');
-  if (!repairSection) return;
-
-  let techBox = document.getElementById('technician-auto-tasks-box');
-  if (!techBox) {
-    techBox = document.createElement('div');
-    techBox.id = 'technician-auto-tasks-box';
-    repairSection.insertBefore(techBox, repairSection.firstChild);
-  }
-
-  const techTasks = getTechCheckReports();
-  const openTasks = techTasks.filter(r => r.final_status !== 'siap');
-
-  if (!isTeknisiRole() && openTasks.length === 0) {
-    techBox.innerHTML = '';
-    techBox.classList.add('hidden');
-    return;
-  }
-
-  techBox.classList.remove('hidden');
-  techBox.innerHTML = `
-    <div class="glass-card rounded-3xl p-4 shadow-sm border-2 ${openTasks.length > 0 ? 'border-sky-300 bg-sky-50/40' : 'border-slate-200'} space-y-3 mb-4">
-      <div class="flex items-center justify-between gap-2">
-        <div class="flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-full ${openTasks.length > 0 ? 'bg-sky-600 animate-ping' : 'bg-emerald-500'}"></span>
-          <div>
-            <h3 class="text-xs sm:text-sm font-extrabold text-slate-900">Tugas Pengecekan Fasilitas Teknis (${openTasks.length} Aktif)</h3>
-            <p class="text-[10.5px] text-slate-500">Otomatis masuk saat Perawat menekan Siapkan Kamar / Minta Dibersihkan</p>
-          </div>
-        </div>
-        <span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800">Teknisi</span>
-      </div>
-
-      ${openTasks.length === 0 ? `
-        <p class="text-xs text-slate-500 bg-white rounded-2xl p-3.5 border border-slate-200 text-center">Semua tugas pengecekan fasilitas teknis kamar sudah selesai.</p>
-      ` : `
-        <div class="space-y-3">
-          ${openTasks.map(r => {
-            const waktu = r.created_at ? new Date(r.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '';
-            const unitObj = unitsData.find(u => String(u.id) === String(r.unit_id));
-            return `
-              <div class="bg-white rounded-2xl p-3.5 border border-sky-200 shadow-sm space-y-2.5">
-                <div class="flex items-start justify-between gap-2">
-                  <div>
-                    <h4 class="text-xs font-extrabold text-slate-900">${r.unit_name} ${unitObj?.floor ? `• ${unitObj.floor}` : ''}</h4>
-                    <p class="text-[11px] text-slate-500">Diminta oleh: <strong>${r.inspector_name}</strong> • ${waktu} WIB</p>
-                  </div>
-                  <span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">PERLU CEK TEKNIS</span>
-                </div>
-                <div class="space-y-1.5">
-                  ${TECHNICIAN_CHECKLIST_ITEMS.map(it => `
-                    <label class="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] font-bold text-slate-800 cursor-pointer">
-                      <span>${it.label}</span>
-                      <input type="checkbox" checked class="tech-chk-${r.id} w-4 h-4 rounded text-teal-600" />
-                    </label>
-                  `).join('')}
-                </div>
-                <button type="button" onclick="completeTechCheckTask('${r.id}')" class="w-full py-2.5 px-3 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
-                  <i data-lucide="check-circle-2" class="w-4 h-4"></i> Selesai Cek Teknis Kamar Ini
-                </button>
-              </div>
-            `;
-          }).join('')}
-        </div>
-      `}
-    </div>
-  `;
-  lucide.createIcons();
-}
+// ==================== MODUL NAVIGASI & FORM CEK PERBAIKAN FASILITAS ====================
 
 function ensureRepairNavigationAndSection() {
   const navGrid = document.getElementById('bottom-nav-grid');
@@ -1631,7 +1340,6 @@ function ensureRepairNavigationAndSection() {
       await processRepairRequestSubmit(false);
     });
   }
-  renderTechnicianTaskSection();
   lucide.createIcons();
 }
 
@@ -1672,7 +1380,7 @@ function populateRepairFormDropdowns() {
     const prevAssignee = assigneeSel.value;
     const allStaff = usersData.length > 0
       ? usersData
-      : [{ full_name: currentUser?.full_name || 'Petugas / Teknisi', role: 'teknisi' }];
+      : [{ full_name: currentUser?.full_name || 'Petugas / Teknisi', role: 'petugas' }];
 
     const optionsHtml = ['<option value="">-- Belum Ditentukan (Menunggu Penugasan Manajemen) --</option>']
       .concat(allStaff.map(u => `<option value="${u.full_name}">${u.full_name} (${u.role})</option>`))
@@ -1766,6 +1474,7 @@ function resetRepairForm() {
 function openRepairReportInForm(reportId) {
   const rep = getRepairReports().find(r => String(r.id) === String(reportId));
   if (!rep) return;
+  stopVoiceReminder();
   switchTab('repair');
   populateRepairFormDropdowns();
 
@@ -2174,15 +1883,10 @@ function renderRepairHistoryList() {
   const navBadge = document.getElementById('repair-nav-badge');
   if (!listEl) return;
 
-  renderTechnicianTaskSection();
-
   const repairs = getRepairReports();
-  const activeRepairsCount = repairs.filter(r => r.final_status !== 'siap').length;
-  const activeTechCount = getTechCheckReports().filter(r => r.final_status !== 'siap').length;
-  const totalActiveBadge = activeRepairsCount + (isTeknisiRole() ? activeTechCount : 0);
-
+  const activeCount = repairs.filter(r => r.final_status !== 'siap').length;
   if (countEl) countEl.textContent = `${repairs.length} Laporan`;
-  if (navBadge) navBadge.classList.toggle('hidden', totalActiveBadge === 0);
+  if (navBadge) navBadge.classList.toggle('hidden', activeCount === 0);
 
   if (repairs.length === 0) {
     listEl.innerHTML = '<div class="text-center py-6 text-xs text-slate-400 bg-white/70 rounded-2xl border border-slate-200/70">Belum ada pengajuan perbaikan fasilitas.</div>';
@@ -2298,13 +2002,13 @@ function sendAppInviteWa(targetRole) {
     '',
     'Terima kasih.'
   ] : [
-    '*UNDANGAN OPERASIONAL TIM*',
+    '*UNDANGAN OPERASIONAL PETUGAS & PERAWAT*',
     '*Aplikasi Cek Kesiapan Kamar*',
     '*RS Khusus Bedah SS Medika*',
     '--------------------------------',
     'Halo Rekan-Rekan Tim,',
     '',
-    'Silakan akses aplikasi di bawah ini untuk melakukan permintaan kamar (Perawat), pengecekan kesiapan kamar, pengecekan teknis, dan dokumentasi foto:',
+    'Silakan akses aplikasi di bawah ini untuk melakukan permintaan kamar (Perawat), pengecekan kesiapan kamar, pengajuan perbaikan, dan dokumentasi foto:',
     '',
     '🔗 *Link Aplikasi:*',
     appUrl,
@@ -2375,8 +2079,8 @@ function composeNotesWithMetadata(executorName, feedbackStatus, feedbackDetail, 
 
 function handleFeedbackStatusChange() {
   const st = document.getElementById('inspect-feedback-status')?.value || '';
-  if (!canCurrentUserApprove() && requireApprovalMode && st.includes('Approved')) {
-    document.getElementById('inspect-feedback-status').value = `Menunggu Approval ${getApprovalTargetLabel()}`;
+  if (isPetugasRole() && requireApprovalMode && st.includes('Approved')) {
+    document.getElementById('inspect-feedback-status').value = 'Menunggu Approval Manajemen';
     return;
   }
   const detailInput = document.getElementById('inspect-feedback-detail');
@@ -2437,15 +2141,6 @@ async function deleteHistoryRecord(id, unitName, unitId) {
   await loadAllData();
 }
 
-function getIsoWeekString(dateObj) {
-  const d = new Date(Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
-}
-
 function initExportPeriodInputs() {
   const now = new Date();
   const yyyy = now.getFullYear();
@@ -2454,7 +2149,6 @@ function initExportPeriodInputs() {
   const todayStr = `${yyyy}-${mm}-${dd}`;
 
   const dayEl = document.getElementById('export-filter-day');
-  const weekEl = document.getElementById('export-filter-week');
   const startEl = document.getElementById('export-filter-start');
   const endEl = document.getElementById('export-filter-end');
   const monthEl = document.getElementById('export-filter-month');
@@ -2462,7 +2156,6 @@ function initExportPeriodInputs() {
   const unitEl = document.getElementById('export-filter-unit');
 
   if (dayEl && !dayEl.value) dayEl.value = todayStr;
-  if (weekEl && !weekEl.value) weekEl.value = getIsoWeekString(now);
   if (startEl && !startEl.value) startEl.value = todayStr;
   if (endEl && !endEl.value) endEl.value = todayStr;
   if (monthEl && !monthEl.value) monthEl.value = `${yyyy}-${mm}`;
@@ -2493,7 +2186,6 @@ function initExportPeriodInputs() {
 function handleExportPeriodTypeChange() {
   const type = document.getElementById('export-period-type')?.value || 'all';
   document.getElementById('wrap-filter-day')?.classList.toggle('hidden', type !== 'day');
-  document.getElementById('wrap-filter-week')?.classList.toggle('hidden', type !== 'week');
   document.getElementById('wrap-filter-range')?.classList.toggle('hidden', type !== 'range');
   document.getElementById('wrap-filter-month')?.classList.toggle('hidden', type !== 'month');
   document.getElementById('wrap-filter-year')?.classList.toggle('hidden', type !== 'year');
@@ -2520,11 +2212,6 @@ function getFilteredExportData() {
     rows = rows.filter(r => r.created_at && getLocalYmd(r.created_at) === targetDay);
     periodLabel = `Tanggal ${targetDay}`;
     fileSuffix = `Harian_${targetDay}`;
-  } else if (type === 'week') {
-    const targetWeek = document.getElementById('export-filter-week')?.value || '';
-    rows = rows.filter(r => r.created_at && getIsoWeekString(new Date(r.created_at)) === targetWeek);
-    periodLabel = `Minggu ${targetWeek}`;
-    fileSuffix = `Mingguan_${targetWeek}`;
   } else if (type === 'range') {
     const startDay = document.getElementById('export-filter-start')?.value || '';
     const endDay = document.getElementById('export-filter-end')?.value || '';
@@ -2558,78 +2245,6 @@ function getFilteredExportData() {
     fileSuffix += `_${selectedUnit.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
   }
   return { rows, label: periodLabel, fileSuffix };
-}
-
-function computeAnalyticsSummary(filteredRows) {
-  const totalRooms = unitsData.length;
-  const occupiedRooms = unitsData.filter(u => isRoomBookedByNurse(u)).length;
-  const vacantRooms = Math.max(0, totalRooms - occupiedRooms);
-  const occupiedPct = totalRooms ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
-  const vacantPct = totalRooms ? Math.round((vacantRooms / totalRooms) * 100) : 0;
-
-  // Skor kesiapan murni: hanya dari laporan checklist kamar & cek teknis (tidak tercampur log permintaan perawat)
-  const pureInspections = filteredRows.filter(r => !isNurseRequestRecord(r) && !isRepairRecord(r));
-  const pureAvgScore = pureInspections.length
-    ? Math.round(pureInspections.reduce((acc, r) => acc + Number(r.readiness_score || 0), 0) / pureInspections.length)
-    : 0;
-  const avgDuration = pureInspections.length
-    ? Math.round(pureInspections.reduce((acc, r) => acc + Number(r.duration_seconds || 0), 0) / pureInspections.length)
-    : 0;
-
-  // Hitung Kedisiplinan (%) tiap Petugas & Teknisi
-  const staffMembers = usersData.filter(u => {
-    const r = (u.role || '').toLowerCase();
-    return r === 'petugas' || r === 'teknisi';
-  });
-
-  const disciplineRows = staffMembers.map(u => {
-    const isTech = (u.role || '').toLowerCase() === 'teknisi';
-    const userNameNorm = normalizeText(u.full_name);
-
-    const matchedTasks = filteredRows.filter(r => {
-      if (isTech) {
-        if (!isTechCheckRecord(r) && !isRepairRecord(r)) return false;
-      } else {
-        if (isNurseRequestRecord(r) || isTechCheckRecord(r) || isRepairRecord(r)) return false;
-      }
-      const meta = parseNotesMetadata(r.notes);
-      const execNorm = normalizeText(meta.executor);
-      const inspNorm = normalizeText(r.inspector_name);
-      return (execNorm && execNorm === userNameNorm) || (inspNorm && inspNorm === userNameNorm);
-    });
-
-    const totalTasks = matchedTasks.length;
-    const completedOnStandard = matchedTasks.filter(r => {
-      if (isTech) return r.final_status === 'siap';
-      return !isRevisionRequested(r) && Number(r.readiness_score || 0) === 100;
-    }).length;
-
-    const avgTaskScore = totalTasks
-      ? Math.round(matchedTasks.reduce((a, b) => a + Number(b.readiness_score || 0), 0) / totalTasks)
-      : 0;
-    const disciplinePct = totalTasks ? Math.round((completedOnStandard / totalTasks) * 100) : 0;
-
-    return {
-      fullName: u.full_name,
-      role: isTech ? 'Teknisi' : 'Petugas Kebersihan',
-      totalTasks,
-      completedOnStandard,
-      avgTaskScore,
-      disciplinePct
-    };
-  });
-
-  return {
-    totalRooms,
-    occupiedRooms,
-    vacantRooms,
-    occupiedPct,
-    vacantPct,
-    pureInspectionsCount: pureInspections.length,
-    pureAvgScore,
-    avgDuration,
-    disciplineRows
-  };
 }
 
 function playNotificationChime() {
@@ -2704,24 +2319,17 @@ function showInAppBanner(report) {
   latestNotifReport = report;
   const banner = document.getElementById('live-toast-banner');
   const isNurseReq = isNurseRequestRecord(report);
-  const isTechReq = isTechCheckRecord(report);
   const isRepair = isRepairRecord(report);
   const isApproved = isInspectionOfficiallyApproved(report);
   const isRev = isRevisionRequested(report);
   const meta = parseNotesMetadata(report.notes);
   const actorName = meta.executor || report.inspector_name;
 
-  let statusLabel = `MENUNGGU APPROVAL (${getApprovalTargetLabel().toUpperCase()}) ⏳`;
-  let badgeLabel = 'Laporan Kamar • Baru Saja';
-  let bodyLabel = canCurrentUserApprove()
-    ? `Oleh ${actorName} • Klik untuk cek form & approve`
-    : `Oleh ${actorName} • Laporan info kesiapan kamar`;
+  let statusLabel = 'MENUNGGU APPROVAL ⏳';
+  let badgeLabel = 'Butuh Approval Manajemen • Baru Saja';
+  let bodyLabel = `Oleh ${actorName} • Klik untuk cek form & approve`;
 
-  if (isTechReq) {
-    statusLabel = report.final_status === 'siap' ? 'CEK TEKNIS SELESAI ✅' : 'TUGAS CEK TEKNIS 🔧';
-    badgeLabel = `Teknisi (${report.inspector_name})`;
-    bodyLabel = getSpokenTextForReport(report);
-  } else if (isNurseReq) {
+  if (isNurseReq) {
     const reqType = getNurseRequestTypeFromString((report.notes || '') + ' ' + (report.shift || ''));
     statusLabel = reqType.toastTitle;
     badgeLabel = `Permintaan Perawat (${actorName})`;
@@ -2736,7 +2344,7 @@ function showInAppBanner(report) {
     bodyLabel = `Oleh ${actorName} • Skor ${report.readiness_score}%`;
   } else if (isRev) {
     statusLabel = 'PERLU PERBAIKAN ⚠️';
-    badgeLabel = 'Komplain Revisi • Baru Saja';
+    badgeLabel = 'Komplain Manajemen • Baru Saja';
     bodyLabel = `Komplain: ${meta.feedbackDetail || 'Segera perbaiki kamar ini'}`;
   }
 
@@ -2755,20 +2363,19 @@ function hideToastBanner() { document.getElementById('live-toast-banner')?.class
 
 function openLatestNotifFromBanner() {
   hideToastBanner();
-  if (latestNotifReport && isTechCheckRecord(latestNotifReport)) {
-    if (!isPerawatRole()) switchTab('repair');
-  } else if (latestNotifReport && isNurseRequestRecord(latestNotifReport)) {
+  stopVoiceReminder();
+  if (latestNotifReport && isNurseRequestRecord(latestNotifReport)) {
     if (isPetugasRole() && latestNotifReport.unit_id) quickInspect(latestNotifReport.unit_id);
     else if (!isPerawatRole()) switchTab('dashboard');
   } else if (latestNotifReport && isRepairRecord(latestNotifReport)) {
     openRepairReportInForm(latestNotifReport.id);
-  } else if (latestNotifReport && latestNotifReport.id && !isInspectionOfficiallyApproved(latestNotifReport) && canCurrentUserApprove()) {
+  } else if (latestNotifReport && latestNotifReport.id && !isInspectionOfficiallyApproved(latestNotifReport)) {
     openReportInForm(latestNotifReport.id);
-  } else if (isManagerRole() || isPerawatRole()) {
+  } else if (isManagerRole()) {
     openNotificationDrawer();
   } else if (latestNotifReport && latestNotifReport.id) {
     openReportFullView(latestNotifReport.id);
-  } else {
+  } else if (!isPerawatRole()) {
     switchTab('analytics');
   }
 }
@@ -2784,7 +2391,6 @@ function handleIncomingNewReport(report) {
   localStorage.setItem('ck_last_seen_id', report.id);
 
   const isNurseReq = isNurseRequestRecord(report);
-  const isTechReq = isTechCheckRecord(report);
   const isRepair = isRepairRecord(report);
   const isApproved = isInspectionOfficiallyApproved(report);
   const isRev = isRevisionRequested(report);
@@ -2798,7 +2404,11 @@ function handleIncomingNewReport(report) {
 
     playNotificationChime();
     const spokenText = getSpokenTextForReport(report);
-    speakIndonesianAlert(spokenText);
+    if (shouldRepeatForCurrentUser(report)) {
+      startVoiceReminder(report);
+    } else {
+      speakIndonesianAlert(spokenText);
+    }
 
     if (navigator.vibrate) navigator.vibrate([250, 100, 250]);
     showInAppBanner(report);
@@ -2806,17 +2416,10 @@ function handleIncomingNewReport(report) {
     const meta = parseNotesMetadata(report.notes);
     const actorName = meta.executor || report.inspector_name;
 
-    let notifTitle = canCurrentUserApprove()
-      ? `Approval Dibutuhkan: ${report.unit_name}`
-      : `Laporan Kesiapan Kamar: ${report.unit_name}`;
-    let notifBody = canCurrentUserApprove()
-      ? `Petugas ${actorName} selesai cek (${report.readiness_score}%). Mohon cek form & approve.`
-      : `Petugas ${actorName} selesai menyiapkan kamar (${report.readiness_score}%).`;
+    let notifTitle = `Approval Dibutuhkan: ${report.unit_name}`;
+    let notifBody = `Petugas ${actorName} selesai cek (${report.readiness_score}%). Mohon cek form & approve.`;
 
-    if (isTechReq) {
-      notifTitle = `Tugas Cek Teknis: ${report.unit_name}`;
-      notifBody = spokenText;
-    } else if (isNurseReq) {
+    if (isNurseReq) {
       const reqType = getNurseRequestTypeFromString((report.notes || '') + ' ' + (report.shift || ''));
       notifTitle = `${reqType.label}: ${report.unit_name}`;
       notifBody = spokenText;
@@ -2828,7 +2431,7 @@ function handleIncomingNewReport(report) {
       notifBody = `Oleh ${actorName} (${report.readiness_score}%).`;
     } else if (isRev) {
       notifTitle = `Perlu Perbaikan: ${report.unit_name}`;
-      notifBody = `Komplain: ${meta.feedbackDetail || 'Segera lakukan perbaikan kamar.'}`;
+      notifBody = `Komplain Manajemen: ${meta.feedbackDetail || 'Segera lakukan perbaikan kamar.'}`;
     }
 
     triggerNativePhoneNotification(notifTitle, notifBody, report.id);
@@ -2847,13 +2450,14 @@ function testNotificationAlert() {
     notes: '[JENIS_LAPORAN: PERMINTAAN_PERAWAT]\n[REQ_TYPE: siapkan]'
   };
   playNotificationChime();
-  speakIndonesianAlert('Tes notifikasi suara aktif. Tolong siapkan kamar nomor 201, Lantai 2.');
+  speakIndonesianAlert('Tes notifikasi suara aktif. Tolong siapkan kamar nomor 201.');
   if (navigator.vibrate) navigator.vibrate([180, 80, 180]);
   showInAppBanner(sample);
   triggerNativePhoneNotification('Tes Notifikasi Suara Cek Kamar', 'Notifikasi suara bahasa Indonesia aktif!', sample.id);
 }
 
 function openNotificationDrawer() {
+  stopVoiceReminder();
   unreadNotifCount = 0;
   document.getElementById('notif-unread-badge')?.classList.add('hidden');
   const listEl = document.getElementById('notif-drawer-list');
@@ -2861,10 +2465,8 @@ function openNotificationDrawer() {
     listEl.innerHTML = '<p class="text-xs text-slate-400 text-center py-6">Belum ada riwayat laporan masuk.</p>';
   } else {
     const resolveBtnLabel = requireApprovalMode ? 'Selesai Perbaikan & Minta Approve' : 'Selesai Perbaikan (Siap Pakai)';
-    const userCanApprove = canCurrentUserApprove();
     listEl.innerHTML = inspectionsData.slice(0, 20).map(r => {
       const isNurseReq = isNurseRequestRecord(r);
-      const isTechReq = isTechCheckRecord(r);
       const isRepair = isRepairRecord(r);
       const isApproved = isInspectionOfficiallyApproved(r);
       const isRev = isRevisionRequested(r);
@@ -2873,35 +2475,29 @@ function openNotificationDrawer() {
       const waktu = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
       const reqType = isNurseReq ? getNurseRequestTypeFromString((r.notes || '') + ' ' + (r.shift || '')) : null;
 
-      const cardStyle = isTechReq
-        ? 'bg-sky-50/80 border-sky-200'
-        : isNurseReq
-          ? 'bg-orange-50/80 border-orange-200'
-          : isRepair
-            ? 'bg-amber-50/80 border-amber-200'
-            : isApproved
-              ? 'bg-slate-50 border-slate-200/80'
-              : isRev
-                ? 'bg-rose-50/80 border-rose-200'
-                : 'bg-indigo-50/70 border-indigo-200';
-      const badgeStyle = isTechReq
-        ? 'bg-sky-100 text-sky-800'
-        : isNurseReq
-          ? reqType.badgeClass
-          : isRepair
-            ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')
-            : isApproved
-              ? 'bg-emerald-100 text-emerald-700'
-              : isRev
-                ? 'bg-rose-100 text-rose-800'
-                : 'bg-indigo-100 text-indigo-800';
-      const badgeLabel = isTechReq
-        ? (r.final_status === 'siap' ? 'TEKNIS SELESAI' : 'CEK TEKNISI')
-        : isNurseReq
-          ? reqType.shortTag
-          : isRepair
-            ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI' : 'CEK PERBAIKAN')
-            : isApproved ? 'SIAP PAKAI' : isRev ? 'PERLU PERBAIKAN' : `MENUNGGU APPROVAL (${getApprovalTargetLabel().toUpperCase()})`;
+      const cardStyle = isNurseReq
+        ? 'bg-orange-50/80 border-orange-200'
+        : isRepair
+          ? 'bg-amber-50/80 border-amber-200'
+          : isApproved
+            ? 'bg-slate-50 border-slate-200/80'
+            : isRev
+              ? 'bg-rose-50/80 border-rose-200'
+              : 'bg-indigo-50/70 border-indigo-200';
+      const badgeStyle = isNurseReq
+        ? reqType.badgeClass
+        : isRepair
+          ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')
+          : isApproved
+            ? 'bg-emerald-100 text-emerald-700'
+            : isRev
+              ? 'bg-rose-100 text-rose-800'
+              : 'bg-indigo-100 text-indigo-800';
+      const badgeLabel = isNurseReq
+        ? reqType.shortTag
+        : isRepair
+          ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI' : 'CEK PERBAIKAN')
+          : isApproved ? 'SIAP PAKAI' : isRev ? 'PERLU PERBAIKAN' : 'MENUNGGU APPROVAL';
 
       return `
         <div class="p-3 rounded-2xl ${cardStyle} border transition space-y-2">
@@ -2915,26 +2511,16 @@ function openNotificationDrawer() {
               <span class="shrink-0 text-[10px]">${waktu}</span>
             </div>
             ${isRev && meta.feedbackDetail ? `<p class="text-[11px] font-bold text-rose-700">Komplain: ${meta.feedbackDetail}</p>` : ''}
-            ${(isNurseReq || isTechReq) ? `<p class="text-[11px] font-semibold text-slate-700">${getSpokenTextForReport(r)}</p>` : ''}
+            ${isNurseReq ? `<p class="text-[11px] font-semibold text-orange-900">${getSpokenTextForReport(r)}</p>` : ''}
           </div>
           ${(isPetugasRole() && isNurseReq && r.unit_id) ? `
             <button type="button" onclick="closeActiveModal('modal-notifications'); quickInspect('${r.unit_id}');" class="w-full py-2.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
               <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Cek & Siapkan Kamar Ini
             </button>
           ` : ''}
-          ${(userCanApprove && !isApproved && !isRepair && !isNurseReq && !isTechReq && r.id) ? `
-            <div class="grid grid-cols-2 gap-1.5">
-              <button type="button" onclick="closeActiveModal('modal-notifications'); approveReportById('${r.id}');" class="py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
-                <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Approve Siap Pakai
-              </button>
-              <button type="button" onclick="closeActiveModal('modal-notifications'); requestRevisionByManagement('${r.unit_id || ''}', '${(r.unit_name || '').replace(/'/g, "\\'")}', '${r.id}');" class="py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
-                <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Perlu Diperbaiki
-              </button>
-            </div>
-          ` : ''}
-          ${(isTechReq && r.final_status !== 'siap' && (isTeknisiRole() || isManagerRole())) ? `
-            <button type="button" onclick="closeActiveModal('modal-notifications'); switchTab('repair');" class="w-full py-2.5 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
-              <i data-lucide="wrench" class="w-3.5 h-3.5"></i> Buka Tugas Cek Teknis
+          ${(isManagerRole() && !isApproved && !isRepair && !isNurseReq && r.id) ? `
+            <button type="button" onclick="closeActiveModal('modal-notifications'); openReportInForm('${r.id}');" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
+              <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek & Approve Form
             </button>
           ` : ''}
           ${(isRepair && r.final_status !== 'siap' && r.id && !isPerawatRole()) ? `
@@ -2942,7 +2528,7 @@ function openNotificationDrawer() {
               <i data-lucide="wrench" class="w-3.5 h-3.5"></i> Kelola / Tandai Sudah Diperbaiki
             </button>
           ` : ''}
-          ${(isPetugasRole() && isRev && !isRepair && !isNurseReq && !isTechReq && r.id) ? `
+          ${(isPetugasRole() && isRev && !isRepair && !isNurseReq && r.id) ? `
             <button type="button" onclick="closeActiveModal('modal-notifications'); markIssueResolvedByOfficer('${r.id}');" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
               <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> ${resolveBtnLabel}
             </button>
@@ -2961,7 +2547,10 @@ function startRealtimeReportListener() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'room_inspections' }, (payload) => { if (payload?.new) handleIncomingNewReport(payload.new); })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'room_inspections' }, (payload) => {
       if (payload?.new && !isInspectionOfficiallyApproved(payload.new)) handleIncomingNewReport(payload.new);
-      else loadAllData();
+      else {
+        if (payload?.new && reminderReportId === payload.new.id) stopVoiceReminder();
+        loadAllData();
+      }
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'room_inspections' }, () => { loadAllData(); })
     .subscribe();
@@ -3007,7 +2596,6 @@ async function loadPublicReport(codeParam) {
 function renderPublicReportView(r) {
   const container = document.getElementById('public-report-container');
   const isNurseReq = isNurseRequestRecord(r);
-  const isTechReq = isTechCheckRecord(r);
   const isRepair = isRepairRecord(r);
   const isApproved = isInspectionOfficiallyApproved(r);
   const isRev = isRevisionRequested(r);
@@ -3017,7 +2605,6 @@ function renderPublicReportView(r) {
     .replace(REPAIR_RECORD_TAG, '')
     .replace(CHECKOUT_RECORD_TAG, '')
     .replace(NURSE_REQ_TAG, '')
-    .replace(TECH_CHECK_TAG, '')
     .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
     .trim();
   const reqType = isNurseReq ? getNurseRequestTypeFromString((r.notes || '') + ' ' + (r.shift || '')) : null;
@@ -3026,28 +2613,24 @@ function renderPublicReportView(r) {
     ? r.checklist_data.map(c => `<div class="flex items-center justify-between py-2 px-3 rounded-xl ${c.checked ? 'bg-emerald-50/70 text-slate-800' : 'bg-rose-50/70 text-rose-800'}"><span class="text-xs font-bold">${c.item}</span><span class="text-xs font-extrabold">${c.checked ? '✅ Sesuai' : '❌ Belum'}</span></div>`).join('')
     : '<p class="text-xs text-slate-400">Tidak ada rincian checklist.</p>';
 
-  const badgeClass = isTechReq
-    ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-800')
-    : isNurseReq
-      ? reqType.badgeClass
-      : isRepair
-        ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')
-        : isApproved
-          ? 'bg-emerald-100 text-emerald-700'
-          : isRev
-            ? 'bg-rose-100 text-rose-800'
-            : 'bg-indigo-100 text-indigo-800';
-  const badgeText = isTechReq
-    ? (r.final_status === 'siap' ? 'CEK TEKNIS SELESAI ✅' : 'TUGAS CEK TEKNISI 🔧')
-    : isNurseReq
-      ? reqType.shortTag
-      : isRepair
-        ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI ✅' : 'PENGAJUAN PERBAIKAN 🔧')
-        : isApproved
-          ? 'SIAP PAKAI ✅'
-          : isRev
-            ? 'PERLU PERBAIKAN ⚠️'
-            : 'MENUNGGU APPROVAL ⏳';
+  const badgeClass = isNurseReq
+    ? reqType.badgeClass
+    : isRepair
+      ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')
+      : isApproved
+        ? 'bg-emerald-100 text-emerald-700'
+        : isRev
+          ? 'bg-rose-100 text-rose-800'
+          : 'bg-indigo-100 text-indigo-800';
+  const badgeText = isNurseReq
+    ? reqType.shortTag
+    : isRepair
+      ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI ✅' : 'PENGAJUAN PERBAIKAN 🔧')
+      : isApproved
+        ? 'SIAP PAKAI ✅'
+        : isRev
+          ? 'PERLU PERBAIKAN ⚠️'
+          : 'MENUNGGU APPROVAL ⏳';
 
   const photo1Label = isRepair ? 'Foto Rusak (Awal)' : 'Area Kamar';
   const photo2Label = isRepair ? 'Foto Sesudah Diperbaiki' : 'Kamar Mandi';
@@ -3068,9 +2651,9 @@ function renderPublicReportView(r) {
       <div class="grid grid-cols-2 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs">
         <div><span class="text-[10px] text-slate-400 font-bold block">${isNurseReq ? 'PERAWAT PELAPOR' : isRepair ? 'PETUGAS PENGAJU' : 'PETUGAS PEMERIKSA'}</span><span class="font-extrabold text-slate-800">${r.inspector_name}</span></div>
         <div><span class="text-[10px] text-slate-400 font-bold block">WAKTU / SHIFT</span><span class="font-extrabold text-slate-800">${r.shift}</span></div>
-        ${meta.executor ? `<div class="col-span-2 pt-1 border-t border-slate-200/70"><span class="text-[10px] text-indigo-600 font-bold block">${isNurseReq ? 'PERAWAT BERTUGAS' : isTechReq ? 'TEKNISI PELAKSANA' : isRepair ? 'PETUGAS YANG DITUGASKAN' : 'PETUGAS PELAKSANA'}</span><span class="font-extrabold text-slate-800">${meta.executor}</span></div>` : ''}
+        ${meta.executor ? `<div class="col-span-2 pt-1 border-t border-slate-200/70"><span class="text-[10px] text-indigo-600 font-bold block">${isNurseReq ? 'PERAWAT BERTUGAS' : isRepair ? 'PETUGAS YANG DITUGASKAN' : 'PETUGAS PELAKSANA'}</span><span class="font-extrabold text-slate-800">${meta.executor}</span></div>` : ''}
       </div>
-      ${meta.feedbackStatus ? `<div class="${isApproved || r.final_status === 'siap' ? 'bg-emerald-50/80 border-emerald-200' : isRev ? 'bg-rose-50/80 border-rose-200' : 'bg-amber-50/80 border-amber-200'} border rounded-2xl p-3 space-y-1"><span class="text-[10px] font-extrabold uppercase ${isApproved || r.final_status === 'siap' ? 'text-emerald-800' : isRev ? 'text-rose-800' : 'text-amber-800'} block">Status & Tanggapan</span><p class="text-xs font-extrabold text-slate-800">${meta.feedbackStatus}</p>${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">${isNurseReq ? 'Instruksi' : isRepair ? 'Kategori' : 'Keterangan'}: ${meta.feedbackDetail}</p>` : ''}</div>` : ''}
+      ${meta.feedbackStatus ? `<div class="${isApproved || r.final_status === 'siap' ? 'bg-emerald-50/80 border-emerald-200' : isRev ? 'bg-rose-50/80 border-rose-200' : 'bg-amber-50/80 border-amber-200'} border rounded-2xl p-3 space-y-1"><span class="text-[10px] font-extrabold uppercase ${isApproved || r.final_status === 'siap' ? 'text-emerald-800' : isRev ? 'text-rose-800' : 'text-amber-800'} block">Status & Tanggapan</span><p class="text-xs font-extrabold text-slate-800">${meta.feedbackStatus}</p>${meta.feedbackDetail ? `<p class="text-xs text-rose-700 font-semibold">${isNurseReq ? 'Instruksi' : isRepair ? 'Kategori' : 'Bagian Ditandai Perbaikan'}: ${meta.feedbackDetail}</p>` : ''}</div>` : ''}
       ${(r.photo_room_url || r.photo_toilet_url) ? `<div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Dokumentasi Foto</h3><div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${r.photo_room_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">${photo1Label}</span><img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}${r.photo_toilet_url ? `<div class="space-y-1"><span class="text-[10px] font-bold text-slate-500">${photo2Label}</span><img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-48 object-cover rounded-2xl border border-slate-200 cursor-pointer shadow-sm" /></div>` : ''}</div></div>` : ''}
       <div class="space-y-2"><h3 class="text-xs font-extrabold text-slate-800">Rincian</h3><div class="space-y-1.5">${checklistHtml}</div></div>
       ${cleanNotesText ? `<div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-3"><span class="text-[10px] font-extrabold uppercase text-amber-800 block">Catatan</span><p class="text-xs text-slate-700 mt-0.5">${cleanNotesText}</p></div>` : ''}
@@ -3146,11 +2729,11 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   try {
     const { data, error } = await db.from('app_users').select('*').eq('username', username).eq('password', password).single();
     if (error || !data) {
-      if ((username === 'admin' && password === 'azis123') || (username === 'petugas1' && password === 'petugas123') || (username === 'perawat1' && password === 'perawat123') || (username === 'teknisi1' && password === 'teknisi123')) {
+      if ((username === 'admin' && password === 'azis123') || (username === 'petugas1' && password === 'petugas123') || (username === 'perawat1' && password === 'perawat123')) {
         currentUser = {
           username,
-          full_name: username === 'admin' ? 'Supervisor Manajemen' : username === 'perawat1' ? 'Perawat Nurse Station' : username === 'teknisi1' ? 'Teknisi Fasilitas' : 'Petugas Shift Pagi',
-          role: username === 'admin' ? 'manajemen' : username === 'perawat1' ? 'perawat' : username === 'teknisi1' ? 'teknisi' : 'petugas'
+          full_name: username === 'admin' ? 'Supervisor Manajemen' : username === 'perawat1' ? 'Perawat Nurse Station' : 'Petugas Shift Pagi',
+          role: username === 'admin' ? 'manajemen' : username === 'perawat1' ? 'perawat' : 'petugas'
         };
       } else throw new Error('Username atau password salah!');
     } else currentUser = data;
@@ -3212,12 +2795,12 @@ function populateOfficerDropdown() {
   }
 
   if (optApproved) {
-    const lockApprovedOption = !canCurrentUserApprove() && requireApprovalMode;
+    const lockApprovedOption = isPetugasRole() && requireApprovalMode;
     optApproved.disabled = lockApprovedOption;
     optApproved.hidden = lockApprovedOption;
   }
   if (fbSel && !activeReviewReportId) {
-    if (canCurrentUserApprove() || !requireApprovalMode) {
+    if (isManagerRole() || !requireApprovalMode) {
       fbSel.value = 'Sesuai Standar (Approved)';
     } else {
       fbSel.value = 'Menunggu Approval Manajemen';
@@ -3226,7 +2809,7 @@ function populateOfficerDropdown() {
 
   const btnSubmit = document.getElementById('btn-submit-inspect');
   if (btnSubmit && !activeReviewReportId) {
-    btnSubmit.textContent = (!canCurrentUserApprove() && requireApprovalMode) ? 'Ajukan Approval' : 'Simpan Laporan';
+    btnSubmit.textContent = (isPetugasRole() && requireApprovalMode) ? 'Ajukan Approval' : 'Simpan Laporan';
   }
 }
 
@@ -3285,7 +2868,7 @@ function clearBottomFormReviewBar() {
   const btnWa = document.getElementById('btn-submit-wa');
   if (btnSubmit) {
     btnSubmit.classList.remove('hidden');
-    btnSubmit.textContent = (!canCurrentUserApprove() && requireApprovalMode) ? 'Ajukan Approval' : 'Simpan Laporan';
+    btnSubmit.textContent = (isPetugasRole() && requireApprovalMode) ? 'Ajukan Approval' : 'Simpan Laporan';
   }
   if (btnWa) {
     btnWa.classList.remove('hidden');
@@ -3318,11 +2901,6 @@ function populateFormWithReport(latestRep) {
     populateOfficerDropdown();
     populateShiftDropdown();
     return;
-  }
-
-  if (isPetugasRole()) {
-    officerFormUnlocked = true;
-    updateInspectFormVisibilityForRole();
   }
 
   const realChecklistItems = itemsData.filter(i => !isSystemMetaCategory(i.category));
@@ -3375,7 +2953,7 @@ function populateFormWithReport(latestRep) {
 
   const fbSel = document.getElementById('inspect-feedback-status');
   if (fbSel) {
-    fbSel.value = (canCurrentUserApprove() || !requireApprovalMode) ? 'Sesuai Standar (Approved)' : 'Menunggu Approval Manajemen';
+    fbSel.value = (isManagerRole() || !requireApprovalMode) ? 'Sesuai Standar (Approved)' : 'Menunggu Approval Manajemen';
   }
 
   const detailEl = document.getElementById('inspect-feedback-detail');
@@ -3386,12 +2964,11 @@ function populateFormWithReport(latestRep) {
 
   const savedChecklist = Array.isArray(latestRep.checklist_data) ? latestRep.checklist_data : [];
   document.querySelectorAll('.inspect-chk').forEach(chk => {
-    const labelText = chk.dataset.name || '';
-    const match = savedChecklist.find(c =>
-      (c.item || '').trim().toLowerCase() === labelText.trim().toLowerCase()
+    const chkNorm = normalizeText(chk.dataset.name);
+    const foundItem = savedChecklist.find(c =>
+      c.item === chk.dataset.name || normalizeText(c.item) === chkNorm
     );
-    if (match) chk.checked = Boolean(match.checked);
-    else chk.checked = savedChecklist.length > 0 && latestRep.readiness_score === 100;
+    chk.checked = foundItem ? Boolean(foundItem.checked) : false;
   });
   updateScore();
 
@@ -3402,185 +2979,205 @@ function populateFormWithReport(latestRep) {
   updatePhotoBoxUI('room', watermarkedPhotos.room);
   updatePhotoBoxUI('toilet', watermarkedPhotos.toilet);
 
-  const banner = document.getElementById('prefill-review-banner');
-  const desc = document.getElementById('prefill-review-desc');
-  const btnApprove = document.getElementById('btn-direct-approve-form');
+  const reviewBanner = document.getElementById('prefill-review-banner');
+  const reviewDesc = document.getElementById('prefill-review-desc');
+  const btnDirectApprove = document.getElementById('btn-direct-approve-form');
+
+  if (btnDirectApprove) {
+    btnDirectApprove.classList.add('hidden');
+  }
+
+  if (reviewBanner && reviewDesc) {
+    const waktu = latestRep.created_at ? new Date(latestRep.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    const extraComplaintHtml = isRev && meta.feedbackDetail
+      ? `<span class="block mt-1 px-2 py-1 rounded-lg bg-rose-100 text-rose-800 font-extrabold">⚠️ Komplain Manajemen: ${meta.feedbackDetail}</span>`
+      : '';
+    reviewDesc.innerHTML = `Diajukan oleh <strong>${executorName}</strong>${waktu ? ' (' + waktu + ')' : ''} • Skor <strong>${latestRep.readiness_score}%</strong>. Silakan periksa hasil checklist & foto di bawah sebelum mengambil keputusan.${extraComplaintHtml} <button type="button" onclick="resetFormForFreshCheck()" class="underline font-extrabold text-indigo-950 ml-1">Kosongkan Form</button>`;
+    reviewBanner.classList.remove('hidden');
+  }
+
   const btnSubmit = document.getElementById('btn-submit-inspect');
   const btnWa = document.getElementById('btn-submit-wa');
 
-  clearBottomFormReviewBar();
+  if (isManagerRole() && btnSubmit) {
+    const actionRow = btnSubmit.parentElement;
+    if (actionRow) actionRow.classList.add('hidden');
 
-  if (banner && desc) {
-    if (canCurrentUserApprove()) {
-      desc.innerHTML = `Petugas <strong>${executorName}</strong> telah mengisi form ini (Skor: <strong>${latestRep.readiness_score}%</strong>). Periksa checklist & foto, lalu pilih <strong>Approve</strong> atau <strong>Perlu Diperbaiki</strong> di bagian paling bawah form.`;
-      banner.classList.remove('hidden');
-      if (btnApprove) btnApprove.classList.add('hidden');
-      if (btnSubmit) btnSubmit.classList.add('hidden');
-      if (btnWa && btnWa.parentElement) btnWa.parentElement.classList.add('hidden');
-
-      const formEl = document.getElementById('inspection-form');
-      if (formEl) {
-        const bottomBar = document.createElement('div');
-        bottomBar.id = 'bottom-review-actions';
-        bottomBar.className = 'pt-2 grid grid-cols-2 gap-2.5';
-        bottomBar.innerHTML = `
-          <button type="button" onclick="approveActiveFormReport()" class="py-3.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/25 transition">
-            <i data-lucide="check-circle-2" class="w-4 h-4"></i> APPROVE (SIAP PAKAI)
-          </button>
-          <button type="button" onclick="requestRevisionFromActiveForm()" class="py-3.5 px-3 bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-lg shadow-rose-600/25 transition">
-            <i data-lucide="alert-triangle" class="w-4 h-4"></i> PERLU DIPERBAIKI
-          </button>
-        `;
-        formEl.appendChild(bottomBar);
-        lucide.createIcons();
+    document.getElementById('bottom-review-actions')?.remove();
+    const bottomBox = document.createElement('div');
+    bottomBox.id = 'bottom-review-actions';
+    bottomBox.className = 'pt-2 space-y-2.5';
+    bottomBox.innerHTML = `
+      <button type="button" onclick="approveActiveFormReport()" class="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition">
+        <i data-lucide="check-circle-2" class="w-4 h-4"></i> APPROVE LAPORAN INI (JADIKAN SIAP PAKAI)
+      </button>
+      <div class="grid grid-cols-2 gap-2.5">
+        <button type="button" onclick="requestRevisionFromActiveForm()" class="py-3 px-3 bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
+          <i data-lucide="alert-triangle" class="w-4 h-4"></i> Perlu Diperbaiki
+        </button>
+        <button type="button" onclick="saveAndSendWhatsApp()" class="py-3 px-3 bg-teal-600 hover:bg-teal-700 active:scale-[0.99] text-white font-extrabold rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
+          <i data-lucide="send" class="w-4 h-4"></i> Simpan & WA
+        </button>
+      </div>
+    `;
+    actionRow?.parentElement?.appendChild(bottomBox);
+  } else {
+    clearBottomFormReviewBar();
+    if (btnSubmit) {
+      if (isRev) {
+        btnSubmit.textContent = requireApprovalMode ? 'Kirim Selesai Perbaikan' : 'Simpan Selesai Perbaikan';
+      } else {
+        btnSubmit.textContent = requireApprovalMode ? 'Ajukan Approval' : 'Simpan Laporan';
       }
-    } else if (isPetugasRole() && isRev) {
-      desc.innerHTML = `Komplain revisi pada <strong>${latestRep.unit_name}</strong>: <span class="text-rose-700 font-bold">${meta.feedbackDetail || 'Periksa kembali kelengkapan kamar'}</span>. Silakan perbaiki lalu simpan ulang.`;
-      banner.classList.remove('hidden');
-      if (btnApprove) btnApprove.classList.add('hidden');
-      if (btnSubmit) {
-        btnSubmit.classList.remove('hidden');
-        btnSubmit.textContent = requireApprovalMode ? 'Simpan Perbaikan & Minta Approve' : 'Simpan Perbaikan (Siap Pakai)';
-      }
-      if (btnWa && btnWa.parentElement) btnWa.parentElement.classList.remove('hidden');
-    } else {
-      desc.innerHTML = `Menampilkan hasil pengisian form terakhir oleh <strong>${executorName}</strong> (Skor: <strong>${latestRep.readiness_score}%</strong>).`;
-      banner.classList.remove('hidden');
-      if (btnApprove) btnApprove.classList.add('hidden');
-      if (btnSubmit) btnSubmit.classList.remove('hidden');
-      if (btnWa && btnWa.parentElement) btnWa.parentElement.classList.remove('hidden');
     }
+    if (btnWa) btnWa.classList.remove('hidden');
   }
+
+  lucide.createIcons();
 }
 
-function handleInspectUnitChange() {
-  const unitId = document.getElementById('inspect-unit')?.value;
-  if (!unitId) return;
-  const unitObj = unitsData.find(u => String(u.id) === String(unitId));
-  const latestRep = getLatestInspectionForUnit(unitId, unitObj?.unit_name);
-  if (latestRep && !isInspectionOfficiallyApproved(latestRep)) {
-    populateFormWithReport(latestRep);
-  } else {
-    clearPrefillFormState();
-    populateOfficerDropdown();
-    populateShiftDropdown();
+function loadExistingInspectionToForm(unitId) {
+  const unit = unitsData.find(u => String(u.id) === String(unitId));
+  if (!unit) { clearPrefillFormState(); return; }
+
+  const eff = getEffectiveUnitStatus(unit);
+  const latestRep = getLatestInspectionForUnit(unit.id, unit.unit_name);
+
+  if ((eff === 'pending_approval' || eff === 'dibersihkan' || eff === 'perlu_perbaikan') && latestRep && !isInspectionOfficiallyApproved(latestRep)) {
+    const meta = parseNotesMetadata(latestRep.notes);
+    const ownerName = meta.executor || latestRep.inspector_name;
+    if (isManagerRole() || eff === 'perlu_perbaikan' || (currentUser && ownerName === currentUser.full_name)) {
+      populateFormWithReport(latestRep);
+      return;
+    }
   }
+
+  clearPrefillFormState();
+  populateOfficerDropdown();
+  populateShiftDropdown();
 }
 
 function openReportInForm(reportId) {
   const rep = inspectionsData.find(r => String(r.id) === String(reportId));
   if (!rep) return;
+  stopVoiceReminder();
+  if (isNurseRequestRecord(rep)) {
+    if (isPetugasRole() && rep.unit_id) quickInspect(rep.unit_id);
+    else if (!isPerawatRole()) switchTab('dashboard');
+    return;
+  }
   if (isRepairRecord(rep)) {
     openRepairReportInForm(reportId);
     return;
   }
-  if (isPetugasRole()) officerFormUnlocked = true;
-  switchTab('inspect');
+  switchTab('inspect', false, true);
+  populateOfficerDropdown();
+  populateShiftDropdown();
   populateFormWithReport(rep);
 }
 
-function applyRolePermissions() {
-  const role = (currentUser?.role || 'petugas').toLowerCase();
-  const isManager = isManagerRole();
-  const isPerawat = isPerawatRole();
-  const isTeknisi = isTeknisiRole();
-  const isPetugas = isPetugasRole();
-
-  ensureRepairNavigationAndSection();
-
-  const badge = document.getElementById('user-role-badge');
-  if (badge) {
-    badge.textContent = role.toUpperCase();
-    badge.className = isManager
-      ? 'text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 tracking-wider'
-      : isPerawat
-        ? 'text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 tracking-wider'
-        : isTeknisi
-          ? 'text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 tracking-wider'
-          : 'text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wider';
-  }
-
-  const navGrid = document.getElementById('bottom-nav-grid');
-  if (navGrid) {
-    const dashBtn = navGrid.querySelector('[data-tab="dashboard"]');
-    const inspectBtn = navGrid.querySelector('[data-tab="inspect"]');
-    const repairBtn = navGrid.querySelector('[data-tab="repair"]');
-    const analyticsBtn = navGrid.querySelector('[data-tab="analytics"]');
-    const masterBtn = navGrid.querySelector('[data-tab="master"]');
-
-    if (isManager) {
-      // Manajemen: Dasbor, Cek Kamar, Perbaikan, Analitik, Pengaturan (5 menu)
-      dashBtn?.classList.remove('hidden');
-      inspectBtn?.classList.remove('hidden');
-      repairBtn?.classList.remove('hidden');
-      analyticsBtn?.classList.remove('hidden');
-      masterBtn?.classList.remove('hidden');
-      navGrid.className = 'max-w-3xl mx-auto grid grid-cols-5 gap-1';
-    } else if (isPerawat) {
-      // Perawat: Dasbor saja
-      dashBtn?.classList.remove('hidden');
-      inspectBtn?.classList.add('hidden');
-      repairBtn?.classList.add('hidden');
-      analyticsBtn?.classList.add('hidden');
-      masterBtn?.classList.add('hidden');
-      navGrid.className = 'max-w-3xl mx-auto grid grid-cols-1 gap-1.5';
-    } else if (isTeknisi) {
-      // Teknisi: Perbaikan (Cek Teknis & Maintenance) + Analitik (2 menu)
-      dashBtn?.classList.add('hidden');
-      inspectBtn?.classList.add('hidden');
-      repairBtn?.classList.remove('hidden');
-      analyticsBtn?.classList.remove('hidden');
-      masterBtn?.classList.add('hidden');
-      navGrid.className = 'max-w-3xl mx-auto grid grid-cols-2 gap-1.5';
-    } else {
-      // Petugas Kebersihan: Menu Cek Kamar dihilangkan dari navigasi bawah!
-      // Halaman utama Petugas langsung berada di tab-inspect (box Permintaan Perawat & Revisi),
-      // sedangkan navigasi bawah menampilkan: Permintaan Kamar (ke inspect), Perbaikan, dan Analitik
-      dashBtn?.classList.add('hidden');
-      inspectBtn?.classList.add('hidden');
-      repairBtn?.classList.remove('hidden');
-      analyticsBtn?.classList.remove('hidden');
-      masterBtn?.classList.add('hidden');
-      navGrid.className = 'max-w-3xl mx-auto grid grid-cols-2 gap-1.5';
-    }
-  }
-
-  document.getElementById('invite-box-about')?.classList.toggle('hidden', !isManager);
-  document.getElementById('user-management-card')?.classList.toggle('hidden', !isManager);
-  renderApprovalToggleCard();
+function handleInspectUnitChange() {
+  const unitId = document.getElementById('inspect-unit')?.value;
+  if (unitId) loadExistingInspectionToForm(unitId);
 }
 
-function enterApp() {
+function configureNavigationByRole() {
+  ensureRepairNavigationAndSection();
+  const navGrid = document.getElementById('bottom-nav-grid');
+  const bottomNavContainer = navGrid ? navGrid.closest('nav') || navGrid.parentElement : null;
+  const btnDash = document.getElementById('nav-item-dashboard');
+  const btnInspect = Array.from(document.querySelectorAll('.nav-btn')).find(b => b.dataset.tab === 'inspect');
+  const btnRepair = document.getElementById('nav-item-repair');
+  const btnAnalytics = Array.from(document.querySelectorAll('.nav-btn')).find(b => b.dataset.tab === 'analytics');
+  const btnMaster = document.getElementById('nav-item-master');
+  const inviteBox = document.getElementById('invite-box-about');
+
+  if (isPerawatRole()) {
+    // Sembunyikan seluruh navigasi bawah pada akun Perawat agar layar bersih & fokus
+    if (bottomNavContainer) bottomNavContainer.classList.add('hidden');
+    if (navGrid) navGrid.classList.add('hidden');
+    inviteBox?.classList.add('hidden');
+  } else if (isPetugasRole()) {
+    if (bottomNavContainer) bottomNavContainer.classList.remove('hidden');
+    if (navGrid) navGrid.classList.remove('hidden');
+    btnDash?.classList.add('hidden');
+    btnInspect?.classList.remove('hidden');
+    btnRepair?.classList.remove('hidden');
+    btnAnalytics?.classList.remove('hidden');
+    btnMaster?.classList.add('hidden');
+    if (navGrid) {
+      navGrid.classList.remove('grid-cols-2', 'grid-cols-4', 'grid-cols-5');
+      navGrid.classList.add('grid-cols-3');
+    }
+    inviteBox?.classList.add('hidden');
+  } else {
+    if (bottomNavContainer) bottomNavContainer.classList.remove('hidden');
+    if (navGrid) navGrid.classList.remove('hidden');
+    btnDash?.classList.remove('hidden');
+    btnInspect?.classList.remove('hidden');
+    btnRepair?.classList.remove('hidden');
+    btnAnalytics?.classList.remove('hidden');
+    btnMaster?.classList.remove('hidden');
+    if (navGrid) {
+      navGrid.classList.remove('grid-cols-2', 'grid-cols-3', 'grid-cols-4');
+      navGrid.classList.add('grid-cols-5');
+    }
+    inviteBox?.classList.remove('hidden');
+  }
+}
+
+async function enterApp() {
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('main-app').classList.remove('hidden');
-  document.getElementById('user-greeting').textContent = `Halo, ${currentUser.full_name}`;
+  document.getElementById('user-greeting').textContent = 'Halo, ' + currentUser.full_name;
   ensurePerawatRoleOptionInAccountForm();
-  applyRolePermissions();
-  renderOfficerRevisionBanner();
-  updateNotificationPermissionUI();
+  configureNavigationByRole();
+  renderApprovalToggleCard();
   populateOfficerDropdown();
   populateShiftDropdown();
-  loadAllData().then(() => { syncOfflineQueue(); });
-  startRealtimeReportListener();
-  startPeriodicTaskReminder();
+  populateRepairFormDropdowns();
+  renderMasterShifts();
+  updateNotificationPermissionUI();
 
-  if (isManagerRole() || isPerawatRole()) switchTab('dashboard');
-  else if (isTeknisiRole()) switchTab('repair');
-  else switchTab('inspect');
+  const badge = document.getElementById('user-role-badge');
+  badge.textContent = currentUser.role.toUpperCase();
+  badge.className = isManagerRole()
+    ? 'shrink-0 text-[7.5px] font-extrabold uppercase px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 tracking-wide'
+    : isPerawatRole()
+      ? 'shrink-0 text-[7.5px] font-extrabold uppercase px-1 py-0.5 rounded bg-orange-100 text-orange-700 tracking-wide'
+      : 'shrink-0 text-[7.5px] font-extrabold uppercase px-1 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide';
+
+  const userCard = document.getElementById('user-management-card');
+  if (userCard) userCard.style.display = isManagerRole() ? 'block' : 'none';
+
+  const savedTab = localStorage.getItem('ck_last_tab');
+  const validTabs = isManagerRole()
+    ? ['dashboard', 'inspect', 'repair', 'analytics', 'master']
+    : isPerawatRole()
+      ? ['dashboard']
+      : ['inspect', 'repair', 'analytics'];
+  const startTab = validTabs.includes(savedTab) ? savedTab : ((isManagerRole() || isPerawatRole()) ? 'dashboard' : 'inspect');
+  try { window.history.replaceState({ tab: startTab }, ''); } catch (e) {}
+  switchTab(startTab, true);
+
+  await loadAllData();
+  if (inspectionsData[0] && !lastKnownReportId) {
+    lastKnownReportId = inspectionsData[0].id;
+    localStorage.setItem('ck_last_seen_id', lastKnownReportId);
+  }
+  startRealtimeReportListener();
 }
 
 function logout() {
+  stopVoiceReminder();
   localStorage.removeItem('ck_user');
+  localStorage.removeItem('ck_last_tab');
   document.documentElement.classList.remove('has-session');
-  if (realtimeChannel) db.removeChannel(realtimeChannel);
-  clearInterval(pollingInterval);
-  clearInterval(reminderRepeatInterval);
   location.reload();
 }
 
 function updateNetworkStatus() {
   const el = document.getElementById('network-status');
-  if (!el) return;
   if (navigator.onLine) {
     el.className = 'flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap';
     el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Online';
@@ -3590,335 +3187,289 @@ function updateNetworkStatus() {
   }
 }
 
-function switchTab(tab, fromBack = false) {
-  if ((isPerawatRole()) && tab !== 'dashboard') tab = 'dashboard';
-  if (isPetugasRole() && (tab === 'dashboard' || tab === 'master')) tab = 'inspect';
-  if (isTeknisiRole() && (tab === 'dashboard' || tab === 'inspect' || tab === 'master')) tab = 'repair';
-  if (!isManagerRole() && tab === 'master') tab = isPerawatRole() ? 'dashboard' : isTeknisiRole() ? 'repair' : 'inspect';
-
-  activeTabName = tab;
-  if (!fromBack) {
-    try { window.history.pushState({ tab }, ''); } catch (e) {}
+async function switchTab(tabName, fromPopState = false, skipAutoPrefill = false) {
+  if (isPetugasRole() && (tabName === 'dashboard' || tabName === 'master')) {
+    tabName = 'inspect';
   }
+  if (isPerawatRole()) {
+    tabName = 'dashboard';
+  }
+  ensureRepairNavigationAndSection();
+  activeTabName = tabName;
+  localStorage.setItem('ck_last_tab', tabName);
 
   document.querySelectorAll('.page-section').forEach(el => {
     el.classList.add('hidden');
     el.classList.remove('page-animate');
   });
-  const targetSection = document.getElementById('tab-' + tab);
+  const targetSection = document.getElementById('tab-' + tabName);
   if (targetSection) {
     targetSection.classList.remove('hidden');
     void targetSection.offsetWidth;
     targetSection.classList.add('page-animate');
   }
 
-  document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('nav-btn-active'));
-  const navBtn = document.querySelector(`.nav-btn[data-tab="${tab}"]`);
-  if (navBtn) navBtn.classList.add('nav-btn-active');
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    const isActive = btn.dataset.tab === tabName;
+    btn.classList.toggle('nav-btn-active', isActive);
+    btn.classList.toggle('text-slate-500', !isActive);
+  });
 
-  if (tab === 'inspect') {
+  const defaultTab = (isManagerRole() || isPerawatRole()) ? 'dashboard' : 'inspect';
+  if (!fromPopState && tabName !== defaultTab) {
+    try { window.history.pushState({ tab: tabName }, ''); } catch (e) {}
+  }
+  if (tabName === 'inspect') {
     populateOfficerDropdown();
     populateShiftDropdown();
-    startTimer();
     renderOfficerRevisionBanner();
-  } else if (tab === 'repair') {
-    stopTimer();
+    startTimer();
+    if (!skipAutoPrefill) {
+      if (activeReviewReportId) {
+        const rep = inspectionsData.find(r => String(r.id) === String(activeReviewReportId));
+        if (rep) populateFormWithReport(rep);
+      } else {
+        const curUnitId = document.getElementById('inspect-unit')?.value;
+        if (curUnitId) loadExistingInspectionToForm(curUnitId);
+      }
+    }
+  }
+  if (tabName === 'repair') {
     populateRepairFormDropdowns();
     renderRepairHistoryList();
-  } else {
-    stopTimer();
+    if (navigator.onLine) await loadAllData();
   }
-  if (tab === 'analytics') renderAnalytics();
-  if (tab === 'master' && isManagerRole()) {
+  if (tabName === 'master') {
+    ensurePerawatRoleOptionInAccountForm();
     renderApprovalToggleCard();
     renderMasterShifts();
-    loadUsers();
   }
-  lucide.createIcons();
+  if (tabName === 'analytics') renderAnalytics();
 }
 
 async function loadAllData() {
-  if (!navigator.onLine) {
-    unitsData = JSON.parse(localStorage.getItem('ck_units') || '[]');
-    itemsData = JSON.parse(localStorage.getItem('ck_items') || '[]');
-    inspectionsData = JSON.parse(localStorage.getItem('ck_inspections') || '[]');
-    usersData = JSON.parse(localStorage.getItem('ck_users_cache') || '[]');
-    syncApprovalConfigFromItems();
-    rebuildShiftsFromItems();
-    renderAllViews();
-    return;
-  }
   const [uRes, iRes, insRes, usrRes] = await Promise.all([
-    db.from('master_units').select('*').order('unit_code'),
-    db.from('master_items').select('*').order('created_at'),
+    db.from('master_units').select('*').order('unit_code', { ascending: true }),
+    db.from('master_items').select('*').order('created_at', { ascending: true }),
     db.from('room_inspections').select('*').order('created_at', { ascending: false }).limit(200),
-    db.from('app_users').select('*').order('created_at')
+    db.from('app_users').select('*').order('created_at', { ascending: true })
   ]);
-  if (uRes.data) { unitsData = uRes.data; localStorage.setItem('ck_units', JSON.stringify(unitsData)); }
-  if (iRes.data) {
-    itemsData = iRes.data;
-    await ensureDefaultShiftsInDb();
-    localStorage.setItem('ck_items', JSON.stringify(itemsData));
-  }
-  if (insRes.data) {
-    inspectionsData = insRes.data;
-    localStorage.setItem('ck_inspections', JSON.stringify(inspectionsData));
-    if (inspectionsData[0]?.id && !lastKnownReportId) {
-      lastKnownReportId = inspectionsData[0].id;
-      localStorage.setItem('ck_last_seen_id', lastKnownReportId);
-    }
-  }
-  if (usrRes.data) { usersData = usrRes.data; localStorage.setItem('ck_users_cache', JSON.stringify(usersData)); }
-  syncApprovalConfigFromItems();
-  rebuildShiftsFromItems();
-  renderAllViews();
-}
+  unitsData = uRes.data || [];
+  itemsData = iRes.data || [];
+  inspectionsData = insRes.data || [];
+  usersData = usrRes.data || [];
 
-function renderAllViews() {
+  syncApprovalConfigFromItems();
+  await ensureDefaultShiftsInDb();
+  rebuildShiftsFromItems();
   populateOfficerDropdown();
-  populateShiftDropdown();
+  populateRepairFormDropdowns();
   initExportPeriodInputs();
   renderDashboard();
   renderInspectForm();
   renderOfficerRevisionBanner();
-  populateRepairFormDropdowns();
   renderRepairHistoryList();
-  renderMasterLists();
+  renderUsers();
+  renderMasterUnits();
+  renderMasterItems();
   renderAnalytics();
+
+  if (activeTabName === 'inspect') {
+    if (activeReviewReportId) {
+      const rep = inspectionsData.find(r => String(r.id) === String(activeReviewReportId));
+      if (rep) populateFormWithReport(rep);
+    } else {
+      const curUnitId = document.getElementById('inspect-unit')?.value;
+      if (curUnitId) loadExistingInspectionToForm(curUnitId);
+    }
+  }
+}
+
+function applyNurseDashboardVisibility() {
+  const dashSection = document.getElementById('tab-dashboard');
+  if (!dashSection) return;
+
+  // Sembunyikan 3 kartu statistik atas (Siap Pakai, Kosong/Proses, Maintenance) & tombol Scan QR untuk akun Perawat
+  const statSiapEl = document.getElementById('stat-siap');
+  const statsRow = statSiapEl ? statSiapEl.closest('.grid') : null;
+  if (statsRow) statsRow.classList.toggle('hidden', isPerawatRole());
+
+  dashSection.querySelectorAll('button').forEach(btn => {
+    if ((btn.textContent || '').includes('Scan QR')) {
+      btn.classList.toggle('hidden', isPerawatRole());
+    }
+  });
+
+  let banner = document.getElementById('nurse-station-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'nurse-station-banner';
+    dashSection.insertBefore(banner, dashSection.firstChild);
+  }
+  if (!isPerawatRole()) {
+    banner.classList.add('hidden');
+    return;
+  }
+  banner.classList.remove('hidden');
+  banner.innerHTML = `
+    <div class="rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white p-3.5 shadow-sm mb-3 flex items-center justify-between gap-3">
+      <div class="space-y-0.5">
+        <span class="text-[9.5px] font-extrabold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full">Nurse Station</span>
+        <h3 class="text-xs sm:text-sm font-extrabold">Permintaan Layanan Kamar (1 Ketuk)</h3>
+        <p class="text-[11px] text-orange-50">Pilih kamar di bawah lalu ketuk tombol sesuai kebutuhan (suara notifikasi otomatis berbunyi di HP Petugas).</p>
+      </div>
+      <i data-lucide="volume-2" class="w-7 h-7 shrink-0 opacity-90"></i>
+    </div>
+  `;
   lucide.createIcons();
 }
 
 function renderDashboard() {
-  const grid = document.getElementById('dashboard-unit-grid');
-  if (!grid) return;
-
-  let siap = 0, kotor = 0, maint = 0;
-  unitsData.forEach(u => {
-    const eff = getEffectiveUnitStatus(u);
-    if (eff === 'siap') siap++;
-    else if (eff === 'maintenance') maint++;
-    else kotor++;
-  });
+  applyNurseDashboardVisibility();
+  const siap = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
+  const kosongOrProses = unitsData.filter(u => ['kosong', 'dibersihkan', 'pending_approval', 'perlu_perbaikan'].includes(getEffectiveUnitStatus(u))).length;
+  const maint = unitsData.filter(u => getEffectiveUnitStatus(u) === 'maintenance').length;
+  const pendingUnitsCount = unitsData.filter(u => getEffectiveUnitStatus(u) === 'pending_approval').length;
 
   document.getElementById('stat-siap').textContent = siap;
-  document.getElementById('stat-kotor').textContent = kotor;
+  document.getElementById('stat-kotor').textContent = kosongOrProses;
   document.getElementById('stat-maint').textContent = maint;
 
-  const pendingApprovalUnits = unitsData.filter(u => getEffectiveUnitStatus(u) === 'pending_approval');
-  const alertBox = document.getElementById('management-approval-alert');
-  if (alertBox) {
-    if (canCurrentUserApprove() && pendingApprovalUnits.length > 0) {
-      document.getElementById('approval-alert-title').textContent = `${pendingApprovalUnits.length} Kamar Menunggu Approval`;
-      alertBox.classList.remove('hidden');
-    } else alertBox.classList.add('hidden');
+  const mgmtBanner = document.getElementById('management-approval-alert');
+  if (mgmtBanner) {
+    if (isManagerRole() && pendingUnitsCount > 0) {
+      document.getElementById('approval-alert-title').textContent = `${pendingUnitsCount} Kamar Menunggu Approval`;
+      mgmtBanner.classList.remove('hidden');
+    } else {
+      mgmtBanner.classList.add('hidden');
+    }
   }
 
+  const grid = document.getElementById('dashboard-unit-grid');
   if (unitsData.length === 0) {
-    grid.innerHTML = '<div class="col-span-full text-center py-8 text-xs text-slate-400">Belum ada unit kamar.</div>';
+    grid.innerHTML = '<div class="col-span-full text-center py-8 text-xs text-slate-400">Belum ada unit kamar. Tambahkan di menu Pengaturan.</div>';
     return;
   }
-
   grid.innerHTML = unitsData.map(u => {
-    const effStatus = getEffectiveUnitStatus(u);
+    const eff = getEffectiveUnitStatus(u);
     const latestRep = getLatestInspectionForUnit(u.id, u.unit_name);
-    const meta = latestRep ? parseNotesMetadata(latestRep.notes) : { executor: '', feedbackStatus: '', feedbackDetail: '' };
-    const unitExecutor = meta.executor || latestRep?.inspector_name || u.last_checked_by || '';
-    const isBookedByNurse = isRoomBookedByNurse(u);
-
-    let badge = '<span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-700">KOSONG / BELUM DICEK</span>';
-    let borderClass = 'border-l-4 border-l-slate-400';
-
-    if (effStatus === 'siap') {
-      badge = '<span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-700">SIAP PAKAI</span>';
-      borderClass = 'border-l-4 border-l-emerald-500';
-    } else if (effStatus === 'pending_approval') {
-      badge = `<span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-indigo-100 text-indigo-800">MENUNGGU APPROVAL (${getApprovalTargetLabel().toUpperCase()})</span>`;
-      borderClass = 'border-l-4 border-l-indigo-500';
-    } else if (effStatus === 'dibersihkan') {
-      badge = '<span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-sky-100 text-sky-700">SEDANG DIBERSIHKAN</span>';
-      borderClass = 'border-l-4 border-l-sky-500';
-    } else if (effStatus === 'perlu_perbaikan') {
-      badge = '<span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-700">PERLU PERBAIKAN</span>';
-      borderClass = 'border-l-4 border-l-rose-500';
-    } else if (effStatus === 'maintenance') {
-      badge = '<span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-700">MAINTENANCE</span>';
-      borderClass = 'border-l-4 border-l-rose-600';
-    }
-
-    if (isBookedByNurse) {
-      badge += '<span class="ml-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300">TERISI / DIPESAN</span>';
-    }
-
-    const lastTime = u.last_checked_at ? new Date(u.last_checked_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
-    const safeUnitName = (u.unit_name || '').replace(/'/g, "\\'");
+    const isWaitingApproval = (eff === 'pending_approval' || eff === 'dibersihkan');
+    const isNeedsRevision = (eff === 'perlu_perbaikan');
     const isNurseMarked = isNurseMarkedUnit(u.last_checked_by);
-    const showExecutorRow = Boolean(unitExecutor) && !isNurseMarked;
-    const isPerawat = isPerawatRole();
-    const userCanApprove = canCurrentUserApprove();
+    const safeUnitName = (u.unit_name || '').replace(/'/g, "\\'");
 
-    return `
-      <div class="glass-card rounded-2xl p-4 shadow-sm ${borderClass} flex flex-col justify-between space-y-3">
-        <div>
+    const statusMap = {
+      siap: { label: 'SIAP PAKAI', bg: 'bg-emerald-100 text-emerald-700', border: 'border-emerald-200' },
+      pending_approval: { label: 'MENUNGGU APPROVAL', bg: 'bg-indigo-100 text-indigo-800', border: 'border-indigo-300' },
+      perlu_perbaikan: { label: 'PERLU PERBAIKAN', bg: 'bg-rose-100 text-rose-800', border: 'border-rose-300' },
+      dibersihkan: { label: 'SEDANG DIBERSIHKAN', bg: 'bg-amber-100 text-amber-700', border: 'border-amber-200' },
+      kosong: { label: isNurseMarked ? 'PERMINTAAN PERAWAT' : 'KOSONG', bg: isNurseMarked ? 'bg-orange-100 text-orange-800' : 'bg-slate-200 text-slate-700', border: isNurseMarked ? 'border-orange-300' : 'border-slate-300' },
+      maintenance: { label: 'MAINTENANCE', bg: 'bg-rose-100 text-rose-700', border: 'border-rose-200' }
+    };
+    const st = statusMap[eff] || statusMap.kosong;
+
+    const actorMeta = latestRep ? parseNotesMetadata(latestRep.notes) : null;
+    const checkedInfo = eff === 'maintenance'
+      ? (u.last_checked_by || 'Dalam Perbaikan / Maintenance')
+      : isNeedsRevision
+        ? `⚠️ Komplain: ${actorMeta?.feedbackDetail || 'Menunggu perbaikan petugas'}`
+        : isWaitingApproval
+          ? `Diajukan: ${actorMeta?.executor || latestRep?.inspector_name || 'Petugas'} (${latestRep?.readiness_score ?? 0}%)`
+          : isNurseMarked
+            ? (u.last_checked_by || 'Permintaan Perawat')
+            : (eff === 'siap' ? (u.last_checked_by || 'Siap Pakai') : 'Belum dicek (Kosong)');
+
+    // Tampilan khusus Perawat: 4 tombol aksi cepat langsung di kartu kamar
+    if (isPerawatRole()) {
+      return `
+        <div class="glass-card rounded-2xl p-4 shadow-sm border ${st.border} flex flex-col justify-between space-y-3">
           <div class="flex items-start justify-between gap-2">
-            <div>
-              <span class="text-[11px] font-bold text-slate-400">${u.unit_code} • ${u.floor || 'Lantai 1'}</span>
-              <h3 class="text-sm font-extrabold text-slate-900 mt-0.5">${u.unit_name}</h3>
+            <div class="min-w-0">
+              <span class="text-[10px] font-mono font-bold text-slate-400">${u.unit_code} • ${u.floor || ''}</span>
+              <h3 class="text-sm font-extrabold text-slate-900 truncate">${u.unit_name}</h3>
             </div>
-            <div class="flex flex-wrap justify-end gap-1">${badge}</div>
+            <span class="shrink-0 text-[9px] font-extrabold px-2.5 py-1 rounded-full ${st.bg}">${st.label}</span>
           </div>
-
-          ${isNurseMarked ? `
-            <p class="mt-2 text-[11px] font-extrabold text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-2.5 py-1.5 flex items-center gap-1.5">
-              <i data-lucide="bell-ring" class="w-3.5 h-3.5 text-amber-600 shrink-0"></i>
-              <span>${u.last_checked_by}</span>
-            </p>
-          ` : ''}
-
-          ${showExecutorRow ? `
-            <p class="mt-2 text-[11px] font-bold text-teal-800 bg-teal-50/80 border border-teal-200/70 rounded-xl px-2.5 py-1.5 flex items-center gap-1.5">
-              <i data-lucide="user-check" class="w-3.5 h-3.5 text-teal-600 shrink-0"></i>
-              <span>Petugas: <strong>${unitExecutor}</strong></span>
-            </p>
-          ` : ''}
-
-          ${effStatus === 'perlu_perbaikan' && meta.feedbackDetail ? `
-            <p class="mt-1.5 text-[11px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-2.5 py-1.5">
-              Komplain: ${meta.feedbackDetail}
-            </p>
-          ` : ''}
-
-          <div class="mt-2 flex items-center justify-between gap-2">
-            <p class="text-[11px] text-slate-500">Update: ${lastTime}</p>
-            ${isManagerRole() ? `
-              <select onchange="quickChangeUnitStatus('${u.id}', this.value)" class="text-[10px] font-bold bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 text-slate-700">
-                <option value="kosong" ${effStatus === 'kosong' ? 'selected' : ''}>Kosong / Belum Dicek</option>
-                <option value="dibersihkan" ${effStatus === 'dibersihkan' ? 'selected' : ''}>Sedang Dibersihkan</option>
-                <option value="pending_approval" ${effStatus === 'pending_approval' ? 'selected' : ''}>Menunggu Approval</option>
-                <option value="perlu_perbaikan" ${effStatus === 'perlu_perbaikan' ? 'selected' : ''}>Perlu Perbaikan</option>
-                <option value="siap" ${effStatus === 'siap' ? 'selected' : ''}>Siap Pakai (Approved)</option>
-                <option value="maintenance" ${effStatus === 'maintenance' ? 'selected' : ''}>Maintenance</option>
-              </select>
-            ` : ''}
+          <p class="text-[11px] ${isNurseMarked ? 'text-orange-700 font-bold' : 'text-slate-500'} truncate">${checkedInfo}</p>
+          <div class="grid grid-cols-2 gap-1.5 pt-1">
+            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'siapkan')" class="py-2.5 px-2 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+              <span>🛏️</span> Siapkan Kamar
+            </button>
+            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'extrabed')" class="py-2.5 px-2 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+              <span>➕</span> Tambah Extrabed
+            </button>
+            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'bersihkan')" class="py-2.5 px-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+              <span>🧹</span> Minta Dibersihkan
+            </button>
+            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'pulang')" class="py-2.5 px-2 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+              <span>🚪</span> Pasien Pulang
+            </button>
           </div>
         </div>
+      `;
+    }
 
-        ${(userCanApprove && effStatus === 'pending_approval') ? `
+    const dropdownOptions = `
+      <option value="siap" ${eff === 'siap' ? 'selected' : ''}>SIAP PAKAI</option>
+      <option value="pending_approval" ${eff === 'pending_approval' ? 'selected' : ''}>MENUNGGU APPROVAL</option>
+      <option value="perlu_perbaikan" ${eff === 'perlu_perbaikan' ? 'selected' : ''}>PERLU PERBAIKAN</option>
+      <option value="dibersihkan" ${eff === 'dibersihkan' ? 'selected' : ''}>SEDANG DIBERSIHKAN</option>
+      <option value="kosong" ${eff === 'kosong' ? 'selected' : ''}>KOSONG</option>
+      <option value="maintenance" ${eff === 'maintenance' ? 'selected' : ''}>MAINTENANCE</option>
+    `;
+
+    const openAction = (latestRep && !isInspectionOfficiallyApproved(latestRep))
+      ? `openReportInForm('${latestRep.id}')`
+      : `quickInspect('${u.id}')`;
+
+    const showApprovalButtons = isManagerRole() && isWaitingApproval;
+
+    return `
+      <div class="glass-card rounded-2xl p-4 shadow-sm border ${st.border} flex flex-col justify-between space-y-3">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <span class="text-[10px] font-mono font-bold text-slate-400">${u.unit_code} • ${u.floor || ''}</span>
+            <h3 class="text-sm font-extrabold text-slate-900 truncate">${u.unit_name}</h3>
+          </div>
+          <select onchange="quickChangeUnitStatus('${u.id}', this.value)" ${!isManagerRole() ? 'disabled' : ''} class="shrink-0 text-[9px] font-extrabold px-2 py-1 rounded-full ${st.bg} outline-none cursor-pointer">
+            ${dropdownOptions}
+          </select>
+        </div>
+        ${showApprovalButtons ? `
           <div class="space-y-1.5">
-            <button type="button" onclick="quickInspect('${u.id}')" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
-              <i data-lucide="file-search" class="w-4 h-4"></i> Lihat Form Hasil Petugas
-            </button>
             <div class="grid grid-cols-2 gap-1.5">
-              <button type="button" onclick="approveUnitByManagement('${u.id}', '${safeUnitName}')" class="py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+              <button type="button" onclick="${openAction}" class="py-2 px-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 shadow-sm transition">
+                <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek Form
+              </button>
+              <button type="button" onclick="approveUnitByManagement('${u.id}', '${safeUnitName}')" class="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 shadow-sm transition">
                 <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Approve
               </button>
-              <button type="button" onclick="requestRevisionByManagement('${u.id}', '${safeUnitName}')" class="py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
-                <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Perlu Diperbaiki
-              </button>
             </div>
+            <button type="button" onclick="requestRevisionByManagement('${u.id}', '${safeUnitName}', '${latestRep ? latestRep.id : ''}')" class="w-full py-1.5 px-2 bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 border border-rose-200 font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 transition">
+              <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Perlu Diperbaiki (Komplain)
+            </button>
           </div>
         ` : ''}
-
-        ${isPerawat ? `
-          <div class="pt-1 border-t border-slate-100 space-y-1.5">
-            <div class="grid grid-cols-2 gap-1.5">
-              ${isBookedByNurse ? `
-                <button type="button" disabled title="Terkunci sampai Pasien Pulang ditekan" class="py-2 px-2 bg-slate-200 text-slate-500 border border-slate-300 font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 cursor-not-allowed">
-                  <i data-lucide="lock" class="w-3.5 h-3.5"></i> Sudah Dipesan / Terisi
-                </button>
-              ` : `
-                <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'siapkan')" class="py-2 px-2 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 shadow-sm transition">
-                  <i data-lucide="bed-double" class="w-3.5 h-3.5"></i> Siapkan Kamar
-                </button>
-              `}
-              <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'extrabed')" class="py-2 px-2 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 shadow-sm transition">
-                <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> Tambah Extrabed
-              </button>
-              <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'bersihkan')" class="py-2 px-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 shadow-sm transition">
-                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Minta Dibersihkan
-              </button>
-              <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'pulang')" class="py-2 px-2 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 shadow-sm transition">
-                <i data-lucide="log-out" class="w-3.5 h-3.5"></i> Pasien Pulang
-              </button>
-            </div>
+        <div class="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-100">
+          <span class="text-[10px] ${isNeedsRevision ? 'text-rose-700 font-bold' : isNurseMarked ? 'text-orange-700 font-bold' : 'text-slate-500 font-medium'} truncate">${checkedInfo}</span>
+          <div class="flex items-center gap-1.5 shrink-0">
+            ${(eff === 'siap' && isManagerRole()) ? `<button type="button" onclick="confirmPatientCheckout('${u.id}', '${safeUnitName}')" title="Konfirmasi Pasien Pulang / Kosongkan" class="px-2 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-lg text-[10px] font-bold">Pasien Pulang</button>` : ''}
+            <button type="button" onclick="quickInspect('${u.id}')" class="px-3 py-1 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-[11px] font-bold">Cek Sekarang</button>
           </div>
-        ` : `
-          <div class="flex flex-wrap gap-1.5 pt-1 border-t border-slate-100">
-            ${isManagerRole() ? (
-              isBookedByNurse ? `
-                <button type="button" disabled title="Terkunci sampai Pasien Pulang ditekan" class="w-full py-2 px-2 bg-slate-200 text-slate-500 border border-slate-300 font-extrabold rounded-xl text-[10.5px] flex items-center justify-center gap-1 cursor-not-allowed">
-                  <i data-lucide="lock" class="w-3.5 h-3.5"></i> Sudah Dipesan / Terisi
-                </button>
-              ` : `
-                <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'siapkan')" class="flex-1 py-2 px-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl text-[10.5px] flex items-center justify-center gap-1">
-                  <i data-lucide="bed-double" class="w-3.5 h-3.5"></i> Siapkan
-                </button>
-              `
-            ) : ''}
-            ${isManagerRole() ? `
-              <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'pulang')" class="flex-1 py-2 px-2 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl text-[10.5px] flex items-center justify-center gap-1">
-                <i data-lucide="log-out" class="w-3.5 h-3.5"></i> Pulang
-              </button>
-            ` : ''}
-            <button onclick="quickInspect('${u.id}')" class="flex-1 py-2 px-2 bg-teal-50 hover:bg-teal-100 text-teal-700 font-bold rounded-xl text-xs transition">
-              ${(userCanApprove && effStatus === 'pending_approval') ? 'Review Form' : 'Cek Kamar'}
-            </button>
-            <button onclick="showQrModal('${u.unit_code}', '${safeUnitName}')" class="px-2.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold" title="QR Pintu">
-              <i data-lucide="qr-code" class="w-4 h-4"></i>
-            </button>
-          </div>
-        `}
+        </div>
       </div>
     `;
   }).join('');
+  lucide.createIcons();
 }
 
 function quickInspect(unitId) {
-  if (isPetugasRole()) {
-    officerFormUnlocked = true;
-  }
-  switchTab('inspect');
-  const sel = document.getElementById('inspect-unit');
-  if (sel) sel.value = unitId;
-  handleInspectUnitChange();
-}
-
-function renderInspectForm() {
+  if (isPerawatRole()) return;
+  stopVoiceReminder();
+  switchTab('inspect', false, true);
   const unitSel = document.getElementById('inspect-unit');
-  const prevUnit = unitSel ? unitSel.value : '';
-  if (unitSel) {
-    unitSel.innerHTML = unitsData.map(u => `<option value="${u.id}">${u.unit_code} - ${u.unit_name}</option>`).join('');
-    if (prevUnit && unitsData.some(u => String(u.id) === String(prevUnit))) unitSel.value = prevUnit;
-  }
-
-  const realChecklistItems = itemsData.filter(i => !isSystemMetaCategory(i.category));
-  const container = document.getElementById('checklist-container');
-  if (!container) return;
-
-  if (realChecklistItems.length === 0) {
-    container.innerHTML = '<p class="text-xs text-slate-400">Belum ada item checklist.</p>';
-    return;
-  }
-
-  container.innerHTML = realChecklistItems.map(item => `
-    <label class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200/80 cursor-pointer active:bg-teal-50/50 transition">
-      <div class="pr-3">
-        <p class="text-xs font-bold text-slate-800">${item.item_name}</p>
-        <span class="text-[10px] font-semibold text-slate-500">${item.category} ${item.is_critical ? '• <span class="text-rose-600">Wajib</span>' : ''}</span>
-      </div>
-      <input type="checkbox" data-id="${item.id}" data-name="${item.item_name}" data-critical="${item.is_critical}" onchange="updateScore()" class="inspect-chk w-5 h-5 rounded-md accent-teal-600 cursor-pointer" />
-    </label>
-  `).join('');
-  updateScore();
-}
-
-function updateScore() {
-  const chks = Array.from(document.querySelectorAll('.inspect-chk'));
-  const badge = document.getElementById('readiness-badge');
-  if (!chks.length || !badge) return;
-  const checked = chks.filter(c => c.checked).length;
-  const pct = Math.round((checked / chks.length) * 100);
-  badge.textContent = `Skor: ${pct}%`;
-  badge.className = pct === 100 ? 'px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-700' : 'px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-700';
+  if (unitSel) unitSel.value = unitId;
+  loadExistingInspectionToForm(unitId);
 }
 
 function startTimer() {
@@ -3926,13 +3477,37 @@ function startTimer() {
   secondsElapsed = 0;
   timerInterval = setInterval(() => {
     secondsElapsed++;
-    const m = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
-    const s = String(secondsElapsed % 60).padStart(2, '0');
-    const el = document.getElementById('timer-display');
-    if (el) el.textContent = `${m}:${s}`;
+    document.getElementById('timer-display').textContent = `${String(Math.floor(secondsElapsed / 60)).padStart(2, '0')}:${String(secondsElapsed % 60).padStart(2, '0')}`;
   }, 1000);
 }
-function stopTimer() { clearInterval(timerInterval); }
+
+function renderInspectForm() {
+  const prevSelectedUnit = document.getElementById('inspect-unit')?.value;
+  document.getElementById('inspect-unit').innerHTML = unitsData.map(u => `<option value="${u.id}">${u.unit_code} - ${u.unit_name}</option>`).join('');
+  if (prevSelectedUnit && unitsData.some(u => String(u.id) === String(prevSelectedUnit))) {
+    document.getElementById('inspect-unit').value = prevSelectedUnit;
+  }
+  const box = document.getElementById('checklist-container');
+  const realChecklistItems = itemsData.filter(item => !isSystemMetaCategory(item.category));
+  if (realChecklistItems.length === 0) { box.innerHTML = '<p class="text-xs text-slate-400">Belum ada item kelengkapan. Tambahkan di Pengaturan.</p>'; return; }
+  box.innerHTML = realChecklistItems.map(item => `
+    <label class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer active:scale-[0.99] transition">
+      <div>
+        <span class="text-xs font-bold text-slate-800">${item.item_name}</span>
+        <span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">${item.category}</span>
+        ${item.is_critical ? '<span class="ml-1 text-[10px] font-bold text-rose-600">*Wajib</span>' : ''}
+      </div>
+      <input type="checkbox" class="inspect-chk w-5 h-5 rounded text-teal-600" data-id="${item.id}" data-name="${item.item_name}" data-critical="${item.is_critical}" onchange="updateScore()" />
+    </label>
+  `).join('');
+  updateScore();
+}
+
+function updateScore() {
+  const chks = document.querySelectorAll('.inspect-chk');
+  if (chks.length === 0) return;
+  document.getElementById('readiness-badge').textContent = `Skor: ${Math.round((Array.from(chks).filter(c => c.checked).length / chks.length) * 100)}%`;
+}
 
 function handlePhoto(e, type) {
   const file = e.target.files[0];
@@ -3951,8 +3526,8 @@ function handlePhoto(e, type) {
       ctx.fillRect(0, canvas.height - 32, canvas.width, 32);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 12px sans-serif';
-      const actor = document.getElementById('inspect-executor-select')?.value || currentUser.full_name;
-      ctx.fillText(`${new Date().toLocaleString('id-ID')} • ${actor}`, 10, canvas.height - 12);
+      const officerName = isPetugasRole() ? currentUser.full_name : (document.getElementById('inspect-executor-select')?.value || currentUser.full_name);
+      ctx.fillText(`${new Date().toLocaleString('id-ID')} • ${officerName}`, 10, canvas.height - 12);
       watermarkedPhotos[type] = canvas.toDataURL('image/jpeg', 0.75);
       updatePhotoBoxUI(type, watermarkedPhotos[type]);
     };
@@ -3961,249 +3536,59 @@ function handlePhoto(e, type) {
   reader.readAsDataURL(file);
 }
 
-async function processInspectionSubmit(alsoSendWa = false) {
-  const unitId = document.getElementById('inspect-unit').value;
-  const unit = unitsData.find(u => u.id === unitId);
-  if (!unit) return alert('Pilih unit kamar terlebih dahulu!');
-  const chks = Array.from(document.querySelectorAll('.inspect-chk'));
-  const checklistData = chks.map(c => ({ item: c.dataset.name, checked: c.checked }));
-  const score = chks.length ? Math.round((chks.filter(c => c.checked).length / chks.length) * 100) : 100;
+function buildWaMessage(data, includeChecklist, includeFullLink) {
+  const waktu = data.created_at ? new Date(data.created_at).toLocaleString('id-ID') : new Date().toLocaleString('id-ID');
+  const isNurseReq = isNurseRequestRecord(data);
+  const isRepair = isRepairRecord(data);
+  const isApproved = isInspectionOfficiallyApproved(data);
+  const isRev = isRevisionRequested(data);
+  const reqType = isNurseReq ? getNurseRequestTypeFromString((data.notes || '') + ' ' + (data.shift || '')) : null;
 
-  const feedbackStatus = document.getElementById('inspect-feedback-status').value;
-  const feedbackDetail = document.getElementById('inspect-feedback-detail').value.trim();
-
-  let isOfficialApproved = false;
-  let finalFeedbackStatus = feedbackStatus;
-  let unitBadgeLabel = '';
-
-  const userCanApprove = canCurrentUserApprove();
-
-  if (feedbackStatus.includes('Perlu Perbaikan') || feedbackStatus.includes('Wajib Diperbaiki')) {
-    isOfficialApproved = false;
-    finalFeedbackStatus = feedbackStatus;
-    unitBadgeLabel = `Perlu Perbaikan: ${feedbackDetail || 'Cek Ulang'}`;
-  } else if (userCanApprove) {
-    isOfficialApproved = (score === 100 && feedbackStatus.includes('Approved'));
-    finalFeedbackStatus = isOfficialApproved ? `Sesuai Standar (Approved oleh ${currentUser.full_name})` : feedbackStatus;
-    unitBadgeLabel = isOfficialApproved ? `Approved: ${currentUser.full_name}` : `${currentUser.full_name} (Menunggu Approval)`;
-  } else if (!requireApprovalMode) {
-    isOfficialApproved = (score === 100);
-    const executorTmp = document.getElementById('inspect-executor-select')?.value || currentUser.full_name;
-    finalFeedbackStatus = isOfficialApproved
-      ? `Sesuai Standar (Otomatis Siap Pakai - ${executorTmp})`
-      : 'Belum 100% Lengkap';
-    unitBadgeLabel = isOfficialApproved ? `Siap Pakai (${executorTmp})` : `${executorTmp} (Belum Lengkap)`;
-  } else {
-    isOfficialApproved = false;
-    const executorTmp = document.getElementById('inspect-executor-select')?.value || currentUser.full_name;
-    const targetApprovalLabel = getApprovalTargetLabel();
-    finalFeedbackStatus = `Menunggu Approval ${targetApprovalLabel} (Selesai oleh ${executorTmp})`;
-    unitBadgeLabel = `${executorTmp} (Menunggu Approval)`;
-  }
-
-  const finalStatus = isOfficialApproved ? 'siap' : 'kotor';
-  const selectedOfficer = document.getElementById('inspect-officer-select')?.value || currentUser.full_name;
-  const selectedExecutor = isPetugasRole()
-    ? currentUser.full_name
-    : (document.getElementById('inspect-executor-select')?.value || currentUser.full_name);
-
-  const composedNotes = composeNotesWithMetadata(
-    selectedExecutor,
-    finalFeedbackStatus,
-    feedbackDetail,
-    document.getElementById('inspect-notes').value.trim()
-  );
-
-  const payload = {
-    unit_id: unit.id,
-    unit_name: unit.unit_name,
-    inspector_name: selectedOfficer,
-    inspector_role: currentUser.role,
-    shift: document.getElementById('inspect-shift').value,
-    readiness_score: score,
-    final_status: finalStatus,
-    duration_seconds: secondsElapsed,
-    checklist_data: checklistData,
-    notes: composedNotes,
-    photo_room_url: watermarkedPhotos.room,
-    photo_toilet_url: watermarkedPhotos.toilet
-  };
-
-  const btnSave = document.getElementById('btn-submit-inspect');
-  const btnWa = document.getElementById('btn-submit-wa');
-  btnSave.disabled = true; btnWa.disabled = true;
-  btnSave.textContent = 'Menyimpan...';
-
-  let savedRecord = { ...payload, created_at: new Date().toISOString() };
-  let savedSuccess = false;
-
-  if (!navigator.onLine) {
-    const q = JSON.parse(localStorage.getItem('ck_offline_queue') || '[]');
-    q.push(payload);
-    localStorage.setItem('ck_offline_queue', JSON.stringify(q));
-    savedSuccess = true;
-  } else if (activeReviewReportId) {
-    const { data: updatedRows, error } = await db.from('room_inspections')
-      .update({ ...payload, created_at: new Date().toISOString() })
-      .eq('id', activeReviewReportId)
-      .select();
-
-    if (error) {
-      alert('Gagal memperbarui laporan: ' + error.message);
-    } else {
-      if (updatedRows?.[0]) {
-        savedRecord = updatedRows[0];
-        lastKnownReportId = savedRecord.id;
-        localStorage.setItem('ck_last_seen_id', savedRecord.id);
-      }
-      await db.from('master_units').update({
-        status: finalStatus,
-        last_checked_at: new Date().toISOString(),
-        last_checked_by: unitBadgeLabel
-      }).eq('id', unit.id);
-      savedSuccess = true;
-    }
-  } else {
-    const { data: insertedRows, error } = await db.from('room_inspections').insert([payload]).select();
-    if (error) {
-      alert('Gagal menyimpan ke server: ' + error.message);
-    } else {
-      if (insertedRows?.[0]) {
-        savedRecord = insertedRows[0];
-        lastKnownReportId = savedRecord.id;
-        localStorage.setItem('ck_last_seen_id', savedRecord.id);
-      }
-      await db.from('master_units').update({
-        status: finalStatus,
-        last_checked_at: new Date().toISOString(),
-        last_checked_by: unitBadgeLabel
-      }).eq('id', unit.id);
-      savedSuccess = true;
-    }
-  }
-
-  btnSave.disabled = false; btnWa.disabled = false;
-  btnSave.textContent = (!userCanApprove && requireApprovalMode) ? 'Ajukan Approval' : 'Simpan Laporan';
-
-  if (savedSuccess) {
-    if (isPetugasRole()) officerFormUnlocked = false;
-    resetFormForFreshCheck();
-    await loadAllData();
-    if (alsoSendWa) openWaShareModal(savedRecord);
-    else {
-      if (!userCanApprove && requireApprovalMode) {
-        alert(`Laporan terkirim ke ${getApprovalTargetLabel()}! Status kamar menunggu approval agar menjadi Siap Pakai.`);
-      } else if (!userCanApprove && !requireApprovalMode && isOfficialApproved) {
-        alert(`Laporan tersimpan! Kamar ${unit.unit_name} langsung berstatus SIAP PAKAI.`);
-      }
-      if (isManagerRole() || isPerawatRole()) switchTab('dashboard');
-      else switchTab('inspect');
-    }
-  }
-}
-
-document.getElementById('inspection-form').addEventListener('submit', async (e) => { e.preventDefault(); await processInspectionSubmit(false); });
-async function saveAndSendWhatsApp() { await processInspectionSubmit(true); }
-
-function buildWaMessage(record, includeChecklist = true, includeLink = true) {
-  const isNurseReq = isNurseRequestRecord(record);
-  const isTechReq = isTechCheckRecord(record);
-  const isRepair = isRepairRecord(record);
-  const isApproved = isInspectionOfficiallyApproved(record);
-  const waktu = record.created_at ? new Date(record.created_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
-  const meta = parseNotesMetadata(record.notes);
-  const cleanDetail = meta.cleanNotes
+  const statusText = isNurseReq
+    ? `${reqType.shortTag} 🛏️`
+    : isRepair
+      ? (data.final_status === 'siap' ? 'SUDAH DIPERBAIKI ✅' : 'PENGAJUAN PERBAIKAN FASILITAS 🔧')
+      : isApproved
+        ? 'SIAP PAKAI ✅'
+        : isRev
+          ? 'PERLU PERBAIKAN ⚠️'
+          : 'MENUNGGU APPROVAL MANAJEMEN ⏳';
+  const meta = parseNotesMetadata(data.notes);
+  const cleanNotesText = meta.cleanNotes
     .replace(REPAIR_RECORD_TAG, '')
     .replace(CHECKOUT_RECORD_TAG, '')
     .replace(NURSE_REQ_TAG, '')
-    .replace(TECH_CHECK_TAG, '')
     .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
     .trim();
+  const titleText = isNurseReq
+    ? `*PERMINTAAN LAYANAN KAMAR (${reqType.shortTag})*`
+    : isRepair
+      ? '*LAPORAN CEK PERBAIKAN FASILITAS*'
+      : '*LAPORAN CEK KESIAPAN KAMAR*';
 
-  if (isTechReq) {
-    const statusText = record.final_status === 'siap' ? 'CEK TEKNIS SELESAI ✅' : 'TUGAS CEK TEKNIS 🔧';
-    const lines = [
-      '*TUGAS PENGECEKAN TEKNIS KAMAR*',
-      '*RS Khusus Bedah SS Medika*',
-      '--------------------------------',
-      `🏥 *Unit Kamar:* ${record.unit_name}`,
-      `🕒 *Waktu:* ${waktu}`,
-      `📋 *Status:* ${statusText}`
-    ];
-    if (includeChecklist && Array.isArray(record.checklist_data) && record.checklist_data.length > 0) {
-      lines.push('', '*Item Pengecekan Teknis:*');
-      record.checklist_data.forEach(c => lines.push(`${c.checked ? '✅' : '⏳'} ${c.item}`));
-    }
-    if (includeLink && record.id) lines.push('', '📄 *Link Laporan Penuh:*', getPublicReportUrl(record.id, false));
-    lines.push('--------------------------------', '_Dikirim otomatis dari Aplikasi Cek Kesiapan Kamar_');
-    return lines.join('\n');
+  const lines = [titleText, '*RS Khusus Bedah SS Medika*', '--------------------------------', `• *Kamar:* ${data.unit_name}`, `• *Waktu / Shift:* ${data.shift}`, `• *${isNurseReq ? 'Perawat Pelapor' : isRepair ? 'Pengaju' : 'Pemeriksa'}:* ${data.inspector_name}`];
+  if (meta.executor && !isNurseReq) lines.push(`• *${isRepair ? 'Petugas Ditugaskan' : 'Pelaksana'}:* ${meta.executor}`);
+  if (!isRepair && !isNurseReq) lines.push(`• *Skor Kesiapan:* ${data.readiness_score}%`);
+  lines.push(`• *Status:* ${statusText}`, `• *Waktu:* ${waktu}`);
+  if (meta.feedbackStatus) {
+    lines.push('--------------------------------', `• *Tanggapan / Status:* ${meta.feedbackStatus}`);
+    if (meta.feedbackDetail) lines.push(`• *${isNurseReq ? 'Instruksi' : isRepair ? 'Kategori' : 'Bagian Perbaikan'}:* ${meta.feedbackDetail}`);
   }
-
-  if (isNurseReq) {
-    const reqType = getNurseRequestTypeFromString((record.notes || '') + ' ' + (record.shift || ''));
-    const lines = [
-      `*PERMINTAAN KAMAR (${reqType.shortTag})*`,
-      '*RS Khusus Bedah SS Medika*',
-      '--------------------------------',
-      `🏥 *Unit Kamar:* ${record.unit_name}`,
-      `🕒 *Waktu:* ${waktu}`,
-      `👩‍⚕️ *Perawat Pelapor:* ${record.inspector_name}`,
-      `📋 *Jenis Permintaan:* ${reqType.label}`
-    ];
-    if (cleanDetail) lines.push(`📝 *Pesan:* ${cleanDetail}`);
-    if (includeLink && record.id) lines.push('', '📄 *Link Detail Permintaan:*', getPublicReportUrl(record.id, false));
-    lines.push('--------------------------------', '_Dikirim otomatis dari Aplikasi Cek Kesiapan Kamar_');
-    return lines.join('\n');
+  if (includeChecklist && Array.isArray(data.checklist_data) && data.checklist_data.length > 0 && !isNurseReq) {
+    lines.push('--------------------------------', '*Rincian:*');
+    data.checklist_data.forEach(c => lines.push(`${c.checked ? '✅' : '❌'} ${c.item}`));
   }
-
-  if (isRepair) {
-    const statusText = record.final_status === 'siap' ? 'SUDAH DIPERBAIKI ✅' : 'PENGAJUAN PERBAIKAN 🔧';
-    const hasAssignee = meta.executor && meta.executor !== 'Belum Ditugaskan';
-    const lines = [
-      '*LAPORAN CEK PERBAIKAN FASILITAS*',
-      '*RS Khusus Bedah SS Medika*',
-      '--------------------------------',
-      `🏥 *Unit Kamar:* ${record.unit_name}`,
-      `🕒 *Waktu:* ${waktu}`,
-      `👤 *Petugas Pengaju:* ${record.inspector_name}`,
-      `🔧 *Ditugaskan Kepada:* ${hasAssignee ? meta.executor : 'Menunggu Penugasan Manajemen'}`,
-      `📋 *Status:* ${statusText}`
-    ];
-    if (meta.feedbackDetail) lines.push(`🏷️ *Kategori:* ${meta.feedbackDetail}`);
-    if (cleanDetail) lines.push(`📝 *Detail Kerusakan:* ${cleanDetail}`);
-    if (includeLink && record.id) lines.push('', '📄 *Link Laporan & Foto Sebelum/Sesudah:*', getPublicReportUrl(record.id, false));
-    lines.push('--------------------------------', '_Dikirim otomatis dari Aplikasi Cek Kesiapan Kamar_');
-    return lines.join('\n');
-  }
-
-  const statusText = isApproved ? 'SIAP PAKAI ✅' : 'MENUNGGU APPROVAL / PERLU PERBAIKAN ⏳';
-  const lines = [
-    '*LAPORAN CEK KESIAPAN KAMAR*',
-    '*RS Khusus Bedah SS Medika*',
-    '--------------------------------',
-    `🏥 *Unit Kamar:* ${record.unit_name}`,
-    `🕒 *Waktu & Shift:* ${waktu} (${record.shift})`,
-    `👤 *Pemeriksa:* ${record.inspector_name}`
-  ];
-  if (meta.executor && meta.executor !== record.inspector_name) lines.push(`🧹 *Petugas Pelaksana:* ${meta.executor}`);
-  lines.push(`📊 *Skor Kesiapan:* ${record.readiness_score}%`, `📋 *Status:* ${statusText}`);
-  if (meta.feedbackStatus) lines.push(`🔍 *Tanggapan:* ${meta.feedbackStatus}`);
-  if (meta.feedbackDetail) lines.push(`⚠️ *Bagian Perbaikan:* ${meta.feedbackDetail}`);
-  if (includeChecklist && Array.isArray(record.checklist_data) && record.checklist_data.length > 0) {
-    lines.push('', '*Rincian Checklist:*');
-    record.checklist_data.forEach(c => lines.push(`${c.checked ? '✅' : '❌'} ${c.item}`));
-  }
-  if (cleanDetail) lines.push('', `📝 *Catatan:* ${cleanDetail}`);
-  if (includeLink && record.id) lines.push('', '📄 *Link Laporan Penuh & Foto:*', getPublicReportUrl(record.id, false));
-  lines.push('--------------------------------', '_Dikirim otomatis dari Aplikasi Cek Kesiapan Kamar_');
+  if (cleanNotesText) lines.push('--------------------------------', `• *Catatan:* ${cleanNotesText}`);
+  if (includeFullLink && data.id) lines.push('', '╭──────────────────────────╮', '│  📄 *BUKA LAPORAN PENUH*   │', `│  ${getPublicReportUrl(data.id, false)}`, '╰──────────────────────────╯');
   return lines.join('\n');
 }
 
-function openWaShareModal(record) {
-  activeWaPayload = record;
+function openWaShareModal(data) {
+  activeWaPayload = data;
   document.getElementById('wa-target-phone').value = localStorage.getItem('ck_last_wa_phone') || '';
   document.getElementById('wa-include-checklist').checked = true;
-  document.getElementById('wa-include-link').checked = Boolean(record.id);
+  const linkChk = document.getElementById('wa-include-link');
+  linkChk.checked = Boolean(data.id); linkChk.disabled = !data.id;
   refreshWaPreview();
   openModalWithHistory('modal-wa-share');
   lucide.createIcons();
@@ -4211,67 +3596,219 @@ function openWaShareModal(record) {
 
 function refreshWaPreview() {
   if (!activeWaPayload) return;
-  document.getElementById('wa-message-preview').value = buildWaMessage(
-    activeWaPayload,
-    document.getElementById('wa-include-checklist').checked,
-    document.getElementById('wa-include-link').checked
-  );
+  document.getElementById('wa-message-preview').value = buildWaMessage(activeWaPayload, document.getElementById('wa-include-checklist').checked, document.getElementById('wa-include-link').checked);
 }
 
 function previewFullReportFromModal() {
-  if (activeWaPayload?.id) window.open(getPublicReportUrl(activeWaPayload.id, true), '_blank');
-  else alert('Laporan ini tersimpan offline dan belum memiliki link online.');
+  if (!activeWaPayload) return;
+  if (activeWaPayload.id) openReportFullView(activeWaPayload.id);
+  else alert('Laporan ini tersimpan saat offline.');
 }
 
-function shareHistoryWaById(id) {
-  const found = inspectionsData.find(item => String(item.id) === String(id));
-  if (found) openWaShareModal(found);
-}
-
-function formatIndonesianPhone(raw) {
+function normalizePhone(raw) {
   let digits = (raw || '').replace(/\D/g, '');
   if (!digits) return '';
-  if (digits.startsWith('0')) digits = '62' + digits.slice(1);
-  else if (digits.startsWith('8')) digits = '62' + digits;
+  if (digits.startsWith('0')) return '62' + digits.slice(1);
+  if (digits.startsWith('8')) return '62' + digits;
   return digits;
 }
 
-function executeWhatsAppSend(useDirectNumber) {
-  const msg = document.getElementById('wa-message-preview').value.trim();
-  if (!msg) return alert('Isi pesan masih kosong.');
-  const encodedText = encodeURIComponent(msg);
-  let waUrl = `https://wa.me/?text=${encodedText}`;
-  if (useDirectNumber) {
-    const formattedPhone = formatIndonesianPhone(document.getElementById('wa-target-phone').value);
-    if (!formattedPhone) return alert('Masukkan nomor WhatsApp tujuan terlebih dahulu.');
-    localStorage.setItem('ck_last_wa_phone', document.getElementById('wa-target-phone').value.trim());
-    waUrl = `https://wa.me/${formattedPhone}?text=${encodedText}`;
+function executeWhatsAppSend(usePhone) {
+  const text = document.getElementById('wa-message-preview').value;
+  const rawPhone = document.getElementById('wa-target-phone').value.trim();
+  let waUrl = '';
+  if (usePhone) {
+    const phone = normalizePhone(rawPhone);
+    if (!phone) return alert('Masukkan nomor WhatsApp tujuan terlebih dahulu, atau ketuk "Pilih Grup / Kontak".');
+    localStorage.setItem('ck_last_wa_phone', rawPhone);
+    waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+  } else {
+    waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
   }
   closeActiveModal('modal-wa-share');
   window.open(waUrl, '_blank');
-  if (activeTabName === 'inspect') switchTab((isManagerRole() || isPerawatRole()) ? 'dashboard' : 'inspect');
 }
 
-async function syncOfflineQueue() {
-  if (!navigator.onLine) return;
-  const q = JSON.parse(localStorage.getItem('ck_offline_queue') || '[]');
-  if (!q.length) return;
-  const { error } = await db.from('room_inspections').insert(q);
-  if (!error) {
-    localStorage.removeItem('ck_offline_queue');
-    loadAllData();
+function shareHistoryWaById(reportId) {
+  const item = inspectionsData.find(r => String(r.id) === String(reportId));
+  if (item) openWaShareModal(item);
+}
+
+async function processInspectionSubmit(alsoSendWa = false) {
+  if (isPerawatRole()) return;
+  const unitId = document.getElementById('inspect-unit').value;
+  const unit = unitsData.find(u => u.id === unitId);
+  if (!unit) return alert('Pilih unit kamar terlebih dahulu');
+
+  const selectedShift = document.getElementById('inspect-shift').value;
+  const officerName = document.getElementById('inspect-officer-select')?.value || 'Supervisor Manajemen';
+  const executorVal = isPetugasRole()
+    ? currentUser.full_name
+    : (document.getElementById('inspect-executor-select')?.value || currentUser.full_name);
+
+  let feedbackStatus = document.getElementById('inspect-feedback-status')?.value || '';
+  const feedbackDetail = document.getElementById('inspect-feedback-detail')?.value.trim() || '';
+  const rawExtraNotes = document.getElementById('inspect-notes').value.trim();
+
+  const chks = Array.from(document.querySelectorAll('.inspect-chk'));
+  const checkedCount = chks.filter(c => c.checked).length;
+  const score = chks.length ? Math.round((checkedCount / chks.length) * 100) : 100;
+  const missingCritical = chks.some(c => c.dataset.critical === 'true' && !c.checked);
+
+  const isManagerSendingRevision = isManagerRole() && (
+    feedbackStatus.includes('Perlu Perbaikan') ||
+    feedbackStatus.includes('Wajib Diperbaiki')
+  );
+
+  let isApproved = false;
+  let finalFeedbackDetail = feedbackDetail;
+
+  if (isManagerSendingRevision) {
+    isApproved = false;
+    feedbackStatus = `Perlu Perbaikan (Komplain oleh ${currentUser.full_name || officerName})`;
+    if (!finalFeedbackDetail) {
+      finalFeedbackDetail = rawExtraNotes || 'Periksa kembali kelengkapan & kebersihan kamar';
+    }
+  } else if (isManagerRole() && feedbackStatus.includes('Approved') && score === 100 && !missingCritical) {
+    isApproved = true;
+    finalFeedbackDetail = '';
+    feedbackStatus = `Sesuai Standar (Approved oleh ${currentUser.full_name || officerName})`;
+  } else if (!requireApprovalMode && score === 100 && !missingCritical) {
+    isApproved = true;
+    finalFeedbackDetail = '';
+    feedbackStatus = `Sesuai Standar (Otomatis Siap Pakai oleh ${executorVal})`;
+  } else {
+    isApproved = false;
+    if (isPetugasRole()) {
+      finalFeedbackDetail = '';
+      if (requireApprovalMode) {
+        feedbackStatus = activeReviewReportId
+          ? `Menunggu Approval Manajemen (Selesai Perbaikan oleh ${executorVal})`
+          : 'Menunggu Approval Manajemen';
+      } else {
+        feedbackStatus = `Belum Lengkap (Skor ${score}%)`;
+      }
+    } else if (feedbackStatus.includes('Approved') || feedbackStatus.includes('Sesuai Standar')) {
+      feedbackStatus = requireApprovalMode ? 'Menunggu Approval Manajemen' : `Belum Lengkap (Skor ${score}%)`;
+    }
   }
+
+  const finalStatus = isApproved ? 'siap' : 'kotor';
+  const unitCheckedByLabel = isApproved
+    ? (isManagerRole() ? `Approved: ${currentUser.full_name || officerName}` : `Siap Pakai (${executorVal})`)
+    : isManagerSendingRevision
+      ? `Perlu Perbaikan: ${finalFeedbackDetail}`
+      : (requireApprovalMode ? `${executorVal} (Menunggu Approval)` : `${executorVal} (Belum Lengkap)`);
+
+  const payload = {
+    unit_id: unit.id,
+    unit_name: unit.unit_name,
+    inspector_name: isApproved ? (isManagerRole() ? (currentUser.full_name || officerName) : executorVal) : officerName,
+    inspector_role: currentUser.role,
+    shift: selectedShift,
+    readiness_score: score,
+    final_status: finalStatus,
+    duration_seconds: secondsElapsed,
+    checklist_data: chks.map(c => ({ item: c.dataset.name, checked: c.checked })),
+    notes: composeNotesWithMetadata(executorVal, feedbackStatus, finalFeedbackDetail, rawExtraNotes),
+    photo_room_url: watermarkedPhotos.room,
+    photo_toilet_url: watermarkedPhotos.toilet
+  };
+
+  const btn = document.getElementById('btn-submit-inspect');
+  const btnWa = document.getElementById('btn-submit-wa');
+  btn.disabled = true; btnWa.disabled = true; btn.textContent = 'Menyimpan...';
+
+  let savedOk = false;
+  let savedRecord = { ...payload, created_at: new Date().toISOString() };
+
+  if (!navigator.onLine) {
+    const q = JSON.parse(localStorage.getItem('ck_offline_queue') || '[]');
+    q.push(payload);
+    localStorage.setItem('ck_offline_queue', JSON.stringify(q));
+    savedOk = true;
+  } else {
+    if (activeReviewReportId) {
+      const { data: updatedRows, error } = await db.from('room_inspections')
+        .update({ ...payload, created_at: new Date().toISOString() })
+        .eq('id', activeReviewReportId)
+        .select();
+      if (error) alert('Gagal memperbarui laporan: ' + error.message);
+      else {
+        if (updatedRows?.[0]) savedRecord = updatedRows[0];
+        await db.from('master_units').update({ status: finalStatus, last_checked_at: new Date().toISOString(), last_checked_by: unitCheckedByLabel }).eq('id', unit.id);
+        savedOk = true;
+      }
+    } else {
+      const { data: insertedRows, error } = await db.from('room_inspections').insert([payload]).select();
+      if (error) alert('Gagal menyimpan laporan: ' + error.message);
+      else {
+        if (insertedRows?.[0]) {
+          savedRecord = insertedRows[0];
+          lastKnownReportId = savedRecord.id;
+          localStorage.setItem('ck_last_seen_id', savedRecord.id);
+        }
+        await db.from('master_units').update({ status: finalStatus, last_checked_at: new Date().toISOString(), last_checked_by: unitCheckedByLabel }).eq('id', unit.id);
+        savedOk = true;
+      }
+    }
+  }
+
+  btn.disabled = false; btnWa.disabled = false;
+
+  if (savedOk) {
+    clearBottomFormReviewBar();
+    activeReviewReportId = null;
+    document.getElementById('prefill-review-banner')?.classList.add('hidden');
+    document.getElementById('inspection-form').reset();
+    populateOfficerDropdown();
+    populateShiftDropdown();
+    document.getElementById('inspect-shift').value = selectedShift;
+    resetPhotoBoxes();
+    playNotificationChime();
+    await loadAllData();
+    switchTab(isManagerRole() ? 'dashboard' : 'analytics');
+    if (alsoSendWa) openWaShareModal(savedRecord);
+    else if (isManagerSendingRevision) alert('Komplain perbaikan terkirim ke Petugas! Status kamar kini ditandai PERLU PERBAIKAN.');
+    else if (!isApproved && requireApprovalMode) alert('Laporan tersimpan! Notifikasi telah dikirim ke bagian Manajemen agar segera di-approve menjadi SIAP PAKAI.');
+    else if (!isApproved) alert(`Laporan tersimpan dengan skor ${score}%. Lengkapi seluruh checklist wajib agar kamar berstatus SIAP PAKAI.`);
+    else alert('Berhasil! Laporan kesiapan kamar tersimpan dan kamar berstatus SIAP PAKAI.');
+  }
+}
+
+document.getElementById('inspection-form').addEventListener('submit', async (e) => { e.preventDefault(); await processInspectionSubmit(false); });
+async function saveAndSendWhatsApp() { await processInspectionSubmit(true); }
+
+async function syncOfflineQueue() {
+  const q = JSON.parse(localStorage.getItem('ck_offline_queue') || '[]');
+  if (q.length === 0) return;
+  for (const item of q) await db.from('room_inspections').insert([item]);
+  localStorage.removeItem('ck_offline_queue');
+  loadAllData();
 }
 
 function openQrScanner() {
   openModalWithHistory('modal-qr-scanner');
-  qrScannerInstance = new Html5Qrcode('qr-reader');
-  qrScannerInstance.start({ facingMode: 'environment' }, { fps: 10, qrbox: 220 }, (decodedText) => {
+  if (qrScannerInstance) {
+    qrScannerInstance.stop().catch(() => {}).finally(() => {
+      qrScannerInstance = null;
+      startQrCamera();
+    });
+  } else {
+    startQrCamera();
+  }
+}
+
+function startQrCamera() {
+  qrScannerInstance = new Html5Qrcode("qr-reader");
+  qrScannerInstance.start({ facingMode: "environment" }, { fps: 10, qrbox: 220 }, (decodedText) => {
     closeQrScanner();
-    const found = unitsData.find(u => u.unit_code.toLowerCase() === decodedText.trim().toLowerCase());
-    if (found) quickInspect(found.id);
-    else alert(`Kode QR "${decodedText}" tidak terdaftar.`);
-  }).catch(() => {});
+    const found = unitsData.find(u => u.unit_code === decodedText || u.id === decodedText);
+    if (found) {
+      if (isPerawatRole()) confirmPatientCheckout(found.id, found.unit_name);
+      else quickInspect(found.id);
+    } else alert('Kode QR tidak dikenali: ' + decodedText);
+  }).catch(err => alert('Kamera tidak dapat diakses: ' + err));
 }
 
 function closeQrScanner() {
@@ -4279,452 +3816,160 @@ function closeQrScanner() {
   if (qrScannerInstance) qrScannerInstance.stop().catch(() => {});
 }
 
-function showQrModal(code, name) {
+function showQrPrint(code, name) {
   activeQrMeta = { code, name };
   document.getElementById('qr-print-title').textContent = name;
   document.getElementById('qr-print-code').textContent = code;
   const box = document.getElementById('qr-code-box');
   box.innerHTML = '';
-  new QRCode(box, { text: code, width: 180, height: 180 });
+  new QRCode(box, { text: code, width: 200, height: 200 });
   openModalWithHistory('modal-qr-print');
-  lucide.createIcons();
 }
 
 function downloadQrImage() {
   const box = document.getElementById('qr-code-box');
-  const qrCanvas = box.querySelector('canvas');
-  const qrImg = box.querySelector('img');
-  const drawSticker = (sourceEl) => {
-    const out = document.createElement('canvas');
-    out.width = 420; out.height = 520;
-    const ctx = out.getContext('2d');
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, out.width, out.height);
-    ctx.strokeStyle = '#0d9488'; ctx.lineWidth = 8; ctx.strokeRect(14, 14, out.width - 28, out.height - 28);
-    ctx.fillStyle = '#0f766e'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('RS KHUSUS BEDAH SS MEDIKA', out.width / 2, 54);
-    ctx.fillStyle = '#0f172a'; ctx.font = 'bold 22px sans-serif';
-    ctx.fillText(activeQrMeta.name || 'Unit Kamar', out.width / 2, 86);
-    ctx.drawImage(sourceEl, (out.width - 280) / 2, 110, 280, 280);
-    ctx.fillStyle = '#334155'; ctx.font = 'bold 22px monospace';
-    ctx.fillText(activeQrMeta.code || '', out.width / 2, 430);
-    ctx.fillStyle = '#64748b'; ctx.font = '13px sans-serif';
-    ctx.fillText('Scan QR ini untuk Cek Kesiapan Kamar', out.width / 2, 464);
-    const link = document.createElement('a');
-    link.download = `QR_${(activeQrMeta.code || 'Kamar').replace(/[^a-zA-Z0-9_-]/g, '_')}.png`;
-    link.href = out.toDataURL('image/png');
-    link.click();
-  };
-  if (qrCanvas) drawSticker(qrCanvas);
-  else if (qrImg) {
-    if (qrImg.complete) drawSticker(qrImg);
-    else qrImg.onload = () => drawSticker(qrImg);
-  }
+  const source = box.querySelector('canvas') || box.querySelector('img');
+  if (!source) return alert('Gambar QR belum siap.');
+  const out = document.createElement('canvas');
+  out.width = 320; out.height = 390;
+  const ctx = out.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, out.width, out.height);
+  ctx.strokeStyle = '#0d9488'; ctx.lineWidth = 8; ctx.strokeRect(10, 10, out.width - 20, out.height - 20);
+  ctx.fillStyle = '#0d9488'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('RS KHUSUS BEDAH SS MEDIKA', out.width / 2, 42);
+  ctx.fillStyle = '#0f172a'; ctx.font = 'bold 17px sans-serif'; ctx.fillText(activeQrMeta.name, out.width / 2, 68);
+  ctx.drawImage(source, 60, 88, 200, 200);
+  ctx.fillStyle = '#334155'; ctx.font = 'bold 16px monospace'; ctx.fillText(activeQrMeta.code, out.width / 2, 322);
+  ctx.fillStyle = '#64748b'; ctx.font = '11px sans-serif'; ctx.fillText('Scan untuk Cek Kesiapan Kamar', out.width / 2, 348);
+  const link = document.createElement('a');
+  link.download = `QR_${activeQrMeta.code.replace(/[^a-zA-Z0-9_-]/g, '_')}.png`;
+  link.href = out.toDataURL('image/png');
+  link.click();
 }
 
-function renderAnalytics() {
-  initExportPeriodInputs();
-  const { rows: filtered } = getFilteredExportData();
-  const countBadge = document.getElementById('export-filter-count');
-  if (countBadge) countBadge.textContent = `${filtered.length} Data`;
-
-  const summary = computeAnalyticsSummary(filtered);
-
-  document.getElementById('analytic-total').textContent = `${summary.pureInspectionsCount} Laporan`;
-  document.getElementById('analytic-avg-score').textContent = `${summary.pureAvgScore}%`;
-  document.getElementById('analytic-avg-time').textContent = `${summary.avgDuration} Detik`;
-
-  const occEl = document.getElementById('analytic-occupied-pct');
-  const vacEl = document.getElementById('analytic-vacant-pct');
-  if (occEl) occEl.textContent = `${summary.occupiedRooms} Kamar (${summary.occupiedPct}%)`;
-  if (vacEl) vacEl.textContent = `${summary.vacantRooms} Kamar (${summary.vacantPct}%)`;
-
-  const discList = document.getElementById('discipline-list');
-  if (discList) {
-    if (summary.disciplineRows.length === 0) {
-      discList.innerHTML = '<p class="text-xs text-slate-400">Belum ada akun Petugas atau Teknisi terdaftar.</p>';
-    } else {
-      discList.innerHTML = summary.disciplineRows.map(d => {
-        const badgeColor = d.totalTasks === 0
-          ? 'bg-slate-100 text-slate-500'
-          : d.disciplinePct >= 80
-            ? 'bg-emerald-100 text-emerald-700'
-            : d.disciplinePct >= 50
-              ? 'bg-amber-100 text-amber-800'
-              : 'bg-rose-100 text-rose-700';
-        return `
-          <div class="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200/70">
-            <div class="min-w-0">
-              <p class="text-xs font-extrabold text-slate-900 truncate">${d.fullName}</p>
-              <p class="text-[10.5px] text-slate-500">${d.role} • ${d.completedOnStandard}/${d.totalTasks} tugas sesuai standar</p>
-            </div>
-            <span class="shrink-0 text-xs font-extrabold px-2.5 py-1 rounded-full ${badgeColor}">${d.disciplinePct}%</span>
+function renderUsers() {
+  ensurePerawatRoleOptionInAccountForm();
+  const list = document.getElementById('master-user-list');
+  if (!list) return;
+  list.innerHTML = usersData.map(u => {
+    const rLower = (u.role || '').toLowerCase();
+    const roleBadge = rLower === 'manajemen'
+      ? 'bg-indigo-100 text-indigo-700'
+      : rLower === 'perawat'
+        ? 'bg-orange-100 text-orange-700'
+        : 'bg-teal-100 text-teal-700';
+    return `
+      <div class="py-3 flex items-center justify-between gap-2">
+        <div>
+          <div class="flex items-center gap-2">
+            <p class="text-xs font-extrabold text-slate-900">${u.full_name}</p>
+            <span class="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full ${roleBadge}">${u.role}</span>
           </div>
-        `;
-      }).join('');
-    }
-  }
-
-  let siap = 0, kotor = 0, maint = 0;
-  unitsData.forEach(u => {
-    const eff = getEffectiveUnitStatus(u);
-    if (eff === 'siap') siap++;
-    else if (eff === 'maintenance') maint++;
-    else kotor++;
-  });
-
-  const ctx = document.getElementById('chart-status');
-  if (ctx) {
-    if (statusChart) statusChart.destroy();
-    statusChart = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels: ['Siap Pakai', 'Kosong / Proses', 'Maintenance'],
-        datasets: [{ data: [siap, kotor, maint], backgroundColor: ['#10b981', '#f59e0b', '#e11d48'], borderWidth: 0 }]
-      },
-      options: { responsive: true, maintainAspectRatio: false, cutout: '68%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10, weight: 'bold' } } } } }
-    });
-  }
-
-  const canDelete = creatorDeleteUnlocked && isManagerRole();
-  const userCanApprove = canCurrentUserApprove();
-  const resolveBtnLabel = requireApprovalMode ? 'Selesai Perbaikan & Minta Approve' : 'Selesai Perbaikan (Siap Pakai)';
-
-  document.getElementById('history-list').innerHTML = filtered.length
-    ? filtered.map(r => {
-      const waktuStr = r.created_at ? new Date(r.created_at).toLocaleString('id-ID') : '-';
-      const safeName = (r.unit_name || '').replace(/'/g, "\\'");
-      const meta = parseNotesMetadata(r.notes);
-      const isNurseReq = isNurseRequestRecord(r);
-      const isTechReq = isTechCheckRecord(r);
-      const isRepair = isRepairRecord(r);
-      const isApproved = isInspectionOfficiallyApproved(r);
-      const isRev = isRevisionRequested(r);
-      const cleanNotesText = meta.cleanNotes
-        .replace(REPAIR_RECORD_TAG, '')
-        .replace(CHECKOUT_RECORD_TAG, '')
-        .replace(NURSE_REQ_TAG, '')
-        .replace(TECH_CHECK_TAG, '')
-        .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
-        .trim();
-      const reqType = isNurseReq ? getNurseRequestTypeFromString((r.notes || '') + ' ' + (r.shift || '')) : null;
-
-      const statusBadge = isTechReq
-        ? (r.final_status === 'siap'
-            ? '<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">CEK TEKNIS SELESAI ✅</span>'
-            : '<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800">TUGAS CEK TEKNISI 🔧</span>')
-        : isNurseReq
-          ? `<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full ${reqType.badgeClass}">${reqType.shortTag}</span>`
-          : isRepair
-            ? (r.final_status === 'siap'
-                ? '<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">SUDAH DIPERBAIKI ✅</span>'
-                : '<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">CEK PERBAIKAN 🔧</span>')
-            : isApproved
-              ? '<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">SIAP PAKAI ✅</span>'
-              : isRev
-                ? '<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800">PERLU PERBAIKAN ⚠️</span>'
-                : `<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">MENUNGGU APPROVAL (${getApprovalTargetLabel().toUpperCase()}) ⏳</span>`;
-
-      return `
-        <div class="glass-card rounded-2xl p-4 shadow-sm space-y-2.5">
-          <div class="flex items-start justify-between gap-2">
-            <div>
-              <h4 class="text-xs font-extrabold text-slate-900">${r.unit_name}</h4>
-              <p class="text-[11px] text-slate-500">
-                ${isNurseReq ? 'Perawat Pelapor' : isRepair ? 'Petugas Pengaju' : 'Pemeriksa'}: <strong>${r.inspector_name}</strong>
-                ${meta.executor && meta.executor !== r.inspector_name ? ` • ${isTechReq ? 'Teknisi' : isRepair ? 'Ditugaskan ke' : 'Pelaksana'}: <strong>${meta.executor}</strong>` : ''}
-                • ${r.shift}
-              </p>
-              <p class="text-[10px] text-slate-400">${waktuStr}</p>
-            </div>
-            <div class="text-right shrink-0 flex flex-col items-end gap-1">
-              ${(!isRepair && !isNurseReq) ? `<span class="text-xs font-extrabold px-2.5 py-1 rounded-full ${r.readiness_score === 100 ? 'bg-teal-100 text-teal-700' : 'bg-amber-100 text-amber-700'}">${r.readiness_score}%</span>` : ''}
-              ${statusBadge}
-            </div>
-          </div>
-
-          ${meta.feedbackStatus ? `
-            <div class="text-[11px] px-2.5 py-1.5 rounded-xl ${isApproved || r.final_status === 'siap' ? 'bg-emerald-50 border border-emerald-200 text-emerald-950' : isRev ? 'bg-rose-50 border border-rose-200 text-rose-950' : 'bg-amber-50 border border-amber-200 text-amber-950'}">
-              <span class="font-bold">Status:</span> ${meta.feedbackStatus}
-              ${meta.feedbackDetail ? `<br><span class="text-rose-700 font-bold">${isNurseReq ? 'Instruksi' : isRepair ? 'Kategori' : 'Bagian perbaikan'}: ${meta.feedbackDetail}</span>` : ''}
-            </div>
-          ` : ''}
-
-          ${cleanNotesText ? `<p class="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl">${cleanNotesText}</p>` : ''}
-          ${(r.photo_room_url || r.photo_toilet_url) ? `<div class="grid grid-cols-2 gap-2 pt-1">${r.photo_room_url ? `<img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-24 object-cover rounded-xl border cursor-pointer" />` : ''}${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-24 object-cover rounded-xl border cursor-pointer" />` : ''}</div>` : ''}
-
-          <div class="pt-1 flex items-center justify-end gap-1.5 flex-wrap">
-            ${(userCanApprove && !isApproved && !isRepair && !isNurseReq && !isTechReq && r.id) ? `
-              <button type="button" onclick="openReportInForm('${r.id}')" class="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-[11px] font-bold rounded-xl flex items-center gap-1 transition">
-                <i data-lucide="file-search" class="w-3 h-3"></i> Cek Form
-              </button>
-              <button type="button" onclick="approveReportById('${r.id}')" class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-xl flex items-center gap-1 shadow-sm transition">
-                <i data-lucide="check-circle-2" class="w-3 h-3"></i> Approve
-              </button>
-              <button type="button" onclick="requestRevisionByManagement('${r.unit_id || ''}', '${safeName}', '${r.id}')" class="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold rounded-xl flex items-center gap-1 shadow-sm transition">
-                <i data-lucide="alert-triangle" class="w-3 h-3"></i> Perlu Diperbaiki
-              </button>
-            ` : ''}
-            ${(isRepair && r.final_status !== 'siap' && r.id) ? `
-              <button type="button" onclick="openRepairReportInForm('${r.id}')" class="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold rounded-xl flex items-center gap-1 shadow-sm transition">
-                <i data-lucide="wrench" class="w-3 h-3"></i> Kelola Perbaikan
-              </button>
-            ` : ''}
-            ${(isPetugasRole() && isRev && !isRepair && !isNurseReq && !isTechReq && r.id) ? `
-              <button type="button" onclick="openReportInForm('${r.id}')" class="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-bold rounded-xl flex items-center gap-1 transition">
-                <i data-lucide="edit-3" class="w-3 h-3"></i> Perbaiki Form
-              </button>
-              <button type="button" onclick="markIssueResolvedByOfficer('${r.id}')" class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-xl flex items-center gap-1 shadow-sm transition">
-                <i data-lucide="check-circle-2" class="w-3 h-3"></i> ${resolveBtnLabel}
-              </button>
-            ` : ''}
-            ${canDelete ? `<button type="button" onclick="deleteHistoryRecord('${r.id}', '${safeName}', '${r.unit_id || ''}')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-[11px] font-bold rounded-xl flex items-center gap-1 transition"><i data-lucide="trash-2" class="w-3 h-3"></i> Hapus</button>` : ''}
-            ${r.id ? `<button type="button" onclick="openReportFullView('${r.id}')" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl flex items-center gap-1 transition"><i data-lucide="file-text" class="w-3 h-3"></i> Detail</button>` : ''}
-            <button type="button" onclick="shareHistoryWaById('${r.id}')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-xl flex items-center gap-1 shadow-sm transition"><i data-lucide="send" class="w-3 h-3"></i> Kirim WA</button>
-          </div>
+          <p class="text-[11px] text-slate-500 font-mono mt-0.5">User: ${u.username} • Pass: ${u.password}</p>
         </div>
-      `;
-    }).join('')
-    : '<p class="text-xs text-slate-400 text-center py-6">Tidak ada riwayat inspeksi pada periode atau kamar yang dipilih.</p>';
-  lucide.createIcons();
-}
-
-function exportCsv() {
-  const { rows: filtered, label, fileSuffix } = getFilteredExportData();
-  if (!filtered.length) return alert(`Tidak ada data laporan untuk ${label}.`);
-
-  const summary = computeAnalyticsSummary(filtered);
-  const sep = ';';
-  const esc = (val) => `"${String(val ?? '').replace(/\r?\n/g, ' ').replace(/"/g, '""')}"`;
-
-  const lines = [
-    'sep=;',
-    `REKAP LAPORAN KESIAPAN KAMAR - RS KHUSUS BEDAH SS MEDIKA`,
-    `Periode Filter${sep}${esc(label)}`,
-    `Skor Kesiapan Murni${sep}${summary.pureAvgScore}% (dari ${summary.pureInspectionsCount} inspeksi kamar/teknis)`,
-    `Kamar Terpakai (Dipesan)${sep}${summary.occupiedRooms} Kamar (${summary.occupiedPct}%)`,
-    `Kamar Kosong / Siap${sep}${summary.vacantRooms} Kamar (${summary.vacantPct}%)`,
-    '',
-    'PERSENTASE KEDISIPLINAN PETUGAS & TEKNISI',
-    ['Nama Lengkap', 'Role', 'Total Tugas', 'Sesuai Standar', 'Persentase Kedisiplinan'].map(esc).join(sep)
-  ];
-
-  summary.disciplineRows.forEach(d => {
-    lines.push([d.fullName, d.role, d.totalTasks, d.completedOnStandard, `${d.disciplinePct}%`].map(esc).join(sep));
-  });
-
-  lines.push('');
-  lines.push('RINCIAN LAPORAN');
-  const headers = ['Waktu', 'Unit Kamar', 'Jenis Laporan', 'Pemeriksa / Pengaju', 'Petugas Pelaksana', 'Shift', 'Skor Murni (%)', 'Status', 'Tanggapan / Kategori', 'Catatan'];
-  lines.push(headers.map(esc).join(sep));
-
-  filtered.forEach(r => {
-    const meta = parseNotesMetadata(r.notes);
-    const isNurseReq = isNurseRequestRecord(r);
-    const isTechReq = isTechCheckRecord(r);
-    const isRepair = isRepairRecord(r);
-    const isApproved = isInspectionOfficiallyApproved(r);
-    const cleanNotesText = meta.cleanNotes
-      .replace(REPAIR_RECORD_TAG, '')
-      .replace(CHECKOUT_RECORD_TAG, '')
-      .replace(NURSE_REQ_TAG, '')
-      .replace(TECH_CHECK_TAG, '')
-      .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
-      .trim();
-
-    const row = [
-      r.created_at ? new Date(r.created_at).toLocaleString('id-ID') : '-',
-      r.unit_name,
-      isTechReq ? 'Cek Teknis' : isNurseReq ? 'Permintaan Perawat' : isRepair ? 'Cek Perbaikan' : 'Cek Kesiapan Kamar',
-      r.inspector_name,
-      meta.executor || r.inspector_name,
-      r.shift,
-      (isNurseReq || isRepair) ? '-' : r.readiness_score,
-      (isApproved || r.final_status === 'siap') ? 'SIAP PAKAI / SELESAI' : 'BELUM SIAP / PROSES',
-      meta.feedbackDetail ? `${meta.feedbackStatus} (${meta.feedbackDetail})` : (meta.feedbackStatus || '-'),
-      cleanNotesText
-    ];
-    lines.push(row.map(esc).join(sep));
-  });
-
-  const csvContent = '\uFEFF' + lines.join('\r\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `Rekap_Kesiapan_Kamar_${fileSuffix}.csv`;
-  a.click();
-}
-
-function exportPdf() {
-  const { rows: filtered, label, fileSuffix } = getFilteredExportData();
-  if (!filtered.length) return alert(`Tidak ada data laporan untuk ${label}.`);
-
-  const includePhotos = Boolean(document.getElementById('export-pdf-include-photos')?.checked);
-  const summary = computeAnalyticsSummary(filtered);
-
-  const disciplineTableRows = summary.disciplineRows.length
-    ? summary.disciplineRows.map(d => `
-        <tr>
-          <td style="border:1px solid #cbd5e1;padding:6px 8px;font-weight:700;">${d.fullName}</td>
-          <td style="border:1px solid #cbd5e1;padding:6px 8px;">${d.role}</td>
-          <td style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center;">${d.completedOnStandard} / ${d.totalTasks}</td>
-          <td style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center;font-weight:800;color:#0f766e;">${d.disciplinePct}%</td>
-        </tr>
-      `).join('')
-    : `<tr><td colspan="4" style="border:1px solid #cbd5e1;padding:8px;text-align:center;color:#64748b;">Belum ada data petugas/teknisi</td></tr>`;
-
-  const rowsHtml = filtered.map((r, idx) => {
-    const waktu = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
-    const meta = parseNotesMetadata(r.notes);
-    const isNurseReq = isNurseRequestRecord(r);
-    const isTechReq = isTechCheckRecord(r);
-    const isRepair = isRepairRecord(r);
-    const isApproved = isInspectionOfficiallyApproved(r);
-    const executorInfo = meta.executor && meta.executor !== r.inspector_name
-      ? `<br><span style="color:#0f766e;">Pelaksana: ${meta.executor}</span>`
-      : '';
-    const feedbackInfo = meta.feedbackStatus
-      ? `<br><span style="color:#b45309;font-size:9.5px;">${meta.feedbackStatus}${meta.feedbackDetail ? ` (${meta.feedbackDetail})` : ''}</span>`
-      : '';
-    const cleanNotesText = meta.cleanNotes
-      .replace(REPAIR_RECORD_TAG, '')
-      .replace(CHECKOUT_RECORD_TAG, '')
-      .replace(NURSE_REQ_TAG, '')
-      .replace(TECH_CHECK_TAG, '')
-      .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
-      .trim();
-
-    const jenisLabel = isTechReq ? 'Cek Teknis' : isNurseReq ? 'Permintaan Perawat' : isRepair ? 'Cek Perbaikan' : 'Cek Kamar';
-    const statusLabel = (isApproved || r.final_status === 'siap') ? 'SIAP / SELESAI' : 'PROSES / BELUM';
-    const statusColor = (isApproved || r.final_status === 'siap') ? '#047857' : '#b45309';
-
-    let photoCells = '';
-    if (includePhotos) {
-      const img1 = r.photo_room_url ? `<img src="${r.photo_room_url}" style="width:72px;height:54px;object-fit:cover;border-radius:4px;border:1px solid #cbd5e1;" />` : '<span style="color:#94a3b8;font-size:9px;">-</span>';
-      const img2 = r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" style="width:72px;height:54px;object-fit:cover;border-radius:4px;border:1px solid #cbd5e1;" />` : '<span style="color:#94a3b8;font-size:9px;">-</span>';
-      photoCells = `<td style="border:1px solid #cbd5e1;padding:5px;text-align:center;">${img1}</td><td style="border:1px solid #cbd5e1;padding:5px;text-align:center;">${img2}</td>`;
-    }
-    return `<tr style="background:${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
-      <td style="border:1px solid #cbd5e1;padding:6px 8px;">${waktu}</td>
-      <td style="border:1px solid #cbd5e1;padding:6px 8px;font-weight:700;">${r.unit_name}<br><span style="font-size:9px;color:#0284c7;">[${jenisLabel}]</span></td>
-      <td style="border:1px solid #cbd5e1;padding:6px 8px;">${r.inspector_name}${executorInfo}</td>
-      <td style="border:1px solid #cbd5e1;padding:6px 8px;">${r.shift}</td>
-      <td style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center;font-weight:700;">${(isNurseReq || isRepair) ? '-' : r.readiness_score + '%'}</td>
-      <td style="border:1px solid #cbd5e1;padding:6px 8px;font-weight:700;color:${statusColor};">${statusLabel}</td>
-      ${photoCells}
-      <td style="border:1px solid #cbd5e1;padding:6px 8px;">${cleanNotesText || '-'}${feedbackInfo}</td>
-    </tr>`;
+        <div class="flex items-center gap-1.5">
+          <button type="button" onclick="editUser('${u.id}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-[11px] font-bold">Edit</button>
+          ${u.username !== 'admin' ? `<button type="button" onclick="deleteUser('${u.id}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-[11px] font-bold">Hapus</button>` : ''}
+        </div>
+      </div>
+    `;
   }).join('');
-
-  const el = document.createElement('div');
-  el.style.padding = '16px'; el.style.fontFamily = 'Arial, sans-serif'; el.style.color = '#0f172a'; el.style.background = '#ffffff';
-  el.innerHTML = `
-    <div style="border-bottom:2px solid #0d9488;padding-bottom:10px;margin-bottom:12px;">
-      <h2 style="margin:0;font-size:17px;color:#0f172a;">REKAP LAPORAN KESIAPAN KAMAR</h2>
-      <p style="margin:3px 0 0;font-size:12px;color:#0f766e;font-weight:bold;">RS Khusus Bedah SS Medika</p>
-      <p style="margin:4px 0 0;font-size:10.5px;color:#475569;">Periode: <strong>${label}</strong> • Dicetak: ${new Date().toLocaleString('id-ID')}</p>
-    </div>
-
-    <div style="display:flex;gap:10px;margin-bottom:12px;font-size:11px;">
-      <div style="flex:1;background:#f0fdfa;border:1px solid #99f6e4;padding:8px 10px;border-radius:8px;">
-        <span style="color:#0f766e;display:block;font-size:9.5px;font-weight:bold;">SKOR KESIAPAN MURNI</span>
-        <strong style="font-size:14px;color:#0f172a;">${summary.pureAvgScore}%</strong> <span style="color:#64748b;font-size:9.5px;">(${summary.pureInspectionsCount} inspeksi)</span>
-      </div>
-      <div style="flex:1;background:#fffbeb;border:1px solid #fde68a;padding:8px 10px;border-radius:8px;">
-        <span style="color:#b45309;display:block;font-size:9.5px;font-weight:bold;">KAMAR TERPAKAI (DIPESAN)</span>
-        <strong style="font-size:14px;color:#92400e;">${summary.occupiedRooms} Kamar (${summary.occupiedPct}%)</strong>
-      </div>
-      <div style="flex:1;background:#ecfdf5;border:1px solid #a7f3d0;padding:8px 10px;border-radius:8px;">
-        <span style="color:#047857;display:block;font-size:9.5px;font-weight:bold;">KAMAR KOSONG / SIAP</span>
-        <strong style="font-size:14px;color:#065f46;">${summary.vacantRooms} Kamar (${summary.vacantPct}%)</strong>
-      </div>
-    </div>
-
-    <div style="margin-bottom:14px;">
-      <h4 style="margin:0 0 6px;font-size:11.5px;color:#0f172a;">Persentase Kedisiplinan Petugas & Teknisi</h4>
-      <table style="width:100%;border-collapse:collapse;font-size:10px;">
-        <thead>
-          <tr style="background:#f1f5f9;color:#334155;">
-            <th style="border:1px solid #cbd5e1;padding:6px 8px;text-align:left;">Nama Lengkap</th>
-            <th style="border:1px solid #cbd5e1;padding:6px 8px;text-align:left;">Role</th>
-            <th style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center;">Tugas Sesuai Standar</th>
-            <th style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center;">Kedisiplinan (%)</th>
-          </tr>
-        </thead>
-        <tbody>${disciplineTableRows}</tbody>
-      </table>
-    </div>
-
-    <table style="width:100%;border-collapse:collapse;font-size:10.5px;">
-      <thead><tr style="background:#0d9488;color:#ffffff;">
-        <th style="border:1px solid #0f766e;padding:7px 8px;text-align:left;">Waktu</th>
-        <th style="border:1px solid #0f766e;padding:7px 8px;text-align:left;">Unit Kamar</th>
-        <th style="border:1px solid #0f766e;padding:7px 8px;text-align:left;">Pemeriksa & Pelaksana</th>
-        <th style="border:1px solid #0f766e;padding:7px 8px;text-align:left;">Shift</th>
-        <th style="border:1px solid #0f766e;padding:7px 8px;text-align:center;">Skor</th>
-        <th style="border:1px solid #0f766e;padding:7px 8px;text-align:left;">Status</th>
-        ${includePhotos ? '<th style="border:1px solid #0f766e;padding:7px 8px;text-align:center;">Foto 1</th><th style="border:1px solid #0f766e;padding:7px 8px;text-align:center;">Foto 2</th>' : ''}
-        <th style="border:1px solid #0f766e;padding:7px 8px;text-align:left;">Catatan & Tanggapan</th>
-      </tr></thead>
-      <tbody>${rowsHtml}</tbody>
-    </table>
-    <div style="margin-top:16px;text-align:right;font-size:10px;color:#64748b;">Aplikasi Cek Kesiapan Kamar • RS Khusus Bedah SS Medika</div>
-  `;
-  html2pdf().set({
-    margin: 8,
-    filename: `Rekap_Kesiapan_Kamar_${fileSuffix}.pdf`,
-    image: { type: 'jpeg', quality: 0.96 },
-    html2canvas: { scale: 2, useCORS: true },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-  }).from(el).save();
 }
 
-function renderMasterLists() {
-  const unitList = document.getElementById('master-unit-list');
-  if (unitList) {
-    unitList.innerHTML = unitsData.map(u => `
-      <div class="py-3 flex items-center justify-between gap-2">
-        <div><p class="text-xs font-extrabold text-slate-900">${u.unit_code} — ${u.unit_name}</p><p class="text-[11px] text-slate-400">${u.floor || '-'}</p></div>
-        <div class="flex gap-1.5">
-          <button onclick="editUnit('${u.id}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold">Edit</button>
-          <button onclick="deleteUnit('${u.id}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>
-        </div>
-      </div>
-    `).join('');
-  }
+function editUser(id) {
+  if (!isManagerRole()) return;
+  ensurePerawatRoleOptionInAccountForm();
+  const u = usersData.find(item => item.id === id);
+  if (!u) return;
+  document.getElementById('edit-user-id').value = u.id;
+  document.getElementById('new-user-fullname').value = u.full_name;
+  document.getElementById('new-user-username').value = u.username;
+  document.getElementById('new-user-password').value = u.password;
+  document.getElementById('new-user-role').value = u.role;
+  document.getElementById('btn-save-user').textContent = 'Simpan';
+}
 
-  const realItems = itemsData.filter(i => !isSystemMetaCategory(i.category));
-  const itemList = document.getElementById('master-item-list');
-  if (itemList) {
-    itemList.innerHTML = realItems.map(i => `
-      <div class="py-3 flex items-center justify-between gap-2">
-        <div><p class="text-xs font-extrabold text-slate-900">${i.item_name}</p><p class="text-[11px] text-slate-400">${i.category} ${i.is_critical ? '• Wajib' : ''}</p></div>
-        <div class="flex gap-1.5">
-          <button onclick="editItem('${i.id}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold">Edit</button>
-          <button onclick="deleteItem('${i.id}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>
-        </div>
-      </div>
-    `).join('');
+async function deleteUser(id) {
+  if (!isManagerRole()) return;
+  if (!confirm('Hapus akun ini?')) return;
+  const { error } = await db.from('app_users').delete().eq('id', id);
+  if (error) return alert('Gagal menghapus akun: ' + error.message);
+  await loadAllData();
+}
+
+document.getElementById('form-add-user').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!isManagerRole()) return;
+  const id = document.getElementById('edit-user-id').value;
+  const payload = { full_name: document.getElementById('new-user-fullname').value.trim(), username: document.getElementById('new-user-username').value.trim(), password: document.getElementById('new-user-password').value.trim(), role: document.getElementById('new-user-role').value };
+  const { error } = id ? await db.from('app_users').update(payload).eq('id', id) : await db.from('app_users').insert([payload]);
+  if (error) return alert('Gagal menyimpan akun: ' + error.message);
+  if (currentUser && currentUser.id === id) {
+    currentUser = { ...currentUser, ...payload };
+    localStorage.setItem('ck_user', JSON.stringify(currentUser));
+    document.getElementById('user-greeting').textContent = 'Halo, ' + currentUser.full_name;
   }
+  e.target.reset(); document.getElementById('edit-user-id').value = ''; document.getElementById('btn-save-user').textContent = '+ Akun';
+  await loadAllData();
+});
+
+function renderMasterUnits() {
+  document.getElementById('master-unit-list').innerHTML = unitsData.map(u => {
+    const safeCode = String(u.unit_code || '').replace(/'/g, "\\'");
+    const safeName = String(u.unit_name || '').replace(/'/g, "\\'");
+    return `
+    <div class="py-3 flex items-center justify-between gap-2">
+      <div>
+        <p class="text-xs font-extrabold text-slate-900">${u.unit_code} — ${u.unit_name}</p>
+        <p class="text-[11px] text-slate-500">${u.floor || ''} • Status: <strong class="uppercase">${getEffectiveUnitStatus(u)}</strong></p>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button type="button" onclick="showQrPrint('${safeCode}', '${safeName}')" class="px-2.5 py-1.5 bg-teal-50 text-teal-700 rounded-lg text-[11px] font-bold">QR</button>
+        <button type="button" onclick="editUnit('${u.id}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold">Edit</button>
+        <button type="button" onclick="deleteUnit('${u.id}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>
+      </div>
+    </div>
+  `;
+  }).join('');
 }
 
 document.getElementById('form-add-unit').addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!isManagerRole()) return;
   const id = document.getElementById('edit-unit-id').value;
-  const payload = { unit_code: document.getElementById('unit-code').value.trim(), unit_name: document.getElementById('unit-name').value.trim(), floor: document.getElementById('unit-floor').value.trim() };
-  if (id) await db.from('master_units').update(payload).eq('id', id);
+  const payload = { unit_code: document.getElementById('unit-code').value.trim(), unit_name: document.getElementById('unit-name').value.trim(), floor: document.getElementById('unit-floor').value.trim(), status: 'kotor' };
+  if (id) { delete payload.status; await db.from('master_units').update(payload).eq('id', id); }
   else await db.from('master_units').insert([payload]);
-  e.target.reset(); document.getElementById('edit-unit-id').value = ''; document.getElementById('btn-save-unit').textContent = '+ Simpan Unit Kamar'; loadAllData();
+  e.target.reset(); document.getElementById('edit-unit-id').value = ''; document.getElementById('btn-save-unit').textContent = '+ Simpan Unit';
+  loadAllData();
 });
 
 function editUnit(id) {
-  const u = unitsData.find(x => x.id === id); if (!u) return;
-  document.getElementById('edit-unit-id').value = u.id; document.getElementById('unit-code').value = u.unit_code; document.getElementById('unit-name').value = u.unit_name; document.getElementById('unit-floor').value = u.floor || ''; document.getElementById('btn-save-unit').textContent = 'Perbarui Unit Kamar';
+  if (!isManagerRole()) return;
+  const u = unitsData.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('edit-unit-id').value = u.id;
+  document.getElementById('unit-code').value = u.unit_code;
+  document.getElementById('unit-name').value = u.unit_name;
+  document.getElementById('unit-floor').value = u.floor;
+  document.getElementById('btn-save-unit').textContent = 'Perbarui';
 }
 
-async function deleteUnit(id) {
-  if (!isManagerRole()) return;
-  if (confirm('Hapus unit kamar ini?')) { await db.from('master_units').delete().eq('id', id); loadAllData(); }
+async function deleteUnit(id) { if (isManagerRole() && confirm('Hapus unit kamar ini?')) { await db.from('master_units').delete().eq('id', id); loadAllData(); } }
+
+function renderMasterItems() {
+  const realChecklistItems = itemsData.filter(i => !isSystemMetaCategory(i.category));
+  document.getElementById('master-item-list').innerHTML = realChecklistItems.map(i => `
+    <div class="py-3 flex items-center justify-between gap-2">
+      <div>
+        <p class="text-xs font-extrabold text-slate-900">${i.item_name} ${i.is_critical ? '<span class="text-rose-600">*Wajib</span>' : ''}</p>
+        <p class="text-[11px] text-slate-500">Kategori: ${i.category}</p>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button onclick="editItem('${i.id}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold">Edit</button>
+        <button onclick="deleteItem('${i.id}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>
+      </div>
+    </div>
+  `).join('');
 }
 
 document.getElementById('form-add-item').addEventListener('submit', async (e) => {
@@ -4734,78 +3979,212 @@ document.getElementById('form-add-item').addEventListener('submit', async (e) =>
   const payload = { item_name: document.getElementById('item-name').value.trim(), category: document.getElementById('item-category').value, is_critical: document.getElementById('item-critical').checked };
   if (id) await db.from('master_items').update(payload).eq('id', id);
   else await db.from('master_items').insert([payload]);
-  e.target.reset(); document.getElementById('edit-item-id').value = ''; document.getElementById('btn-save-item').textContent = '+ Simpan Item Checklist'; loadAllData();
+  e.target.reset(); document.getElementById('edit-item-id').value = ''; document.getElementById('btn-save-item').textContent = '+ Item';
+  loadAllData();
 });
 
 function editItem(id) {
-  const i = itemsData.find(x => x.id === id); if (!i) return;
-  document.getElementById('edit-item-id').value = i.id; document.getElementById('item-name').value = i.item_name; document.getElementById('item-category').value = i.category; document.getElementById('item-critical').checked = i.is_critical; document.getElementById('btn-save-item').textContent = 'Perbarui Item';
+  if (!isManagerRole()) return;
+  const i = itemsData.find(x => x.id === id);
+  if (!i) return;
+  document.getElementById('edit-item-id').value = i.id;
+  document.getElementById('item-name').value = i.item_name;
+  document.getElementById('item-category').value = i.category;
+  document.getElementById('item-critical').checked = i.is_critical;
+  document.getElementById('btn-save-item').textContent = 'Perbarui';
 }
 
-async function deleteItem(id) {
-  if (!isManagerRole()) return;
-  if (confirm('Hapus item checklist ini?')) { await db.from('master_items').delete().eq('id', id); loadAllData(); }
-}
+async function deleteItem(id) { if (isManagerRole() && confirm('Hapus item kelengkapan ini?')) { await db.from('master_items').delete().eq('id', id); loadAllData(); } }
 
-async function loadUsers() {
-  if (!isManagerRole()) return;
-  ensurePerawatRoleOptionInAccountForm();
-  const { data } = await db.from('app_users').select('*').order('created_at');
-  const list = document.getElementById('master-user-list');
-  if (!data || !list) return;
-  usersData = data;
-  localStorage.setItem('ck_users_cache', JSON.stringify(usersData));
-  populateOfficerDropdown();
-  list.innerHTML = data.map(u => `
-    <div class="py-2.5 flex items-center justify-between gap-2 text-xs">
-      <div><p class="font-extrabold text-slate-900">${u.full_name} <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 uppercase">${u.role}</span></p><p class="text-[11px] text-slate-400">User: ${u.username} • Pass: ${u.password}</p></div>
-      <div class="flex gap-1.5">
-        <button type="button" onclick="editUser('${u.id}')" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold">Edit</button>
-        <button type="button" onclick="deleteUser('${u.id}')" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>
-      </div>
-    </div>
-  `).join('');
-}
+function renderAnalytics() {
+  const siap = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
+  const kotor = unitsData.filter(u => ['kosong', 'dibersihkan', 'pending_approval', 'perlu_perbaikan'].includes(getEffectiveUnitStatus(u))).length;
+  const maint = unitsData.filter(u => getEffectiveUnitStatus(u) === 'maintenance').length;
+  const ctx = document.getElementById('chart-status');
+  if (statusChart) statusChart.destroy();
+  statusChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Siap Pakai', 'Kosong / Proses', 'Maintenance'],
+      datasets: [{ data: [siap, kotor, maint], backgroundColor: ['#10b981', '#f59e0b', '#e11d48'], borderWidth: 2, borderColor: '#ffffff' }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '62%',
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { boxWidth: 10, padding: 10, font: { size: 10.5, weight: 'bold' } }
+        }
+      }
+    }
+  });
 
-function editUser(id) {
-  if (!isManagerRole()) return;
-  ensurePerawatRoleOptionInAccountForm();
-  const u = usersData.find(x => String(x.id) === String(id));
-  if (!u) return;
-  document.getElementById('edit-user-id').value = u.id;
-  document.getElementById('new-user-fullname').value = u.full_name;
-  document.getElementById('new-user-username').value = u.username;
-  document.getElementById('new-user-password').value = u.password;
-  document.getElementById('new-user-role').value = (u.role || 'petugas').toLowerCase();
-  document.getElementById('btn-save-user').textContent = 'Update';
-}
+  const { rows: filteredRows } = getFilteredExportData();
+  const countBadge = document.getElementById('export-filter-count');
+  if (countBadge) countBadge.textContent = `${filteredRows.length} Data Terpilih`;
 
-document.getElementById('form-add-user').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  if (!isManagerRole()) return;
-  const editId = document.getElementById('edit-user-id').value;
-  const payload = {
-    full_name: document.getElementById('new-user-fullname').value.trim(),
-    username: document.getElementById('new-user-username').value.trim(),
-    password: document.getElementById('new-user-password').value.trim(),
-    role: document.getElementById('new-user-role').value
-  };
-  let errResult = null;
-  if (editId) {
-    const { error } = await db.from('app_users').update(payload).eq('id', editId);
-    errResult = error;
-  } else {
-    const { error } = await db.from('app_users').insert([payload]);
-    errResult = error;
+  const total = filteredRows.length;
+  document.getElementById('analytic-total').textContent = `${total} Laporan`;
+  document.getElementById('analytic-avg-score').textContent = `${total ? Math.round(filteredRows.reduce((a, b) => a + b.readiness_score, 0) / total) : 0}%`;
+  document.getElementById('analytic-avg-time').textContent = `${total ? Math.round(filteredRows.reduce((a, b) => a + (b.duration_seconds || 0), 0) / total) : 0} Detik`;
+
+  const historyBox = document.getElementById('history-list');
+  if (filteredRows.length === 0) {
+    historyBox.innerHTML = '<div class="text-center py-6 text-xs text-slate-400 bg-slate-50 rounded-2xl border border-slate-100">Tidak ada riwayat inspeksi pada filter periode/kamar ini.</div>';
+    return;
   }
-  if (errResult) return alert('Gagal menyimpan akun: ' + errResult.message);
-  e.target.reset();
-  document.getElementById('edit-user-id').value = '';
-  document.getElementById('btn-save-user').textContent = '+ Akun';
-  loadUsers();
-});
 
-async function deleteUser(id) {
-  if (!isManagerRole()) return;
-  if (confirm('Hapus akun ini?')) { await db.from('app_users').delete().eq('id', id); loadUsers(); }
+  const resolveBtnLabel = requireApprovalMode ? 'Selesai Perbaikan & Minta Approve Manajemen' : 'Selesai Perbaikan (Siap Pakai)';
+
+  historyBox.innerHTML = filteredRows.map((r) => {
+    const waktuStr = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+    const meta = parseNotesMetadata(r.notes);
+    const isNurseReq = isNurseRequestRecord(r);
+    const isRepair = isRepairRecord(r);
+    const isApproved = isInspectionOfficiallyApproved(r);
+    const needsFix = isRevisionRequested(r);
+    const isPendingApproval = !isApproved && !needsFix && !isRepair && !isNurseReq;
+    const ownerName = meta.executor || r.inspector_name;
+    const canResolveFix = !isRepair && !isNurseReq && needsFix && r.id && (isManagerRole() || isPetugasRole() || (currentUser && ownerName === currentUser.full_name));
+    const safeUnitName = (r.unit_name || '').replace(/'/g, "\\'");
+    const cleanNotesText = meta.cleanNotes
+      .replace(REPAIR_RECORD_TAG, '')
+      .replace(CHECKOUT_RECORD_TAG, '')
+      .replace(NURSE_REQ_TAG, '')
+      .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
+      .trim();
+    const reqType = isNurseReq ? getNurseRequestTypeFromString((r.notes || '') + ' ' + (r.shift || '')) : null;
+
+    const pillClass = isNurseReq
+      ? reqType.badgeClass
+      : isRepair
+        ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')
+        : isApproved
+          ? 'bg-emerald-100 text-emerald-700'
+          : isPendingApproval
+            ? 'bg-indigo-100 text-indigo-800'
+            : 'bg-rose-100 text-rose-800';
+    const pillText = isNurseReq
+      ? reqType.shortTag
+      : isRepair
+        ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI' : 'CEK PERBAIKAN')
+        : isApproved
+          ? `SIAP PAKAI (${r.readiness_score}%)`
+          : isPendingApproval
+            ? `MENUNGGU APPROVAL (${r.readiness_score}%)`
+            : `PERLU PERBAIKAN (${r.readiness_score}%)`;
+
+    return `
+      <div class="glass-card rounded-2xl p-4 shadow-sm space-y-2.5">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <h4 class="text-xs font-extrabold text-slate-900">${r.unit_name}</h4>
+            <p class="text-[11px] text-slate-500">${isNurseReq ? 'Perawat' : isRepair ? 'Pengaju' : 'Pemeriksa'}: <strong>${r.inspector_name}</strong> • ${r.shift}</p>
+            ${(meta.executor && !isNurseReq) ? `<p class="text-[11px] text-indigo-700 font-semibold">${isRepair ? 'Ditugaskan ke' : 'Pelaksana'}: <strong>${meta.executor}</strong></p>` : ''}
+            <p class="text-[10px] text-slate-400 mt-0.5">${waktuStr}</p>
+          </div>
+          <span class="shrink-0 text-[9.5px] font-extrabold px-2.5 py-1 rounded-full ${pillClass}">${pillText}</span>
+        </div>
+        <div class="text-[11px] px-2.5 py-2 rounded-xl border ${isNurseReq ? 'bg-orange-50/70 border-orange-200 text-orange-900' : isRepair ? 'bg-amber-50/70 border-amber-200 text-amber-900' : isApproved ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' : isPendingApproval ? 'bg-indigo-50/80 border-indigo-200 text-indigo-900' : 'bg-rose-50/80 border-rose-200 text-rose-900'} space-y-1.5">
+          <div>
+            <p class="font-extrabold">Status: ${meta.feedbackStatus || (isApproved ? 'Sesuai Standar (Approved)' : 'Menunggu Approval Manajemen')}</p>
+            ${meta.feedbackDetail ? `<p class="text-[10.5px] mt-0.5">${isNurseReq ? 'Instruksi' : isRepair ? 'Kategori' : 'Bagian Perbaikan'}: <strong>${meta.feedbackDetail}</strong></p>` : ''}
+          </div>
+          ${canResolveFix ? `
+            <button type="button" onclick="markIssueResolvedByOfficer('${r.id}')" class="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
+              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> ${isManagerRole() ? 'Masalah Selesai & Approve Siap Pakai' : resolveBtnLabel}
+            </button>
+          ` : ''}
+          ${(isManagerRole() && !isApproved && !isRepair && !isNurseReq && r.id) ? `
+            <div class="grid grid-cols-2 gap-1.5">
+              <button type="button" onclick="openReportInForm('${r.id}')" class="py-2 px-2 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+                <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek & Approve
+              </button>
+              <button type="button" onclick="requestRevisionByManagement('${r.unit_id || ''}', '${safeUnitName}', '${r.id}')" class="py-2 px-2 bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+                <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Perlu Diperbaiki
+              </button>
+            </div>
+          ` : ''}
+          ${(isRepair && r.final_status !== 'siap' && r.id && !isPerawatRole()) ? `
+            <div class="grid grid-cols-2 gap-1.5">
+              <button type="button" onclick="openRepairReportInForm('${r.id}')" class="py-2 px-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+                <i data-lucide="wrench" class="w-3.5 h-3.5"></i> Kelola Perbaikan
+              </button>
+              <button type="button" onclick="markRepairCompletedById('${r.id}')" class="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+                <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Sudah Diperbaiki
+              </button>
+            </div>
+          ` : ''}
+        </div>
+        ${cleanNotesText ? `<p class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg">Catatan: ${cleanNotesText}</p>` : ''}
+        <div class="grid grid-cols-2 gap-2">
+          ${r.photo_room_url ? `<img src="${r.photo_room_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />` : ''}
+          ${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" onclick="zoomPhoto(this.src)" class="w-full h-28 object-cover rounded-xl border cursor-pointer" />` : ''}
+        </div>
+        <div class="pt-1 flex items-center justify-end gap-2 flex-wrap">
+          ${(creatorDeleteUnlocked && isManagerRole() && r.id) ? `<button type="button" onclick="deleteHistoryRecord('${r.id}', '${safeUnitName}', '${r.unit_id || ''}')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-[11px] font-bold rounded-xl flex items-center gap-1 transition"><i data-lucide="trash-2" class="w-3 h-3"></i> Hapus</button>` : ''}
+          ${r.id ? `<button type="button" onclick="openReportFullView('${r.id}')" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl flex items-center gap-1 transition"><i data-lucide="maximize-2" class="w-3 h-3"></i> Mode Penuh</button>` : ''}
+          <button type="button" onclick="shareHistoryWaById('${r.id}')" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-[11px] font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition">
+            <i data-lucide="send" class="w-3.5 h-3.5"></i> Kirim ke WhatsApp
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+  lucide.createIcons();
 }
+
+function exportCsv() {
+  const { rows: filteredRows, label, fileSuffix } = getFilteredExportData();
+  if (filteredRows.length === 0) return alert(`Tidak ada data laporan pada filter (${label}).`);
+  const headers = ['No,Waktu,Unit Kamar,Pemeriksa,Pelaksana,Shift,Skor (%),Status,Tanggapan Pemeriksa,Bagian Perbaikan,Durasi (Detik),Rincian Checklist,Catatan'];
+  const rows = filteredRows.map((r, idx) => {
+    const meta = parseNotesMetadata(r.notes);
+    const cleanNotesText = meta.cleanNotes
+      .replace(REPAIR_RECORD_TAG, '')
+      .replace(CHECKOUT_RECORD_TAG, '')
+      .replace(NURSE_REQ_TAG, '')
+      .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
+      .trim();
+    const checklistStr = Array.isArray(r.checklist_data) ? r.checklist_data.map(c => `${c.item}: ${c.checked ? 'OK' : 'BELUM'}`).join(' | ') : '';
+    return `${idx + 1},"${new Date(r.created_at).toLocaleString('id-ID')}","${r.unit_name}","${r.inspector_name}","${meta.executor || r.inspector_name}","${r.shift}",${r.readiness_score},"${r.final_status.toUpperCase()}","${(meta.feedbackStatus || '-').replace(/"/g, '""')}","${(meta.feedbackDetail || '-').replace(/"/g, '""')}",${r.duration_seconds || 0},"${checklistStr.replace(/"/g, '""')}","${cleanNotesText.replace(/"/g, '""')}"`;
+  });
+  const blob = new Blob(['\uFEFF' + headers.concat(rows).join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `Rekap_Kesiapan_Kamar_${fileSuffix}.csv`;
+  a.click();
+}
+
+function exportPdf() {
+  const { rows: filteredRows, label, fileSuffix } = getFilteredExportData();
+  if (filteredRows.length === 0) return alert(`Tidak ada data laporan pada filter (${label}).`);
+  const includePhotos = document.getElementById('export-pdf-include-photos')?.checked || false;
+  const total = filteredRows.length;
+  const avgScore = Math.round(filteredRows.reduce((a, b) => a + b.readiness_score, 0) / total);
+  const printWin = window.open('', '_blank');
+  if (!printWin) return alert('Izinkan pop-up browser untuk mengekspor PDF.');
+
+  const rowsHtml = filteredRows.map((r, i) => {
+    const meta = parseNotesMetadata(r.notes);
+    const cleanNotesText = meta.cleanNotes
+      .replace(REPAIR_RECORD_TAG, '')
+      .replace(CHECKOUT_RECORD_TAG, '')
+      .replace(NURSE_REQ_TAG, '')
+      .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
+      .trim();
+    const feedbackFull = [meta.feedbackStatus, meta.feedbackDetail ? `Keterangan: ${meta.feedbackDetail}` : ''].filter(Boolean).join(' • ') || '-';
+    return `<tr><td>${i + 1}</td><td>${new Date(r.created_at).toLocaleString('id-ID')}</td><td>${r.unit_name}</td><td>${r.inspector_name}</td><td>${meta.executor || r.inspector_name}</td><td>${r.shift}</td><td>${r.readiness_score}%</td><td>${r.final_status.toUpperCase()}</td><td>${feedbackFull}</td><td>${cleanNotesText || '-'}</td>${includePhotos ? `<td><div style="display:flex;gap:4px;">${r.photo_room_url ? `<img src="${r.photo_room_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}</div></td>` : ''}</tr>`;
+  }).join('');
+
+  printWin.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8" /><title>Rekap Kesiapan Kamar</title><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script><style>body{font-family:Arial,sans-serif;padding:20px;color:#1e293b;background:#f8fafc;margin:0}.toolbar{display:flex;gap:10px;margin-bottom:16px;background:#fff;padding:12px 16px;border-radius:12px;border:1px solid #e2e8f0}.btn{padding:10px 16px;border:none;border-radius:10px;font-weight:bold;font-size:13px;cursor:pointer}.btn-download{background:#0d9488;color:#fff}.btn-print{background:#334155;color:#fff}.report-box{background:#fff;padding:24px;border-radius:12px;border:1px solid #e2e8f0}h2{margin:0 0 4px;color:#0d9488;font-size:18px}p{margin:0 0 14px;font-size:12px;color:#64748b}.summary{display:flex;gap:16px;margin-bottom:14px;font-size:12px;background:#f1f5f9;padding:10px 14px;border-radius:8px}table{width:100%;border-collapse:collapse;font-size:10.5px}th,td{border:1px solid #cbd5e1;padding:6px;text-align:left;vertical-align:middle}th{background-color:#f1f5f9;font-weight:bold}@media print{.no-print{display:none!important}body{background:#fff;padding:0}.report-box{border:none;padding:0}}</style></head><body><div class="toolbar no-print"><button type="button" id="btn-dl-pdf" class="btn btn-download" onclick="downloadDirectPdf()">⬇ Download PDF</button><button type="button" id="btn-print" class="btn btn-print" onclick="window.print()">🖨 Cetak / Print</button></div><div id="pdf-content" class="report-box"><h2>REKAPITULASI LAPORAN KESIAPAN KAMAR</h2><p>RS Khusus Bedah SS Medika • Filter: <strong>${label}</strong> • Dicetak: ${new Date().toLocaleString('id-ID')}</p><div class="summary"><span><strong>Total Laporan:</strong> ${total}</span><span><strong>Rata-Rata Skor Kesiapan:</strong> ${avgScore}%</span></div><table><thead><tr><th>No</th><th>Waktu</th><th>Unit Kamar</th><th>Pemeriksa</th><th>Pelaksana</th><th>Shift</th><th>Skor</th><th>Status</th><th>Tanggapan Pemeriksa</th><th>Catatan</th>${includePhotos ? '<th>Foto</th>' : ''}</tr></thead><tbody>${rowsHtml}</tbody></table></div><script>function downloadDirectPdf(){const btn=document.getElementById('btn-dl-pdf');btn.textContent='Memproses PDF...';btn.disabled=true;html2pdf().set({margin:10,filename:'Rekap_Kesiapan_Kamar_${fileSuffix}.pdf',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'landscape'}}).from(document.getElementById('pdf-content')).save().then(()=>{btn.textContent='⬇ Download PDF';btn.disabled=false;});}<\/script></body></html>`);
+  printWin.document.close();
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js?v=6.5').catch(() => {});
+  });
+    }
