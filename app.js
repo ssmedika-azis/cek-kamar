@@ -1,4 +1,4 @@
-const APP_VERSION = '6.6';
+const APP_VERSION = '6.7';
 const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteHB4cnJqeG51anlnYWJyaHNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MDk0MjAsImV4cCI6MjExMDQ4NTQyMH0.tFMCbg1_R-I08KEIs-h6wwxXhYLP2Z0oYgnDGC7T2YU';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -99,6 +99,7 @@ let activeWaPayload = null;
 let currentPublicReport = null;
 let activeTabName = 'dashboard';
 let activeReviewReportId = null;
+let officerTaskOpen = false;
 
 let realtimeChannel = null;
 let pollingInterval = null;
@@ -799,10 +800,36 @@ async function approveActiveFormReport() {
 
 // ==================== AKSI CEPAT PERAWAT (4 TOMBOL + SUARA) ====================
 
+function latestPulangRecordForUnit(unitId) {
+  return inspectionsData
+    .filter(r => r && String(r.unit_id) === String(unitId) && getNurseRequestTypeFromString((r.notes || '') + ' ' + (r.shift || '')).key === 'pulang')
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0] || null;
+}
+
+function latestSiapkanRecordForUnit(unitId) {
+  return inspectionsData
+    .filter(r => r && String(r.unit_id) === String(unitId) && getNurseRequestTypeFromString((r.notes || '') + ' ' + (r.shift || '')).key === 'siapkan')
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0] || null;
+}
+
+function isSiapkanLockedForUnit(unitId) {
+  const siapkanRec = latestSiapkanRecordForUnit(unitId);
+  if (!siapkanRec) return false;
+  const pulangRec = latestPulangRecordForUnit(unitId);
+  if (pulangRec && new Date(pulangRec.created_at || 0) > new Date(siapkanRec.created_at || 0)) return false;
+  const unit = unitsData.find(u => String(u.id) === String(unitId));
+  if (unit && getEffectiveUnitStatus(unit) === 'siap') return false;
+  return true;
+}
+
 async function sendNurseRoomAction(unitId, unitName, actionKey) {
   if (!isManagerRole() && !isPerawatRole()) return;
   const cfg = NURSE_REQUEST_TYPES[actionKey] || NURSE_REQUEST_TYPES.pulang;
   const roomLabel = extractSpokenRoomLabel(unitName);
+
+  if (cfg.key === 'siapkan' && isSiapkanLockedForUnit(unitId)) {
+    return alert('Tombol "Siapkan Kamar" untuk kamar ini masih terkunci. Tunggu petugas menindaklanjuti, atau tekan "Pasien Pulang" terlebih dahulu. Anda masih bisa menyiapkan nomor kamar lain.');
+  }
 
   const ok = confirm(`Kirim permintaan "${cfg.label}" untuk ${unitName} ke Petugas sekarang?`);
   if (!ok) return;
@@ -960,6 +987,7 @@ async function markIssueResolvedByOfficer(reportId) {
     document.getElementById('prefill-review-banner')?.classList.add('hidden');
     playNotificationChime();
     await loadAllData();
+    restartNurseReminderIfNeeded();
     alert(`Berhasil! Perbaikan pada ${report.unit_name} selesai dan kamar langsung berstatus SIAP PAKAI.`);
   } else {
     const pendingNote = composeNotesWithMetadata(
@@ -993,6 +1021,7 @@ async function markIssueResolvedByOfficer(reportId) {
     document.getElementById('prefill-review-banner')?.classList.add('hidden');
     playNotificationChime();
     await loadAllData();
+    restartNurseReminderIfNeeded();
     alert(`Terkirim ke Manajemen! Perbaikan pada ${report.unit_name} sudah dilaporkan selesai dan menunggu approval Manajemen.`);
   }
 }
@@ -1006,6 +1035,7 @@ async function acknowledgeNurseTask(unitId, unitName) {
   }).eq('id', unitId);
   if (error) return alert('Gagal memperbarui status: ' + error.message);
   await loadAllData();
+  restartNurseReminderIfNeeded();
 }
 
 function renderOfficerRevisionBanner() {
@@ -1022,6 +1052,7 @@ function renderOfficerRevisionBanner() {
   if (!isPetugasRole()) {
     container.innerHTML = '';
     container.classList.add('hidden');
+    syncOfficerInspectLanding(false);
     return;
   }
 
@@ -1063,7 +1094,7 @@ function renderOfficerRevisionBanner() {
                     <i data-lucide="check" class="w-3.5 h-3.5"></i> Sudah Dikerjakan
                   </button>
                 ` : ''}
-                <button type="button" onclick="quickInspect('${u.id}')" class="py-1.5 px-3 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold rounded-lg text-[10.5px] flex items-center gap-1 shadow-sm transition">
+                <button type="button" onclick="quickInspect('${u.id}')" class="nurse-btn pulse-teal py-1.5 px-3 bg-gradient-to-br from-teal-500 to-cyan-600 text-white font-extrabold rounded-lg text-[10.5px] flex items-center gap-1 shadow-md shadow-teal-600/30 transition">
                   <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Cek & Siapkan Kamar
                 </button>
               </div>
@@ -1114,6 +1145,7 @@ function renderOfficerRevisionBanner() {
   container.classList.remove('hidden');
   container.innerHTML = nurseTasksHtml + revisionHtml;
   lucide.createIcons();
+  syncOfficerInspectLanding(false);
 }
 
 // ==================== MODUL NAVIGASI & FORM CEK PERBAIKAN FASILITAS ====================
@@ -2245,26 +2277,157 @@ function getFilteredExportData() {
   return { rows, label: periodLabel, fileSuffix };
 }
 
-function playNotificationChime() {
+function playNotificationChime(long = true) {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     const now = ctx.currentTime;
-    [880, 1174.66, 1318.51].forEach((freq, idx) => {
+    const phrase1 = long ? [659.25, 783.99, 987.77, 1318.51, 987.77, 1174.66, 880, 1174.66] : [880, 1174.66, 1318.51];
+    phrase1.forEach((freq, idx) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, now + idx * 0.12);
-      gain.gain.setValueAtTime(0.001, now + idx * 0.12);
-      gain.gain.exponentialRampToValueAtTime(0.24, now + idx * 0.12 + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.35);
+      const t = now + idx * 0.14;
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.22, t + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.52);
       osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.start(now + idx * 0.12);
-      osc.stop(now + idx * 0.12 + 0.38);
+      osc.start(t);
+      osc.stop(t + 0.55);
     });
+    if (long) {
+      const start = now + phrase1.length * 0.14 + 0.28;
+      [783.99, 1046.5, 1318.51].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        const t = start + idx * 0.16;
+        osc.frequency.setValueAtTime(freq, t);
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.exponentialRampToValueAtTime(0.16, t + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.62);
+      });
+    }
   } catch (e) {}
+}
+
+// ====== v6.7: Pengingat berulang Petugas (berbunyi terus sampai tugas dibuka) ======
+let nurseReminderTimer = null;
+const NURSE_REMINDER_INTERVAL_MS = 15000;
+
+function latestNurseRequestForUnit(unitId) {
+  return inspectionsData
+    .filter(r => r && isNurseRequestRecord(r) && String(r.unit_id) === String(unitId))
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0] || null;
+}
+
+function getPendingNurseTaskUnits() {
+  return unitsData.filter(u => {
+    if (!isNurseMarkedUnit(String(u.last_checked_by || ''))) return false;
+    if (getEffectiveUnitStatus(u) === 'siap') return false;
+    return true;
+  });
+}
+
+function stopNurseReminder() {
+  if (nurseReminderTimer) { clearInterval(nurseReminderTimer); nurseReminderTimer = null; }
+  try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
+}
+
+function triggerPersistentNurseNotification(unit) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const req = latestNurseRequestForUnit(unit.id);
+  const title = 'Permintaan Perawat: ' + unit.unit_name;
+  const body = req ? getSpokenTextForReport(req) : 'Ketuk untuk membuka Cek & Siapkan Kamar.';
+  const options = {
+    body,
+    icon: './192x192.png',
+    badge: './192x192.png',
+    vibrate: [300, 120, 300, 120, 300],
+    tag: 'nurse-req-' + unit.id,
+    renotify: true,
+    requireInteraction: true,
+    silent: false,
+    data: { url: window.location.href, unitId: String(unit.id) }
+  };
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistration().then(reg => {
+      if (reg && reg.showNotification) {
+        reg.showNotification(title, options).catch(() => {});
+      } else {
+        try {
+          const n = new Notification(title, options);
+          n.onclick = () => { window.focus(); quickInspect(unit.id); };
+        } catch (e) {}
+      }
+    }).catch(() => {});
+  } else {
+    try {
+      const n = new Notification(title, options);
+      n.onclick = () => { window.focus(); quickInspect(unit.id); };
+    } catch (e) {}
+  }
+}
+
+function closeNurseNotificationForUnit(unitId) {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.getRegistration().then(reg => {
+    if (!reg || !reg.getNotifications) return;
+    reg.getNotifications({ tag: 'nurse-req-' + unitId }).then(list => list.forEach(n => n.close())).catch(() => {});
+  }).catch(() => {});
+}
+
+function startNurseReminder() {
+  if (!isPetugasRole()) return stopNurseReminder();
+  stopNurseReminder();
+  const tick = () => {
+    if (!isPetugasRole()) return stopNurseReminder();
+    const pending = getPendingNurseTaskUnits();
+    if (pending.length === 0) return stopNurseReminder();
+    // Notifikasi tetap dikirim saat tab di belakang; suara hanya berbunyi saat tampilan aktif
+    pending.forEach(triggerPersistentNurseNotification);
+    if (document.hidden) return;
+    const first = pending[0];
+    playNotificationChime(true);
+    const req = latestNurseRequestForUnit(first.id);
+    const roomLabel = extractSpokenRoomLabel(first.unit_name);
+    const baseText = req ? getSpokenTextForReport(req) : `Tolong siapkan kamar ${roomLabel}.`;
+    speakIndonesianAlert(pending.length > 1 ? `${pending.length} permintaan kamar menunggu. ${baseText}` : baseText);
+    if (navigator.vibrate) navigator.vibrate([300, 120, 300, 120, 300]);
+  };
+  tick();
+  nurseReminderTimer = setInterval(tick, NURSE_REMINDER_INTERVAL_MS);
+}
+
+function restartNurseReminderIfNeeded() {
+  if (!isPetugasRole()) return stopNurseReminder();
+  if (getPendingNurseTaskUnits().length > 0) startNurseReminder();
+  else stopNurseReminder();
+}
+
+function syncOfficerInspectLanding(forceOpen) {
+  const formCard = document.getElementById('inspect-form-card');
+  const emptyState = document.getElementById('officer-empty-state');
+  if (!isPetugasRole()) {
+    if (formCard) formCard.classList.remove('hidden');
+    if (emptyState) emptyState.classList.add('hidden');
+    return;
+  }
+  const pending = getPendingNurseTaskUnits();
+  const revisions = getRoomChecklistReports().filter(r => isRevisionRequested(r));
+  const hasTask = pending.length > 0 || revisions.length > 0;
+  if (forceOpen) officerTaskOpen = true;
+  else if (!hasTask) officerTaskOpen = false;
+  if (formCard) formCard.classList.toggle('hidden', !officerTaskOpen);
+  if (emptyState) emptyState.classList.toggle('hidden', officerTaskOpen || hasTask);
 }
 
 function updateNotificationPermissionUI() {
@@ -2302,7 +2465,7 @@ async function requestNativeNotificationPermission() {
 async function triggerNativePhoneNotification(title, body, reportId) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   const targetUrl = reportId ? getPublicReportUrl(reportId, true) : window.location.href;
-  const options = { body, icon: './192x192.png', badge: './192x192.png', vibrate: [250, 100, 250], tag: 'cek-kamar-' + (reportId || Date.now()), renotify: true, data: { url: targetUrl } };
+  const options = { body, icon: './192x192.png', badge: './192x192.png', vibrate: [300, 120, 300, 120, 300], tag: 'cek-kamar-' + (reportId || Date.now()), renotify: true, requireInteraction: true, silent: false, data: { url: targetUrl } };
   try {
     if ('serviceWorker' in navigator) {
       const reg = await navigator.serviceWorker.getRegistration();
@@ -3059,6 +3222,7 @@ function openReportInForm(reportId) {
     return;
   }
   switchTab('inspect', false, true);
+  syncOfficerInspectLanding(true);
   populateOfficerDropdown();
   populateShiftDropdown();
   populateFormWithReport(rep);
@@ -3089,13 +3253,13 @@ function configureNavigationByRole() {
     if (bottomNavContainer) bottomNavContainer.classList.remove('hidden');
     if (navGrid) navGrid.classList.remove('hidden');
     btnDash?.classList.add('hidden');
-    btnInspect?.classList.remove('hidden');
+    btnInspect?.classList.add('hidden');
     btnRepair?.classList.remove('hidden');
     btnAnalytics?.classList.remove('hidden');
     btnMaster?.classList.add('hidden');
     if (navGrid) {
-      navGrid.classList.remove('grid-cols-2', 'grid-cols-4', 'grid-cols-5');
-      navGrid.classList.add('grid-cols-3');
+      navGrid.classList.remove('grid-cols-3', 'grid-cols-4', 'grid-cols-5');
+      navGrid.classList.add('grid-cols-2');
     }
     inviteBox?.classList.add('hidden');
   } else {
@@ -3156,9 +3320,11 @@ async function enterApp() {
     localStorage.setItem('ck_last_seen_id', lastKnownReportId);
   }
   startRealtimeReportListener();
+  restartNurseReminderIfNeeded();
 }
 
 function logout() {
+  stopNurseReminder();
   localStorage.removeItem('ck_user');
   localStorage.removeItem('ck_last_tab');
   document.documentElement.classList.remove('has-session');
@@ -3272,6 +3438,8 @@ async function loadAllData() {
       if (curUnitId) loadExistingInspectionToForm(curUnitId);
     }
   }
+  restartNurseReminderIfNeeded();
+  syncOfficerInspectLanding(false);
 }
 
 function applyNurseDashboardVisibility() {
@@ -3301,7 +3469,7 @@ function applyNurseDashboardVisibility() {
   }
   banner.classList.remove('hidden');
   banner.innerHTML = `
-    <div class="rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white p-3.5 shadow-sm mb-3 flex items-center justify-between gap-3">
+    <div class="banner-gradient rounded-2xl text-white p-3.5 shadow-lg shadow-orange-500/25 mb-3 flex items-center justify-between gap-3">
       <div class="space-y-0.5">
         <span class="text-[9.5px] font-extrabold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full">Nurse Station</span>
         <h3 class="text-xs sm:text-sm font-extrabold">Permintaan Layanan Kamar (1 Ketuk)</h3>
@@ -3339,7 +3507,7 @@ function renderDashboard() {
     grid.innerHTML = '<div class="col-span-full text-center py-8 text-xs text-slate-400">Belum ada unit kamar. Tambahkan di menu Pengaturan.</div>';
     return;
   }
-  grid.innerHTML = unitsData.map(u => {
+  grid.innerHTML = unitsData.map((u, idx) => {
     const eff = getEffectiveUnitStatus(u);
     const latestRep = getLatestInspectionForUnit(u.id, u.unit_name);
     const isWaitingApproval = (eff === 'pending_approval' || eff === 'dibersihkan');
@@ -3370,30 +3538,32 @@ function renderDashboard() {
 
     // Tampilan khusus Perawat: 4 tombol aksi cepat langsung di kartu kamar
     if (isPerawatRole()) {
+      const siapkanLocked = isSiapkanLockedForUnit(u.id);
       return `
-        <div class="glass-card rounded-2xl p-4 shadow-sm border ${st.border} flex flex-col justify-between space-y-3">
+        <div class="glass-card card-rise rounded-2xl p-4 shadow-sm border ${st.border} flex flex-col justify-between space-y-3" style="animation-delay:${Math.min(idx, 6) * 45}ms">
           <div class="flex items-start justify-between gap-2">
             <div class="min-w-0">
               <span class="text-[10px] font-mono font-bold text-slate-400">${u.unit_code} • ${u.floor || ''}</span>
               <h3 class="text-sm font-extrabold text-slate-900 truncate">${u.unit_name}</h3>
             </div>
-            <span class="shrink-0 text-[9px] font-extrabold px-2.5 py-1 rounded-full ${st.bg}">${st.label}</span>
+            <span class="shrink-0 badge-pulse text-[9px] font-extrabold px-2.5 py-1 rounded-full ${st.bg}">${st.label}</span>
           </div>
           <p class="text-[11px] ${isNurseMarked ? 'text-orange-700 font-bold' : 'text-slate-500'} truncate">${checkedInfo}</p>
           <div class="grid grid-cols-2 gap-1.5 pt-1">
-            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'siapkan')" class="py-2.5 px-2 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
-              <span>🛏️</span> Siapkan Kamar
+            <button type="button" ${siapkanLocked ? 'disabled title="Terkunci sampai Pasien Pulang"' : ''} onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'siapkan')" class="nurse-btn py-2.5 px-2 ${siapkanLocked ? 'bg-slate-300 text-slate-600' : 'bg-gradient-to-br from-sky-500 to-blue-700 text-white shadow-md shadow-sky-600/30'} font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 transition">
+              <span>🛏️</span> ${siapkanLocked ? 'Terkunci • Tunggu Pulang' : 'Siapkan Kamar'}
             </button>
-            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'extrabed')" class="py-2.5 px-2 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'extrabed')" class="nurse-btn py-2.5 px-2 bg-gradient-to-br from-purple-500 to-fuchsia-700 text-white shadow-md shadow-purple-600/30 font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 transition">
               <span>➕</span> Tambah Extrabed
             </button>
-            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'bersihkan')" class="py-2.5 px-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'bersihkan')" class="nurse-btn py-2.5 px-2 bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md shadow-amber-600/30 font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 transition">
               <span>🧹</span> Minta Dibersihkan
             </button>
-            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'pulang')" class="py-2.5 px-2 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm transition">
+            <button type="button" onclick="sendNurseRoomAction('${u.id}', '${safeUnitName}', 'pulang')" class="nurse-btn pulse-warm py-2.5 px-2 bg-gradient-to-br from-orange-500 to-rose-600 text-white shadow-md shadow-orange-600/30 font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1 transition">
               <span>🚪</span> Pasien Pulang
             </button>
           </div>
+          ${siapkanLocked ? '<p class="text-[9.5px] font-bold text-slate-500">Permintaan sedang berjalan • tombol dibuka lagi setelah Pasien Pulang</p>' : ''}
         </div>
       `;
     }
@@ -3414,7 +3584,7 @@ function renderDashboard() {
     const showApprovalButtons = isManagerRole() && isWaitingApproval;
 
     return `
-      <div class="glass-card rounded-2xl p-4 shadow-sm border ${st.border} flex flex-col justify-between space-y-3">
+      <div class="glass-card card-rise rounded-2xl p-4 shadow-sm border ${st.border} flex flex-col justify-between space-y-3" style="animation-delay:${Math.min(idx, 6) * 45}ms">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
             <span class="text-[10px] font-mono font-bold text-slate-400">${u.unit_code} • ${u.floor || ''}</span>
@@ -3454,10 +3624,37 @@ function renderDashboard() {
 
 function quickInspect(unitId) {
   if (isPerawatRole()) return;
+  stopNurseReminder();
+  const unit = unitsData.find(u => String(u.id) === String(unitId));
+  if (isManagerRole()) {
+    switchTab('inspect', false, true);
+    syncOfficerInspectLanding(true);
+    const sel0 = document.getElementById('inspect-unit');
+    if (sel0 && unit) sel0.value = String(unit.id);
+    loadExistingInspectionToForm(unitId);
+    return;
+  }
   switchTab('inspect', false, true);
+  syncOfficerInspectLanding(true);
+  populateOfficerDropdown();
+  populateShiftDropdown();
+  renderInspectForm();
+  clearPrefillFormState();
   const unitSel = document.getElementById('inspect-unit');
-  if (unitSel) unitSel.value = unitId;
-  loadExistingInspectionToForm(unitId);
+  if (unitSel && unit) unitSel.value = String(unit.id);
+  closeNurseNotificationForUnit(unitId);
+  const req = latestNurseRequestForUnit(unitId);
+  const banner = document.getElementById('prefill-review-banner');
+  const desc = document.getElementById('prefill-review-desc');
+  if (banner && desc) {
+    const reqLabel = req ? getNurseRequestTypeFromString((req.notes || '') + ' ' + (req.shift || '')).label : 'Permintaan Perawat';
+    desc.innerHTML = `<strong>${unit ? unit.unit_name : ''}</strong> • ${reqLabel}. Centang checklist kesiapan kamar di bawah, lengkapi foto, lalu simpan laporan. <button type="button" onclick="resetFormForFreshCheck()" class="underline font-extrabold text-indigo-950 ml-1">Kosongkan Form</button>`;
+    banner.classList.remove('hidden');
+  }
+  if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+  setTimeout(() => {
+    document.getElementById('checklist-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 180);
 }
 
 function startTimer() {
@@ -3755,6 +3952,8 @@ async function processInspectionSubmit(alsoSendWa = false) {
     resetPhotoBoxes();
     playNotificationChime();
     await loadAllData();
+    restartNurseReminderIfNeeded();
+    syncOfficerInspectLanding(false);
     switchTab(isManagerRole() ? 'dashboard' : 'analytics');
     if (alsoSendWa) openWaShareModal(savedRecord);
     else if (isManagerSendingRevision) alert('Komplain perbaikan terkirim ke Petugas! Status kamar kini ditandai PERLU PERBAIKAN.');
@@ -4309,6 +4508,34 @@ function exportPdf() {
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=6.6').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=6.7').catch(() => {});
+    navigator.serviceWorker.ready.then(reg => {
+      try {
+        if (reg.periodicSync && Notification.permission === 'granted') {
+          reg.periodicSync.register('cek-kamar-sync', { minInterval: 12 * 60 * 60 * 1000 }).catch(() => {});
+        }
+      } catch (e) {}
+    }).catch(() => {});
+  });
+}
+
+// v6.7: lanjutkan pengingat saat aplikasi kembali ke depan
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) restartNurseReminderIfNeeded();
+});
+
+// v6.7: animasi pop pada setiap tombol yang ditekan
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn || btn.disabled) return;
+  btn.classList.remove('btn-pop');
+  void btn.offsetWidth;
+  btn.classList.add('btn-pop');
+});
+
+// v6.7: pesan dari Service Worker (periodic sync) → cek ulang pengingat
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'PERIODIC_RECHECK') restartNurseReminderIfNeeded();
   });
 }
