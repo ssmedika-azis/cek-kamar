@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cek-kamar-v6.6';
+const CACHE_NAME = 'cek-kamar-v6.7';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -26,5 +26,28 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(() => caches.match(event.request))
+  );
+});
+
+// v6.7: Ketuk notifikasi persistent → fokus / buka aplikasi
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const data = event.notification.data || {};
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      const existing = list.find((c) => 'focus' in c);
+      if (existing) return existing.focus();
+      if (data.url) return self.clients.openWindow(data.url);
+    })
+  );
+});
+
+// Periodic sync (jika browser mendukung): minta halaman cek ulang permintaan
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag !== 'cek-kamar-sync') return;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window' }).then((list) => {
+      list.forEach((c) => c.postMessage({ type: 'PERIODIC_RECHECK' }));
+    })
   );
 });
