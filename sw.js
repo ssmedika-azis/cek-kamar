@@ -1,108 +1,101 @@
 const CACHE_NAME = 'cek-kamar-v6.8';
+const ASSETS = [
+  './',
+  './index.html',
+  './app.js?v=6.8',
+  './manifest.json',
+  './192x192.png'
+];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)).catch(() => {})
+  );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
-      .then(() => self.clients.claim())
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    ).then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  // Strategi network-first: ambil versi terbaru ke jaringan,
-  // fallback ke cache hanya saat offline.
+  if (event.request.url.includes('supabase.co')) return;
   event.respondWith(
     fetch(event.request)
-      .then((response) => {
-        if (response && response.ok && new URL(event.request.url).origin === self.location.origin) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        }
-        return response;
+      .then((res) => {
+        const clone = res.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone)).catch(() => {});
+        return res;
       })
       .catch(() => caches.match(event.request))
   );
 });
 
-// v6.8: Pesan dari halaman (aplikasi di latar) → tampilkan notifikasi sistem
-// dengan getar + nada default Android, meski AudioContext/suara bicara
-// tidak jalan di latar. Renotify = true membuat nada berbunyi ulang tiap pesan.
+// Menangani pesan notifikasi dari halaman utama agar tetap bunyi & bergetar saat di luar aplikasi
 self.addEventListener('message', (event) => {
-  const msg = event.data || {};
-  if (msg.type !== 'SHOW_ALERT') return;
-  const payload = {
-    body: msg.body || '',
-    icon: './192x192.png',
-    badge: './192x192.png',
-    vibrate: msg.vibrate || [300, 120, 300, 120, 300],
-    tag: msg.tag || 'bg-alert',
-    renotify: true,
-    requireInteraction: true,
-    silent: false,
-    data: { url: msg.url || './' }
-  };
-  if (event.waitUntil) {
+  const data = event.data || {};
+  if (data.type === 'SHOW_ALERT') {
     event.waitUntil(
-      self.registration.showNotification(msg.title || 'Notifikasi Cek Kamar', payload).catch(() => {})
+      self.registration.showNotification(data.title || 'Notifikasi Cek Kamar', {
+        body: data.body || 'Ada pembaruan tugas kamar.',
+        icon: './192x192.png',
+        badge: './192x192.png',
+        vibrate: [400, 150, 400, 150, 400],
+        tag: data.tag || 'cek-kamar-alert',
+        renotify: true,
+        requireInteraction: true,
+        silent: false,
+        data: { url: data.url || './' }
+      })
     );
-  } else {
-    self.registration.showNotification(msg.title || 'Notifikasi Cek Kamar', payload).catch(() => {});
   }
 });
 
-// v6.8: Web Push — notifikasi masuk walau aplikasi benar-benar tertutup.
-// Dipicu oleh Supabase Edge Function saat ada laporan/permintaan baru.
+// Menangani Web Push saat aplikasi tertutup sepenuhnya
 self.addEventListener('push', (event) => {
-  let payload = {};
-  try {
-    payload = event.data ? event.data.json() : {};
-  } catch (e) {
-    payload = { body: event.data ? event.data.text() : '' };
-  }
-  const title = payload.title || 'Notifikasi Cek Kamar';
-  const options = {
-    body: payload.body || 'Ada permintaan kamar baru.',
-    icon: './192x192.png',
-    badge: './192x192.png',
-    vibrate: payload.vibrate || [350, 120, 350, 120, 350],
-    tag: payload.tag || 'push-alert',
-    renotify: true,
-    requireInteraction: true,
-    silent: false,
-    data: { url: payload.url || './', unitId: payload.unitId || null }
+  let payload = {
+    title: 'Cek Kesiapan Kamar',
+    body: 'Ada tugas / permintaan kamar baru masuk.',
+    url: './'
   };
-  event.waitUntil(
-    self.registration.showNotification(title, options).catch(() => {})
-  );
-});
+  try {
+    if (event.data) {
+      const parsed = event.data.json();
+      payload = Object.assign(payload, parsed);
+    }
+  } catch (e) {
+    if (event.data) payload.body = event.data.text();
+  }
 
-// Ketuk notifikasi persistent / push → fokus / buka aplikasi
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  const data = event.notification.data || {};
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-      const existing = list.find((c) => 'focus' in c);
-      if (existing) {
-        existing.postMessage({ type: 'OPEN_NOTIF', data });
-        return existing.focus();
-      }
-      if (data.url) return self.clients.openWindow(data.url);
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: './192x192.png',
+      badge: './192x192.png',
+      vibrate: [450, 150, 450, 150, 450],
+      tag: 'cek-kamar-push-' + Date.now(),
+      renotify: true,
+      requireInteraction: true,
+      silent: false,
+      data: { url: payload.url || './' }
     })
   );
 });
 
-// Periodic sync (jika browser mendukung): minta halaman cek ulang permintaan
-self.addEventListener('periodicsync', (event) => {
-  if (event.tag !== 'cek-kamar-sync') return;
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || './';
   event.waitUntil(
-    self.clients.matchAll({ type: 'window' }).then((list) => {
-      list.forEach((c) => c.postMessage({ type: 'PERIODIC_RECHECK' }));
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) return client.focus();
+      }
+      if (clients.openWindow) return clients.openWindow(targetUrl);
     })
   );
 });
