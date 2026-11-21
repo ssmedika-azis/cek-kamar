@@ -1,0 +1,57 @@
+# Supabase CLI configuration — Cek Kesiapan Kamar RS Khusus Bedah SS Medika
+# Dokumen ini dipakai saat deploy `supabase deploy` / `supabase functions deploy`.
+
+project_id = "cek-kamar-ss-medika"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage"]
+max_rows = 1000
+
+[auth]
+enabled = true
+disable_signup = true
+# Aplikasi memakai login lokal terhadap tabel app_users; Auth Supabase tidak wajib dipakai.
+default_confirm_email = false
+secret = "super-secret-jwt-token-with-at-least-32-characters-long"
+
+[auth.email]
+enabled = false
+disable_signup = true
+
+[auth.sms]
+enabled = false
+
+[database]
+host = "127.0.0.1"
+port = 5432
+user = "postgres"
+major_version = 15
+# Koneksi lokal (opsional):
+# password = "postgres"
+# db_url = "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
+
+[db]
+# Konfigurasi webhook database bisa dikelola di Dashboard → Database → Webhooks.
+
+[storage]
+enabled = true
+file_size_limit = 52428800
+bucket_file_size_limit = 52428800
+allowed_mime_types = ["image/*", "application/pdf"]
+
+# Edge Functions
+[functions.send-room-push]
+verify_jwt = false
+# Dipanggil oleh Database Webhook memakai header x-webhook-secret,
+# bukan JWT pengguna. Secret diset di Dashboard → Edge Functions → Secrets:
+#   VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, PUSH_WEBHOOK_SECRET
+# SUPABASE_URL dan SUPABASE_SERVICE_ROLE_KEY disuntikkan otomatis.
+
+[studio]
+enabled = true
+port = 54323
+
+[imports]
+# Folder migration SQL diletakkan di supabase/migrations/ bila dipakai CLI.

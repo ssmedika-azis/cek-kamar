@@ -1,15 +1,49 @@
 {
-  "name": "Cek Kesiapan Kamar - RS Khusus Bedah SS Medika",
+  "name": "Cek Kesiapan Kamar RS Khusus Bedah SS Medika",
   "short_name": "Cek Kamar",
-  "description": "Sistem Monitoring Kesiapan & Kelengkapan Kamar Rawat Inap RS Khusus Bedah SS Medika",
+  "description": "Aplikasi pemantauan kesiapan, kebersihan, dan permintaan kamar rawat inap.",
+  "version": "6.8.0",
+  "lang": "id",
+  "id": "./index.html",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#0d9488",
+  "orientation": "portrait-primary",
+  "background_color": "#f1f5f9",
   "theme_color": "#0d9488",
+  "categories": ["medical", "productivity", "business"],
   "icons": [
-    { "src": "192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    {
+      "src": "192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "192x192.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dasbor",
+      "short_name": "Dasbor",
+      "url": "./index.html",
+      "icons": [{ "src": "192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Cek Kamar",
+      "short_name": "Cek Kamar",
+      "url": "./index.html#inspect",
+      "icons": [{ "src": "192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Analitik Laporan",
+      "short_name": "Analitik",
+      "url": "./index.html#analytics",
+      "icons": [{ "src": "192x192.png", "sizes": "192x192", "type": "image/png" }]
+    }
   ]
 }

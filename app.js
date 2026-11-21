@@ -800,6 +800,13 @@ async function approveActiveFormReport() {
 
 // ==================== AKSI CEPAT PERAWAT (4 TOMBOL + SUARA) ====================
 
+function isCancelledNurseRecord(rep) {
+  if (!rep) return false;
+  const notes = String(rep.notes || '');
+  const shift = String(rep.shift || '');
+  return notes.includes('[REQ_CANCELLED') || shift.toLowerCase().includes('dibatalkan');
+}
+
 function latestPulangRecordForUnit(unitId) {
   return inspectionsData
     .filter(r => r && String(r.unit_id) === String(unitId) && getNurseRequestTypeFromString((r.notes || '') + ' ' + (r.shift || '')).key === 'pulang')
@@ -808,7 +815,7 @@ function latestPulangRecordForUnit(unitId) {
 
 function latestSiapkanRecordForUnit(unitId) {
   return inspectionsData
-    .filter(r => r && String(r.unit_id) === String(unitId) && getNurseRequestTypeFromString((r.notes || '') + ' ' + (r.shift || '')).key === 'siapkan')
+    .filter(r => r && String(r.unit_id) === String(unitId) && !isCancelledNurseRecord(r) && getNurseRequestTypeFromString((r.notes || '') + ' ' + (r.shift || '')).key === 'siapkan')
     .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0] || null;
 }
 
@@ -897,6 +904,50 @@ async function sendNurseRoomAction(unitId, unitName, actionKey) {
 
 async function confirmPatientCheckout(unitId, unitName) {
   return sendNurseRoomAction(unitId, unitName, 'pulang');
+}
+
+// Pembatalan permintaan "Siapkan Kamar / Pasien Masuk" oleh Perawat
+async function cancelAdmissionRequest(unitId, unitName) {
+  if (!isPerawatRole() && !isManagerRole()) return;
+  const siapkanRec = latestSiapkanRecordForUnit(unitId);
+  if (!siapkanRec) {
+    return alert('Tidak ada permintaan "Siapkan Kamar / Pasien Masuk" yang aktif untuk ' + unitName + '.');
+  }
+  const pulangRec = latestPulangRecordForUnit(unitId);
+  if (pulangRec && new Date(pulangRec.created_at || 0) > new Date(siapkanRec.created_at || 0)) {
+    return alert('Permintaan pasien masuk untuk ' + unitName + ' sudah ditutup dengan laporan Pasien Pulang.');
+  }
+  const ok = confirm(`Batalkan permintaan "Siapkan Kamar (Pasien Masuk)" untuk ${unitName}?\n\nPetugas tidak akan lagi menerima pengingat/notifikasi kamar ini, dan tombol Siapkan Kamar dibuka kembali.`);
+  if (!ok) return;
+
+  const canceler = currentUser?.full_name || 'Perawat';
+  const jamReq = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  const roomLabel = extractSpokenRoomLabel(unitName);
+
+  // 1) Tandai laporan permintaan sebagai dibatalkan
+  const cancelledNotes = `${siapkanRec.notes || ''}\n[Dibatalkan oleh: ${canceler} • ${jamReq} WIB]\n[REQ_CANCELLED: pasien_masuk]`;
+  const { error: updErr } = await db.from('room_inspections').update({
+    notes: cancelledNotes,
+    shift: `Dibatalkan Pasien Masuk • ${jamReq} WIB`,
+    final_status: 'kotor'
+  }).eq('id', siapkanRec.id);
+  if (updErr) return alert('Gagal membatalkan permintaan: ' + updErr.message);
+
+  // 2) Bersihkan stempel kamar agar keluar dari antrean pengingat & notifikasi petugas
+  await db.from('master_units').update({
+    status: 'kosong',
+    last_checked_by: '',
+    last_checked_at: new Date().toISOString()
+  }).eq('id', unitId);
+
+  closeNurseNotificationForUnit(unitId);
+  playNotificationChime(false);
+  speakIndonesianAlert(`Permintaan pasien masuk kamar ${roomLabel} dibatalkan.`);
+  if (navigator.vibrate) navigator.vibrate([180, 80, 180]);
+
+  await loadAllData();
+  restartNurseReminderIfNeeded();
+  alert(`Permintaan Pasien Masuk untuk ${unitName} dibatalkan.\nPengingat & notifikasi ke Petugas dihentikan, tombol "Siapkan Kamar" dibuka kembali.`);
 }
 
 // ================================================================================
@@ -2362,6 +2413,7 @@ function triggerPersistentNurseNotification(unit) {
     navigator.serviceWorker.getRegistration().then(reg => {
       if (reg && reg.showNotification) {
         reg.showNotification(title, options).catch(() => {});
+        postSwAlert({ title, body, tag: options.tag, url: options.data && options.data.url });
       } else {
         try {
           const n = new Notification(title, options);
@@ -2459,7 +2511,10 @@ async function requestNativeNotificationPermission() {
   if (!('Notification' in window)) return alert('Perangkat atau browser ini tidak mendukung notifikasi sistem.');
   const perm = await Notification.requestPermission();
   updateNotificationPermissionUI();
-  if (perm === 'granted') testNotificationAlert();
+  if (perm === 'granted') {
+    ensurePushSubscription(true);
+    testNotificationAlert();
+  }
 }
 
 async function triggerNativePhoneNotification(title, body, reportId) {
@@ -2469,11 +2524,104 @@ async function triggerNativePhoneNotification(title, body, reportId) {
   try {
     if ('serviceWorker' in navigator) {
       const reg = await navigator.serviceWorker.getRegistration();
-      if (reg && reg.showNotification) { await reg.showNotification(title, options); return; }
+      if (reg && reg.showNotification) {
+        await reg.showNotification(title, options);
+        postSwAlert({ title, body, tag: options.tag, url: targetUrl });
+        return;
+      }
     }
     const n = new Notification(title, options);
     n.onclick = () => { window.focus(); if (reportId) window.location.href = targetUrl; };
   } catch (e) {}
+}
+
+// Kirim perintah tampil notifikasi ke Service Worker agar nada/getar sistem
+// tetap jalan saat aplikasi berada di latar layar (tab/PWA tidak aktif).
+function postSwAlert(msg) {
+  try {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.ready.then(reg => {
+      if (reg.active) reg.active.postMessage(Object.assign({ type: 'SHOW_ALERT' }, msg));
+    }).catch(() => {});
+  } catch (e) {}
+}
+
+// ==================== WEB PUSH: Bunyi saat aplikasi benar-benar tertutup ====================
+// Kunci publik VAPID (pasangan dengan VAPID_PRIVATE_KEY di Edge Function).
+// Ganti bila Anda membuat pasangan kunci sendiri; lihat README-PUSH.md.
+const VAPID_PUBLIC_KEY = 'BOiHAYDLSYy4v_TqqbA73hMPA-bGLV7KnRSf3WpYLotrqusCUg8l0-DWP9_eR_LWmXq2EeKvp0cpQ7sPmb3q0RE';
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+  return rawData;
+}
+
+async function savePushSubscription(sub) {
+  if (!sub) return false;
+  const json = sub.toJSON();
+  try {
+    const { error } = await db.from('push_subscriptions').upsert({
+      endpoint: sub.endpoint,
+      p256dh: json.keys?.p256dh || '',
+      auth: json.keys?.auth || '',
+      user_name: currentUser?.full_name || currentUser?.username || '',
+      role: currentUser?.role || '',
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'endpoint' });
+    return !error;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function ensurePushSubscription(showStatus = false) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !VAPID_PUBLIC_KEY) return null;
+  if (Notification.permission !== 'granted') return null;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+    }
+    const saved = await savePushSubscription(sub);
+    const label = document.getElementById('push-status-label');
+    if (label && showStatus) {
+      label.classList.remove('hidden');
+      label.textContent = saved
+        ? 'Bunyi latar AKTIF ✅ — notifikasi berbunyi walau aplikasi tidak dibuka.'
+        : 'Terdaftar di HP, tetapi tabel server "push_subscriptions" belum dibuat / fungsi push belum aktif. Lihat README-PUSH.md.';
+    }
+    return sub;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function enableBackgroundPush() {
+  if (!('PushManager' in window)) {
+    return alert('Browser HP ini tidak mendukung Web Push. Gunakan Chrome/Edge Android dan pasang aplikasi sebagai PWA.');
+  }
+  if (!VAPID_PUBLIC_KEY) {
+    return alert('Bunyi saat aplikasi tertutup (Web Push) belum dikonfigurasi server.\n\nMintalah pengelola mengisi VAPID_PUBLIC_KEY di app.js dan men-deploy fungsi push (lihat README-PUSH.md).\n\nSementara ini notifikasi tetap berbunyi via nada sistem + getar saat aplikasi berada di latar layar.');
+  }
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') {
+    return alert('Izin notifikasi ditolak. Buka pengaturan situs browser → Notifikasi → Izinkan, lalu coba lagi.');
+  }
+  const sub = await ensurePushSubscription(true);
+  const label = document.getElementById('push-status-label');
+  if (sub) {
+    if (label) label.classList.remove('hidden');
+    testNotificationAlert();
+  } else if (label) {
+    label.classList.remove('hidden');
+    label.textContent = 'Gagal mendaftarkan push. Muat ulang aplikasi lalu coba lagi.';
+  }
 }
 
 function showInAppBanner(report) {
@@ -2550,6 +2698,9 @@ function handleIncomingNewReport(report) {
   lastKnownReportId = report.id;
   localStorage.setItem('ck_last_seen_id', report.id);
 
+  // Baris permintaan yang dibatalkan perawat: cukup refresh layar, jangan bunyikan notifikasi ulang
+  if (isCancelledNurseRecord(report)) { loadAllData(); return; }
+
   const isNurseReq = isNurseRequestRecord(report);
   const isRepair = isRepairRecord(report);
   const isApproved = isInspectionOfficiallyApproved(report);
@@ -2562,11 +2713,14 @@ function handleIncomingNewReport(report) {
     if (badge) { badge.textContent = unreadNotifCount > 9 ? '9+' : String(unreadNotifCount); badge.classList.remove('hidden'); }
     if (bell) { bell.classList.remove('bell-animate'); void bell.offsetWidth; bell.classList.add('bell-animate'); }
 
-    playNotificationChime();
     const spokenText = getSpokenTextForReport(report);
-    speakIndonesianAlert(spokenText);
-
-    if (navigator.vibrate) navigator.vibrate([250, 100, 250]);
+    // Suara chime & teks-suara hanya jalan saat aplikasi tampil;
+    // saat di latar, andalkan nada/getar notifikasi sistem (SW).
+    if (!document.hidden) {
+      playNotificationChime();
+      speakIndonesianAlert(spokenText);
+      if (navigator.vibrate) navigator.vibrate([250, 100, 250]);
+    }
     showInAppBanner(report);
 
     const meta = parseNotesMetadata(report.notes);
@@ -2629,8 +2783,11 @@ function openNotificationDrawer() {
       const actorName = meta.executor || r.inspector_name;
       const waktu = r.created_at ? new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
       const reqType = isNurseReq ? getNurseRequestTypeFromString((r.notes || '') + ' ' + (r.shift || '')) : null;
+      const isCancelled = isCancelledNurseRecord(r);
 
-      const cardStyle = isNurseReq
+      const cardStyle = isCancelled
+        ? 'bg-slate-50/80 border-slate-200'
+        : isNurseReq
         ? 'bg-orange-50/80 border-orange-200'
         : isRepair
           ? 'bg-amber-50/80 border-amber-200'
@@ -2639,7 +2796,9 @@ function openNotificationDrawer() {
             : isRev
               ? 'bg-rose-50/80 border-rose-200'
               : 'bg-indigo-50/70 border-indigo-200';
-      const badgeStyle = isNurseReq
+      const badgeStyle = isCancelled
+        ? 'bg-slate-200 text-slate-500'
+        : isNurseReq
         ? reqType.badgeClass
         : isRepair
           ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')
@@ -2648,7 +2807,9 @@ function openNotificationDrawer() {
             : isRev
               ? 'bg-rose-100 text-rose-800'
               : 'bg-indigo-100 text-indigo-800';
-      const badgeLabel = isNurseReq
+      const badgeLabel = isCancelled
+        ? 'DIBATALKAN'
+        : isNurseReq
         ? reqType.shortTag
         : isRepair
           ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI' : 'CEK PERBAIKAN')
@@ -2668,11 +2829,12 @@ function openNotificationDrawer() {
             ${isRev && meta.feedbackDetail ? `<p class="text-[11px] font-bold text-rose-700">Komplain: ${meta.feedbackDetail}</p>` : ''}
             ${isNurseReq ? `<p class="text-[11px] font-semibold text-orange-900">${getSpokenTextForReport(r)}</p>` : ''}
           </div>
-          ${(isPetugasRole() && isNurseReq && r.unit_id) ? `
+          ${(isPetugasRole() && isNurseReq && !isCancelled && r.unit_id) ? `
             <button type="button" onclick="closeActiveModal('modal-notifications'); quickInspect('${r.unit_id}');" class="w-full py-2.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
               <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Cek & Siapkan Kamar Ini
             </button>
           ` : ''}
+          ${isCancelled ? `<p class="text-[10.5px] font-bold text-slate-500">Permintaan ini sudah dibatalkan perawat dan tidak menindaklanjuti kamar.</p>` : ''}
           ${(isManagerRole() && !isApproved && !isRepair && !isNurseReq && r.id) ? `
             <button type="button" onclick="closeActiveModal('modal-notifications'); openReportInForm('${r.id}');" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition">
               <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i> Cek & Approve Form
@@ -3250,16 +3412,18 @@ function configureNavigationByRole() {
     if (navGrid) navGrid.classList.add('hidden');
     inviteBox?.classList.add('hidden');
   } else if (isPetugasRole()) {
+    // Role Petugas: navigasi Cek Kamar (inspect) tetap tersedia,
+    // ditambah Perbaikan & Analitik; Dasbor & Pengaturan disembunyikan.
     if (bottomNavContainer) bottomNavContainer.classList.remove('hidden');
     if (navGrid) navGrid.classList.remove('hidden');
     btnDash?.classList.add('hidden');
-    btnInspect?.classList.add('hidden');
+    btnInspect?.classList.remove('hidden');
     btnRepair?.classList.remove('hidden');
     btnAnalytics?.classList.remove('hidden');
     btnMaster?.classList.add('hidden');
     if (navGrid) {
-      navGrid.classList.remove('grid-cols-3', 'grid-cols-4', 'grid-cols-5');
-      navGrid.classList.add('grid-cols-2');
+      navGrid.classList.remove('grid-cols-2', 'grid-cols-4', 'grid-cols-5');
+      navGrid.classList.add('grid-cols-3');
     }
     inviteBox?.classList.add('hidden');
   } else {
@@ -3321,6 +3485,7 @@ async function enterApp() {
   }
   startRealtimeReportListener();
   restartNurseReminderIfNeeded();
+  ensurePushSubscription(false);
 }
 
 function logout() {
@@ -3539,6 +3704,10 @@ function renderDashboard() {
     // Tampilan khusus Perawat: 4 tombol aksi cepat langsung di kartu kamar
     if (isPerawatRole()) {
       const siapkanLocked = isSiapkanLockedForUnit(u.id);
+      const activeAdmission = latestSiapkanRecordForUnit(u.id);
+      const pulangLatest = latestPulangRecordForUnit(u.id);
+      const admissionSuperseded = !!(pulangLatest && activeAdmission && new Date(pulangLatest.created_at || 0) > new Date(activeAdmission.created_at || 0));
+      const showCancelAdmission = !!activeAdmission && !admissionSuperseded && eff !== 'siap';
       return `
         <div class="glass-card card-rise rounded-2xl p-4 shadow-sm border ${st.border} flex flex-col justify-between space-y-3" style="animation-delay:${Math.min(idx, 6) * 45}ms">
           <div class="flex items-start justify-between gap-2">
@@ -3563,7 +3732,13 @@ function renderDashboard() {
               <span>🚪</span> Pasien Pulang
             </button>
           </div>
-          ${siapkanLocked ? '<p class="text-[9.5px] font-bold text-slate-500">Permintaan sedang berjalan • tombol dibuka lagi setelah Pasien Pulang</p>' : ''}
+          ${showCancelAdmission ? `
+            <button type="button" onclick="cancelAdmissionRequest('${u.id}', '${safeUnitName}')" class="nurse-btn w-full py-2 px-2 bg-rose-50 border-2 border-dashed border-rose-300 text-rose-700 hover:bg-rose-100 active:scale-[0.98] font-extrabold rounded-xl text-[11px] flex items-center justify-center gap-1.5 transition">
+              <i data-lucide="x-circle" class="w-3.5 h-3.5"></i> Batalkan Pasien Masuk
+            </button>
+          ` : ''}
+          ${siapkanLocked && !showCancelAdmission ? '<p class="text-[9.5px] font-bold text-slate-500">Permintaan sedang berjalan • tombol dibuka lagi setelah Pasien Pulang</p>' : ''}
+          ${showCancelAdmission ? '<p class="text-[9.5px] font-bold text-rose-600">Permintaan pasien masuk aktif • tekan "Batalkan Pasien Masuk" bila jadwal dibatalkan</p>' : ''}
         </div>
       `;
     }
@@ -4264,6 +4439,121 @@ function setAnalyticsText(id, value) {
   if (el) el.textContent = value;
 }
 
+// ==================== RINGKASAN PENGGUNAAN KAMAR PER PERIODE ====================
+const SUMMARY_PERIODS = [
+  { key: 'today', label: 'Hari Ini' },
+  { key: 'week', label: '7 Hari Terakhir' },
+  { key: 'month', label: 'Bulan Ini' },
+  { key: 'year', label: 'Tahun Ini' },
+  { key: 'custom', label: 'Periode Kustom' }
+];
+
+function getPeriodBounds(key) {
+  const now = new Date();
+  if (key === 'today') {
+    const start = new Date(now); start.setHours(0, 0, 0, 0);
+    const end = new Date(now); end.setHours(23, 59, 59, 999);
+    return { start, end, label: 'Hari Ini' };
+  }
+  if (key === 'week') {
+    const start = new Date(now); start.setDate(now.getDate() - 7); start.setHours(0, 0, 0, 0);
+    const end = new Date(now); end.setHours(23, 59, 59, 999);
+    return { start, end, label: '7 Hari Terakhir' };
+  }
+  if (key === 'month') {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    return { start, end, label: 'Bulan Ini' };
+  }
+  if (key === 'year') {
+    const start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+    const end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+    return { start, end, label: 'Tahun Ini' };
+  }
+  // custom: dari Rentang Tanggal filter (mis. Januari 2020 – Januari 2026)
+  const sVal = document.getElementById('export-filter-start')?.value || '';
+  const eVal = document.getElementById('export-filter-end')?.value || '';
+  const start = sVal ? new Date(sVal + 'T00:00:00') : new Date(2020, 0, 1);
+  const end = eVal ? new Date(eVal + 'T23:59:59') : now;
+  const label = (sVal && eVal)
+    ? `Periode ${sVal} s/d ${eVal}`
+    : 'Semua Data (sejak 2020)';
+  return { start, end, label };
+}
+
+function getRoomOccupancyStats(start, end) {
+  const selectedUnit = document.getElementById('export-filter-unit')?.value || 'all';
+  const rows = inspectionsData.filter(r => {
+    if (!r.created_at) return false;
+    if (isCancelledNurseRecord(r)) return false;
+    const t = new Date(r.created_at);
+    if (t < start || t > end) return false;
+    if (selectedUnit !== 'all' && r.unit_name !== selectedUnit) return false;
+    return true;
+  });
+  const usedSet = new Set();
+  rows.forEach(r => {
+    const key = r.unit_id || r.unit_name;
+    if (r.final_status === 'siap') return; // kamar siap = kosong/bersih siap pakai
+    usedSet.add(key);
+  });
+  const total = unitsData.length;
+  const used = usedSet.size;
+  const empty = Math.max(total - used, 0);
+  const rate = total ? Math.round((used / total) * 1000) / 10 : 0;
+  return { total, used, empty, rate, reports: rows.length };
+}
+
+function getRoomSummaryRows() {
+  return SUMMARY_PERIODS.map(p => {
+    const bounds = getPeriodBounds(p.key);
+    const stats = getRoomOccupancyStats(bounds.start, bounds.end);
+    return { key: p.key, label: bounds.label, ...stats };
+  });
+}
+
+function renderRoomSummaryTable() {
+  const tbody = document.getElementById('room-summary-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = getRoomSummaryRows().map(row => `
+    <tr class="border-b border-slate-100 ${row.key === 'custom' ? 'bg-indigo-50/40' : ''}">
+      <td class="py-2 pr-2 font-semibold text-slate-800">${row.label}</td>
+      <td class="py-2 pr-2 text-center font-bold text-slate-900">${row.total}</td>
+      <td class="py-2 pr-2 text-center font-bold text-orange-700">${row.used}</td>
+      <td class="py-2 pr-2 text-center font-bold text-emerald-700">${row.empty}</td>
+      <td class="py-2 text-center"><span class="inline-block px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold">${row.rate}%</span></td>
+    </tr>
+  `).join('');
+}
+
+function exportSummaryCsv() {
+  const rows = getRoomSummaryRows();
+  const lines = [
+    'RINGKASAN PENGGUNAAN KAMAR',
+    'RS Khusus Bedah SS Medika',
+    `Dicetak,${new Date().toLocaleString('id-ID')}`,
+    '',
+    'Periode,Jumlah Kamar,Kamar Terpakai,Kamar Kosong,Tingkat Hunian (%),Jumlah Laporan'
+  ];
+  rows.forEach(r => lines.push(`"${r.label}","${r.total}","${r.used}","${r.empty}","${r.rate}%","${r.reports}"`));
+  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `Ringkasan_Penggunaan_Kamar_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function exportSummaryPdf() {
+  const rows = getRoomSummaryRows();
+  const rowsHtml = rows.map(r => `<tr><td>${r.label}</td><td style="text-align:center">${r.total}</td><td style="text-align:center"><strong>${r.used}</strong></td><td style="text-align:center"><strong>${r.empty}</strong></td><td style="text-align:center">${r.rate}%</td><td style="text-align:center">${r.reports}</td></tr>`).join('');
+  const win = window.open('', '_blank');
+  if (!win) return alert('Izinkan pop-up browser untuk mengekspor PDF.');
+  const nowStr = new Date().toLocaleString('id-ID');
+  win.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8" /><title>Ringkasan Penggunaan Kamar</title><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script><style>body{font-family:Arial,sans-serif;padding:20px;color:#1e293b;background:#f8fafc;margin:0}.toolbar{display:flex;gap:10px;margin-bottom:16px;background:#fff;padding:12px 16px;border-radius:12px;border:1px solid #e2e8f0}.btn{padding:10px 16px;border:none;border-radius:10px;font-weight:bold;font-size:13px;cursor:pointer}.btn-download{background:#0d9488;color:#fff}.report-box{background:#fff;padding:24px;border-radius:12px;border:1px solid #e2e8f0}h2{margin:0 0 4px;color:#0d9488;font-size:18px}p{margin:0 0 14px;font-size:12px;color:#64748b}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left}th{background-color:#f1f5f9;font-weight:bold}@media print{.no-print{display:none!important}body{background:#fff;padding:0}.report-box{border:none;padding:0}}</style></head><body><div class="toolbar no-print"><button type="button" id="btn-dl-pdf" class="btn btn-download" onclick="downloadDirectPdf()">⬇ Download PDF</button></div><div id="pdf-content" class="report-box"><h2>RINGKASAN PENGGUNAAN KAMAR</h2><p>RS Khusus Bedah SS Medika • Dicetak: ${nowStr}</p><table><thead><tr><th>Periode</th><th>Jumlah Kamar</th><th>Kamar Terpakai</th><th>Kamar Kosong</th><th>Tingkat Hunian</th><th>Jumlah Laporan</th></tr></thead><tbody>${rowsHtml}</tbody></table></div><script>function downloadDirectPdf(){const btn=document.getElementById('btn-dl-pdf');btn.textContent='Memproses PDF...';btn.disabled=true;html2pdf().set({margin:10,filename:'Ringkasan_Penggunaan_Kamar.pdf',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'landscape'}}).from(document.getElementById('pdf-content')).save().then(()=>{btn.textContent='⬇ Download PDF';btn.disabled=false;});}<\/script></body></html>`);
+  win.document.close();
+}
+
 function renderAnalytics() {
   const siap = unitsData.filter(u => getEffectiveUnitStatus(u) === 'siap').length;
   const proses = unitsData.filter(u => ['kosong', 'dibersihkan', 'pending_approval', 'perlu_perbaikan'].includes(getEffectiveUnitStatus(u))).length;
@@ -4320,6 +4610,7 @@ function renderAnalytics() {
   setAnalyticsText('analytic-avg-time', `${avgTime} Detik`);
 
   renderDisciplineTable(filteredRows);
+  renderRoomSummaryTable();
 
   const historyBox = document.getElementById('history-list');
   if (filteredRows.length === 0) {
@@ -4347,8 +4638,11 @@ function renderAnalytics() {
       .replace(/\[REQ_TYPE:\s*[a-z]+\]/gi, '')
       .trim();
     const reqType = isNurseReq ? getNurseRequestTypeFromString((r.notes || '') + ' ' + (r.shift || '')) : null;
+    const isCancelled = isCancelledNurseRecord(r);
 
-    const pillClass = isNurseReq
+    const pillClass = isCancelled
+      ? 'bg-slate-200 text-slate-500'
+      : isNurseReq
       ? reqType.badgeClass
       : isRepair
         ? (r.final_status === 'siap' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')
@@ -4357,7 +4651,9 @@ function renderAnalytics() {
           : isPendingApproval
             ? 'bg-indigo-100 text-indigo-800'
             : 'bg-rose-100 text-rose-800';
-    const pillText = isNurseReq
+    const pillText = isCancelled
+      ? 'DIBATALKAN'
+      : isNurseReq
       ? reqType.shortTag
       : isRepair
         ? (r.final_status === 'siap' ? 'SUDAH DIPERBAIKI' : 'CEK PERBAIKAN')
@@ -4466,7 +4762,13 @@ function exportCsv() {
     'Nama,Peran,Tugas,Tepat Waktu,Perlu Ulang,Persentase (%)',
     ...stats.map(d => [d.name, d.role, d.total, d.good, d.late, `${d.pct}%`].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
   ];
-  const blob = new Blob(['\uFEFF' + summaryLines.concat(headers).concat(rows).concat(discLines).join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const roomSummaryLines = [
+    '',
+    'RINGKASAN PENGGUNAAN KAMAR',
+    'Periode,Jumlah Kamar,Kamar Terpakai,Kamar Kosong,Tingkat Hunian (%),Jumlah Laporan',
+    ...getRoomSummaryRows().map(r => '"' + r.label + '",' + r.total + ',' + r.used + ',' + r.empty + ',"' + r.rate + '%",' + r.reports)
+  ];
+  const blob = new Blob(['\uFEFF' + summaryLines.concat(headers).concat(rows).concat(roomSummaryLines).concat(discLines).join('\n')], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `Rekap_Kesiapan_Kamar_${fileSuffix}.csv`;
@@ -4487,6 +4789,8 @@ function exportPdf() {
   const stats = getDisciplineStats(filteredRows);
   const discRowsHtml = stats.map(d => `<tr><td>${d.name}</td><td>${d.role}</td><td style="text-align:center">${d.total}</td><td style="text-align:center">${d.good}</td><td style="text-align:center">${d.late}</td><td style="text-align:center"><strong>${d.pct}%</strong></td></tr>`).join('');
   const discTableHtml = stats.length ? `<h3 style="margin:18px 0 6px;font-size:13px;color:#0f172a">Tabel Kedisiplinan Petugas &amp; Teknisi</h3><table><thead><tr><th>Nama</th><th>Peran</th><th>Tugas</th><th>Tepat Waktu</th><th>Perlu Ulang</th><th>Kedisiplinan</th></tr></thead><tbody>${discRowsHtml}</tbody></table>` : '';
+  const roomSummaryRows = getRoomSummaryRows();
+  const roomSummaryHtml = '<h3 style="margin:16px 0 6px;font-size:13px;color:#0f172a">Ringkasan Penggunaan Kamar per Periode</h3><table><thead><tr><th>Periode</th><th>Jumlah Kamar</th><th>Kamar Terpakai</th><th>Kamar Kosong</th><th>Hunian</th><th>Laporan</th></tr></thead><tbody>' + roomSummaryRows.map(r => '<tr><td>' + r.label + '</td><td style="text-align:center">' + r.total + '</td><td style="text-align:center">' + r.used + '</td><td style="text-align:center">' + r.empty + '</td><td style="text-align:center">' + r.rate + '%</td><td style="text-align:center">' + r.reports + '</td></tr>').join('') + '</tbody></table>';
   const printWin = window.open('', '_blank');
   if (!printWin) return alert('Izinkan pop-up browser untuk mengekspor PDF.');
 
@@ -4502,13 +4806,13 @@ function exportPdf() {
     return `<tr><td>${i + 1}</td><td>${new Date(r.created_at).toLocaleString('id-ID')}</td><td>${r.unit_name}</td><td>${r.inspector_name}</td><td>${meta.executor || r.inspector_name}</td><td>${r.shift}</td><td>${r.readiness_score}%</td><td>${r.final_status.toUpperCase()}</td><td>${feedbackFull}</td><td>${cleanNotesText || '-'}</td>${includePhotos ? `<td><div style="display:flex;gap:4px;">${r.photo_room_url ? `<img src="${r.photo_room_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}${r.photo_toilet_url ? `<img src="${r.photo_toilet_url}" style="width:55px;height:42px;object-fit:cover;border-radius:4px;" />` : ''}</div></td>` : ''}</tr>`;
   }).join('');
 
-  printWin.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8" /><title>Rekap Kesiapan Kamar</title><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script><style>body{font-family:Arial,sans-serif;padding:20px;color:#1e293b;background:#f8fafc;margin:0}.toolbar{display:flex;gap:10px;margin-bottom:16px;background:#fff;padding:12px 16px;border-radius:12px;border:1px solid #e2e8f0}.btn{padding:10px 16px;border:none;border-radius:10px;font-weight:bold;font-size:13px;cursor:pointer}.btn-download{background:#0d9488;color:#fff}.btn-print{background:#334155;color:#fff}.report-box{background:#fff;padding:24px;border-radius:12px;border:1px solid #e2e8f0}h2{margin:0 0 4px;color:#0d9488;font-size:18px}p{margin:0 0 14px;font-size:12px;color:#64748b}.summary{display:flex;gap:16px;margin-bottom:14px;font-size:12px;background:#f1f5f9;padding:10px 14px;border-radius:8px}table{width:100%;border-collapse:collapse;font-size:10.5px}th,td{border:1px solid #cbd5e1;padding:6px;text-align:left;vertical-align:middle}th{background-color:#f1f5f9;font-weight:bold}@media print{.no-print{display:none!important}body{background:#fff;padding:0}.report-box{border:none;padding:0}}</style></head><body><div class="toolbar no-print"><button type="button" id="btn-dl-pdf" class="btn btn-download" onclick="downloadDirectPdf()">⬇ Download PDF</button><button type="button" id="btn-print" class="btn btn-print" onclick="window.print()">🖨 Cetak / Print</button></div><div id="pdf-content" class="report-box"><h2>REKAPITULASI LAPORAN KESIAPAN KAMAR</h2><p>RS Khusus Bedah SS Medika • Filter: <strong>${label}</strong> • Dicetak: ${new Date().toLocaleString('id-ID')}</p><div class="summary"><span><strong>Total Laporan:</strong> ${total}</span><span><strong>Skor Kesiapan Murni:</strong> ${pureAvg}%</span><span><strong>Kamar Terpakai:</strong> ${occPct}%</span><span><strong>Rata-rata Waktu:</strong> ${avgTime} Detik</span></div><table><thead><tr><th>No</th><th>Waktu</th><th>Unit Kamar</th><th>Pemeriksa</th><th>Pelaksana</th><th>Shift</th><th>Skor</th><th>Status</th><th>Tanggapan Pemeriksa</th><th>Catatan</th>${includePhotos ? '<th>Foto</th>' : ''}</tr></thead><tbody>${rowsHtml}</tbody></table>${discTableHtml}</div><script>function downloadDirectPdf(){const btn=document.getElementById('btn-dl-pdf');btn.textContent='Memproses PDF...';btn.disabled=true;html2pdf().set({margin:10,filename:'Rekap_Kesiapan_Kamar_${fileSuffix}.pdf',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'landscape'}}).from(document.getElementById('pdf-content')).save().then(()=>{btn.textContent='⬇ Download PDF';btn.disabled=false;});}<\/script></body></html>`);
+  printWin.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8" /><title>Rekap Kesiapan Kamar</title><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script><style>body{font-family:Arial,sans-serif;padding:20px;color:#1e293b;background:#f8fafc;margin:0}.toolbar{display:flex;gap:10px;margin-bottom:16px;background:#fff;padding:12px 16px;border-radius:12px;border:1px solid #e2e8f0}.btn{padding:10px 16px;border:none;border-radius:10px;font-weight:bold;font-size:13px;cursor:pointer}.btn-download{background:#0d9488;color:#fff}.btn-print{background:#334155;color:#fff}.report-box{background:#fff;padding:24px;border-radius:12px;border:1px solid #e2e8f0}h2{margin:0 0 4px;color:#0d9488;font-size:18px}p{margin:0 0 14px;font-size:12px;color:#64748b}.summary{display:flex;gap:16px;margin-bottom:14px;font-size:12px;background:#f1f5f9;padding:10px 14px;border-radius:8px}table{width:100%;border-collapse:collapse;font-size:10.5px}th,td{border:1px solid #cbd5e1;padding:6px;text-align:left;vertical-align:middle}th{background-color:#f1f5f9;font-weight:bold}@media print{.no-print{display:none!important}body{background:#fff;padding:0}.report-box{border:none;padding:0}}</style></head><body><div class="toolbar no-print"><button type="button" id="btn-dl-pdf" class="btn btn-download" onclick="downloadDirectPdf()">⬇ Download PDF</button><button type="button" id="btn-print" class="btn btn-print" onclick="window.print()">🖨 Cetak / Print</button></div><div id="pdf-content" class="report-box"><h2>REKAPITULASI LAPORAN KESIAPAN KAMAR</h2><p>RS Khusus Bedah SS Medika • Filter: <strong>${label}</strong> • Dicetak: ${new Date().toLocaleString('id-ID')}</p><div class="summary"><span><strong>Total Laporan:</strong> ${total}</span><span><strong>Skor Kesiapan Murni:</strong> ${pureAvg}%</span><span><strong>Kamar Terpakai:</strong> ${occPct}%</span><span><strong>Rata-rata Waktu:</strong> ${avgTime} Detik</span></div><table><thead><tr><th>No</th><th>Waktu</th><th>Unit Kamar</th><th>Pemeriksa</th><th>Pelaksana</th><th>Shift</th><th>Skor</th><th>Status</th><th>Tanggapan Pemeriksa</th><th>Catatan</th>${includePhotos ? '<th>Foto</th>' : ''}</tr></thead><tbody>${rowsHtml}</tbody></table>${roomSummaryHtml}${discTableHtml}</div><script>function downloadDirectPdf(){const btn=document.getElementById('btn-dl-pdf');btn.textContent='Memproses PDF...';btn.disabled=true;html2pdf().set({margin:10,filename:'Rekap_Kesiapan_Kamar_${fileSuffix}.pdf',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'landscape'}}).from(document.getElementById('pdf-content')).save().then(()=>{btn.textContent='⬇ Download PDF';btn.disabled=false;});}<\/script></body></html>`);
   printWin.document.close();
 }
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=6.7').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=6.8').catch(() => {});
     navigator.serviceWorker.ready.then(reg => {
       try {
         if (reg.periodicSync && Notification.permission === 'granted') {
@@ -4533,9 +4837,14 @@ document.addEventListener('click', (e) => {
   btn.classList.add('btn-pop');
 });
 
-// v6.7: pesan dari Service Worker (periodic sync) → cek ulang pengingat
+// Pesan dari Service Worker (periodic sync / ketuk notifikasi push)
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', (e) => {
     if (e.data && e.data.type === 'PERIODIC_RECHECK') restartNurseReminderIfNeeded();
+    if (e.data && e.data.type === 'OPEN_NOTIF') {
+      const d = e.data.data || {};
+      if (d.unitId && isPetugasRole()) quickInspect(d.unitId);
+      else if (isManagerRole()) switchTab('dashboard');
+    }
   });
 }
