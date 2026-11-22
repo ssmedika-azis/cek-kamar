@@ -258,7 +258,7 @@
     <div class="w-full max-w-md bg-white rounded-3xl shadow-2xl p-7 space-y-6">
       <div class="text-center space-y-2">
         <img src="192x192.png" alt="Logo Aplikasi" class="w-20 h-20 mx-auto rounded-2xl shadow-md border border-slate-100" />
-        <h1 class="text-xl font-extrabold text-slate-900 tracking-tight">Cek Kesiapan Kamar <span class="text-xs font-bold text-teal-600">v6.9</span></h1>
+        <h1 class="text-xl font-extrabold text-slate-900 tracking-tight">Cek Kesiapan Kamar <span class="text-xs font-bold text-teal-600">v7.0</span></h1>
         <p class="text-xs font-semibold text-teal-700 bg-teal-50 inline-block px-3 py-1 rounded-full">RS Khusus Bedah SS Medika</p>
       </div>
 
@@ -321,7 +321,7 @@
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-1">
               <h1 class="text-[11.5px] font-extrabold text-slate-900 leading-tight truncate">Cek Kesiapan Kamar</h1>
-              <span class="shrink-0 text-[8px] font-extrabold px-1 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200">v6.9</span>
+              <span class="shrink-0 text-[8px] font-extrabold px-1 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200">v7.0</span>
             </div>
             <div class="flex items-center gap-1 mt-0.5 min-w-0">
               <span id="user-role-badge" class="shrink-0 text-[7.5px] font-extrabold uppercase px-1 py-0.5 rounded bg-teal-100 text-teal-700 tracking-wide">ROLE</span>
@@ -331,8 +331,9 @@
         </div>
 
         <div class="flex items-center gap-0.5 shrink-0">
-          <button type="button" onclick="openNotificationDrawer()" title="Notifikasi" class="relative p-1.5 text-slate-600 hover:text-teal-600 hover:bg-slate-100 rounded-lg active:scale-90 transition">
+          <button type="button" onclick="openNotificationDrawer()" title="Notifikasi & Status Push" class="relative p-1.5 text-slate-600 hover:text-teal-600 hover:bg-slate-100 rounded-lg active:scale-90 transition">
             <i id="notif-bell-icon" data-lucide="bell" class="w-4 h-4"></i>
+            <span id="notif-perm-dot" title="Status Izin Notifikasi" class="absolute bottom-0.5 right-0.5 w-2 h-2 rounded-full bg-amber-400 ring-1 ring-white"></span>
             <span id="notif-unread-badge" class="hidden absolute top-0.5 right-0.5 min-w-[13px] h-[13px] px-0.5 bg-rose-600 text-white text-[8px] font-extrabold rounded-full flex items-center justify-center shadow">1</span>
           </button>
           <button type="button" onclick="forceRefreshApp()" title="Perbarui Aplikasi" class="p-1.5 text-slate-600 hover:text-teal-600 hover:bg-slate-100 rounded-lg active:scale-90 transition">
@@ -368,6 +369,15 @@
 
       <!-- TAB 1: DASHBOARD -->
       <section id="tab-dashboard" class="page-section space-y-5">
+        <div id="nurse-disabled-notice" class="hidden glass-card rounded-3xl p-6 text-center border-2 border-amber-300 bg-amber-50/80 space-y-3 shadow-sm">
+          <div class="w-14 h-14 mx-auto rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center">
+            <i data-lucide="shield-off" class="w-7 h-7"></i>
+          </div>
+          <h3 class="text-base font-extrabold text-amber-950">Mode Alur Kerja Perawat Sedang Dinonaktifkan</h3>
+          <p class="text-xs text-amber-800 leading-relaxed max-w-md mx-auto">
+            Saat ini Manajemen menyetel <strong>Mode Alur Kerja Perawat (Instruksi &amp; Verifikasi)</strong> ke status <strong>OFF</strong>. Petugas Kebersihan dan Teknisi bekerja secara mandiri langsung tanpa menunggu instruksi maupun verifikasi Perawat.
+          </p>
+        </div>
         <div id="management-approval-alert" class="hidden bg-indigo-50 border border-indigo-200 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-sm">
           <div class="flex items-center gap-2.5 min-w-0">
             <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
@@ -900,20 +910,39 @@
         </div>
 
         <div class="glass-card rounded-2xl p-4 shadow-sm space-y-3">
-          <h2 class="text-sm font-extrabold text-slate-900">Kelola Item Kelengkapan & Kebersihan</h2>
-          <form id="form-add-item" class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <h2 class="text-sm font-extrabold text-slate-900">Kelola Item Kelengkapan &amp; Kebersihan</h2>
+              <p class="text-[11px] text-slate-500">Pisahkan daftar ceklis Rutin / Standar vs Pasien Pulang</p>
+            </div>
+            <span class="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded bg-teal-50 text-teal-700">Sinkron ke Petugas</span>
+          </div>
+          <form id="form-add-item" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input type="hidden" id="edit-item-id" />
-            <input type="text" id="item-name" placeholder="Nama Item (mis. Sprei Bersih)" required class="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs" />
-            <select id="item-category" class="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
-              <option value="Kebersihan">Kebersihan</option>
-              <option value="Alat Medis">Alat Medis</option>
-              <option value="Fasilitas">Fasilitas</option>
+            <input type="text" id="item-name" placeholder="Nama Item (mis. Kloset Bersih / Penggantian Sprei Baru)" required class="sm:col-span-2 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs" />
+            <select id="item-cleaning-type" class="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800">
+              <option value="rutin">Proses: Rutin / Standar</option>
+              <option value="pulang">Proses: Pasien Pulang</option>
             </select>
-            <label class="flex items-center gap-2 text-xs font-semibold text-slate-600 px-2">
-              <input type="checkbox" id="item-critical" checked class="w-4 h-4 rounded text-teal-600" /> Item Wajib
+            <select id="item-category" class="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold">
+              <option value="Kamar">Area: Kamar</option>
+              <option value="Toilet">Area: Toilet</option>
+              <option value="Linen">Area: Linen</option>
+              <option value="Sanitasi">Area: Sanitasi</option>
+              <option value="Kebersihan">Area: Kebersihan</option>
+              <option value="Alat Medis">Area: Alat Medis</option>
+              <option value="Fasilitas">Area: Fasilitas</option>
+            </select>
+            <label class="sm:col-span-2 flex items-center gap-2 text-xs font-semibold text-slate-600 px-2 py-1">
+              <input type="checkbox" id="item-critical" checked class="w-4 h-4 rounded text-teal-600" /> Item Wajib (Harus dicentang petugas)
             </label>
-            <button type="submit" id="btn-save-item" class="sm:col-span-3 py-2.5 bg-slate-800 text-white text-xs font-bold rounded-xl">+ Simpan Item Checklist</button>
+            <button type="submit" id="btn-save-item" class="sm:col-span-2 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition">+ Simpan Item Checklist</button>
           </form>
+          <div class="grid grid-cols-3 gap-1.5 bg-slate-100 p-1 rounded-xl">
+            <button type="button" id="filter-master-item-all" onclick="setMasterItemFilter('all')" class="subtab-btn subtab-btn-active"><span>Semua</span></button>
+            <button type="button" id="filter-master-item-rutin" onclick="setMasterItemFilter('rutin')" class="subtab-btn"><span>Rutin / Standar</span></button>
+            <button type="button" id="filter-master-item-pulang" onclick="setMasterItemFilter('pulang')" class="subtab-btn subtab-btn-warn"><span>Pasien Pulang</span></button>
+          </div>
           <div id="master-item-list" class="divide-y divide-slate-100"></div>
         </div>
 
@@ -1088,9 +1117,14 @@
         </button>
       </div>
       <div id="notif-drawer-list" class="space-y-2.5 overflow-y-auto flex-1 pr-1"></div>
-      <button type="button" onclick="closeActiveModal('modal-notifications')" class="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold">
-        Tutup
-      </button>
+      <div class="grid grid-cols-2 gap-2">
+        <button type="button" onclick="testNotificationAlert()" class="py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm">
+          <i data-lucide="volume-2" class="w-3.5 h-3.5"></i> Tes Notifikasi &amp; Suara
+        </button>
+        <button type="button" onclick="closeActiveModal('modal-notifications')" class="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold">
+          Tutup
+        </button>
+      </div>
     </div>
   </div>
 
@@ -1187,7 +1221,7 @@
     <div class="bg-white rounded-3xl w-full max-w-sm p-6 text-center space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
       <img src="192x192.png" alt="Logo" class="w-16 h-16 mx-auto rounded-2xl shadow" />
       <div>
-        <h3 class="text-base font-extrabold text-slate-900">Cek Kesiapan Kamar <span class="text-xs font-bold text-teal-600">v6.9</span></h3>
+        <h3 class="text-base font-extrabold text-slate-900">Cek Kesiapan Kamar <span class="text-xs font-bold text-teal-600">v7.0</span></h3>
         <p class="text-xs font-bold text-teal-700 mt-0.5">RS Khusus Bedah SS Medika</p>
       </div>
 
@@ -1222,6 +1256,13 @@
     </div>
   </div>
 
-<script src="app.js?v=6.8"></script>
+<script src="app.js?v=7.0"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    });
+  }
+</script>
 </body>
 </html>

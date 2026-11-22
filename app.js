@@ -1,4 +1,4 @@
-const APP_VERSION = '6.9';
+const APP_VERSION = '7.0';
 const SUPABASE_URL = 'https://ymxpxrrjxnujygabrhsg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteHB4cnJqeG51anlnYWJyaHNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MDk0MjAsImV4cCI6MjExMDQ4NTQyMH0.tFMCbg1_R-I08KEIs-h6wwxXhYLP2Z0oYgnDGC7T2YU';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -268,6 +268,69 @@ function getSpokenTextForReport(report) {
 
 // =================================================================================
 
+
+// ==================== FITUR 1: PEMISAHAN ITEM CEKLIS (RUTIN / STANDAR VS PASIEN PULANG) ====================
+let activeMasterItemFilter = 'all';
+
+const DEFAULT_RUTIN_ITEMS = [
+  { item_name: 'Kloset Bersih & Tidak Berbau', category: 'Toilet', is_critical: true },
+  { item_name: 'Air Mengalir Lancar & Wastafel Kering', category: 'Toilet', is_critical: true },
+  { item_name: 'Lampu & Stopkontak Berfungsi Normal', category: 'Kamar', is_critical: true },
+  { item_name: 'TV & Remote Berfungsi Baik', category: 'Kamar', is_critical: false },
+  { item_name: 'AC Dingin & Sirkulasi Udara Baik', category: 'Kamar', is_critical: true }
+];
+
+const DEFAULT_PULANG_ITEMS = [
+  { item_name: 'Pengosongan Tempat Tidur & Dekontaminasi Matras', category: 'PULANG::Sanitasi', is_critical: true },
+  { item_name: 'Penggantian Sprei, Sarung Bantal & Selimut Baru', category: 'PULANG::Linen', is_critical: true },
+  { item_name: 'Sanitasi Menyeluruh Kamar Mandi & Lantai', category: 'PULANG::Toilet', is_critical: true },
+  { item_name: 'Pembersihan & Disinfeksi Meja & Lemari Pasien', category: 'PULANG::Kamar', is_critical: true },
+  { item_name: 'Pengosongan Tempat Sampah Infeksius & Non-Infeksius', category: 'PULANG::Sanitasi', is_critical: true }
+];
+
+function parseItemCategoryMeta(rawCategory) {
+  const cat = String(rawCategory || 'Kebersihan').trim();
+  if (cat.startsWith('PULANG::')) {
+    return { processType: 'pulang', areaLabel: cat.slice(8).trim() || 'Sanitasi' };
+  }
+  if (cat.startsWith('RUTIN::')) {
+    return { processType: 'rutin', areaLabel: cat.slice(7).trim() || 'Kebersihan' };
+  }
+  return { processType: 'rutin', areaLabel: cat };
+}
+
+function encodeItemCategoryMeta(processType, areaLabel) {
+  const cleanArea = String(areaLabel || 'Kebersihan').replace(/^(PULANG|RUTIN)::/i, '').trim() || 'Kebersihan';
+  return processType === 'pulang' ? `PULANG::${cleanArea}` : cleanArea;
+}
+
+async function ensureDefaultChecklistItemsInDb() {
+  if (!navigator.onLine) return;
+  try {
+    const realItems = itemsData.filter(i => !isSystemMetaCategory(i.category));
+    const hasRutin = realItems.some(i => parseItemCategoryMeta(i.category).processType === 'rutin');
+    const hasPulang = realItems.some(i => parseItemCategoryMeta(i.category).processType === 'pulang');
+    const toInsert = [];
+    if (!hasRutin) toInsert.push(...DEFAULT_RUTIN_ITEMS);
+    if (!hasPulang) toInsert.push(...DEFAULT_PULANG_ITEMS);
+    if (toInsert.length > 0) {
+      const { data, error } = await db.from('master_items').insert(toInsert).select();
+      if (!error && Array.isArray(data) && data.length > 0) {
+        itemsData = itemsData.concat(data);
+      }
+    }
+  } catch (e) {}
+}
+
+function setMasterItemFilter(filterVal) {
+  activeMasterItemFilter = filterVal;
+  ['all', 'rutin', 'pulang'].forEach(k => {
+    const btn = document.getElementById(`filter-master-item-${k}`);
+    if (btn) btn.classList.toggle('subtab-btn-active', k === filterVal);
+  });
+  renderMasterItems();
+}
+
 function isSystemMetaCategory(category) {
   return category === SHIFT_CATEGORY_KEY || category === APPROVAL_CONFIG_KEY ||
     category === DAMAGE_CATEGORY_KEY || category === FIX_CHECKLIST_KEY;
@@ -376,20 +439,20 @@ function renderApprovalToggleCard() {
     <div class="glass-card rounded-3xl p-4 sm:p-5 shadow-sm border ${requireApprovalMode ? 'border-indigo-200 bg-indigo-50/40' : 'border-emerald-200 bg-emerald-50/40'} mb-4">
       <div class="flex items-center justify-between gap-3">
         <div class="space-y-1">
-          <div class="flex items-center gap-2">
-            <span class="text-xs sm:text-sm font-extrabold text-slate-900">Permintaan Approval Perawat</span>
-            <span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full ${requireApprovalMode ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'}">
-              ${requireApprovalMode ? 'ON (AKTIF)' : 'OFF (NONAKTIF)'}
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-xs sm:text-sm font-extrabold text-slate-900">Mode Alur Kerja Perawat (Instruksi &amp; Verifikasi)</span>
+            <span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full ${requireApprovalMode ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'}">
+              ${requireApprovalMode ? 'ON (AKTIF)' : 'OFF (MANDIRI)'}
             </span>
           </div>
           <p class="text-[11px] text-slate-600 leading-relaxed">
             ${requireApprovalMode
-              ? 'Laporan petugas harus ditinjau & di-Approve oleh <strong>Perawat</strong> terlebih dahulu sebelum kamar berstatus <strong>SIAP PAKAI</strong>.'
-              : 'Mode langsung aktif: Laporan petugas dengan skor 100% langsung otomatis berstatus <strong>SIAP PAKAI</strong> tanpa menunggu Approve.'}
+              ? '<strong>ON:</strong> Alur standar aktif. Petugas menunggu instruksi/approve Perawat &amp; Teknisi mengikuti alur panggilan Perawat.'
+              : '<strong>OFF:</strong> Alur Perawat dinonaktifkan. Petugas Kebersihan langsung mengisi Form Ceklis &amp; kamar otomatis berstatus <strong>Selesai Dibersihkan / Siap</strong>. Teknisi dapat membuat &amp; menyelesaikan tiket perbaikan secara mandiri.'}
           </p>
         </div>
-        <button type="button" id="btn-toggle-approval-mode" onclick="toggleApprovalMode()" aria-label="Toggle Permintaan Approval"
-          class="relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${requireApprovalMode ? 'bg-indigo-600' : 'bg-slate-300'}">
+        <button type="button" id="btn-toggle-approval-mode" onclick="toggleApprovalMode()" aria-label="Toggle Mode Alur Kerja Perawat"
+          class="relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${requireApprovalMode ? 'bg-indigo-600' : 'bg-emerald-600'}">
           <span class="pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${requireApprovalMode ? 'translate-x-6' : 'translate-x-0'}"></span>
         </button>
       </div>
@@ -408,6 +471,9 @@ async function toggleApprovalMode() {
   renderApprovalToggleCard();
   populateOfficerDropdown();
   renderDashboard();
+  syncOfficerInspectLanding(false);
+  renderRepairHistoryList();
+  if (activeRepairReportId) openRepairReportInForm(activeRepairReportId);
 
   if (navigator.onLine) {
     try {
@@ -1747,6 +1813,16 @@ function clearRepairPhoto(slot) {
   updateRepairPhotoBoxUI(slot, null);
 }
 
+
+function prefillRepairFromFinding(unitId, issueDesc) {
+  resetRepairForm();
+  const unitSel = document.getElementById('repair-unit');
+  if (unitSel && unitId) unitSel.value = unitId;
+  const notesEl = document.getElementById('repair-notes');
+  if (notesEl) notesEl.value = `Tindak lanjut temuan ceklis petugas: ${issueDesc}`;
+  notesEl?.focus();
+}
+
 function resetRepairForm() {
   activeRepairReportId = null;
   repairPhotos = { before: null, after: null };
@@ -1856,11 +1932,12 @@ function openRepairReportInForm(reportId) {
   const checklistWrap = document.getElementById('repair-checklist-wrap');
   const btnAssign = document.getElementById('btn-assign-repair-worker');
 
+  const canCompleteDirect = taskStatus === 'proses' || (!requireApprovalMode && taskStatus === 'menunggu');
   if (requestButtons) requestButtons.classList.add('hidden');
   if (btnAssign) btnAssign.classList.toggle('hidden', !(isManagerRole() && taskStatus !== 'selesai'));
   if (btnAck) btnAck.classList.toggle('hidden', !(isTeknisiRole() && taskStatus === 'menunggu'));
-  if (checklistWrap) checklistWrap.classList.toggle('hidden', taskStatus !== 'proses');
-  if (btnDone) btnDone.classList.toggle('hidden', taskStatus !== 'proses');
+  if (checklistWrap) checklistWrap.classList.toggle('hidden', !canCompleteDirect);
+  if (btnDone) btnDone.classList.toggle('hidden', !canCompleteDirect);
 
   renderRepairChecklist(rep);
   lucide.createIcons();
@@ -2210,8 +2287,8 @@ async function markRepairCompletedById(reportId, overrideBefore = null, override
   if (!rep) return;
   const taskStatus = getRepairTaskStatus(rep);
 
-  // Validasi alur teknisi (Sedang Dikerjakan): wajib foto sesudah & seluruh ceklis tercentang
-  if (taskStatus === 'proses') {
+  // Validasi alur teknisi: wajib foto sesudah & seluruh ceklis tercentang
+  if (taskStatus === 'proses' || (!requireApprovalMode && taskStatus === 'menunggu')) {
     const afterPhoto = overrideAfter !== null ? overrideAfter : rep.photo_toilet_url;
     if (!afterPhoto) {
       alert('Unggah foto bukti hasil perbaikan (foto sesudah) terlebih dahulu sebelum menutup tiket.');
@@ -2274,7 +2351,7 @@ async function markRepairCompletedById(reportId, overrideBefore = null, override
 
   if (targetUnitId) {
     await db.from('master_units').update({
-      status: 'kotor',
+      status: requireApprovalMode ? 'kotor' : 'siap',
       last_checked_by: `Selesai Diperbaiki: ${finisherName}`,
       last_checked_at: new Date().toISOString()
     }).eq('id', targetUnitId);
@@ -2434,11 +2511,37 @@ function renderRepairHistoryList() {
       </div>`;
   };
 
+  // Temuan kerusakan dari ceklis Petugas Kebersihan (item wajib/fasilitas tidak tercentang atau ada catatan kerusakan)
+  const officerFindings = getRoomChecklistReports().filter(r => {
+    if (!Array.isArray(r.checklist_data)) return false;
+    const hasUnchecked = r.checklist_data.some(c => c && c.checked === false);
+    return hasUnchecked && !isInspectionOfficiallyApproved(r);
+  }).slice(0, 8);
+
+  const findingsHtml = officerFindings.map(f => {
+    const failedItems = (f.checklist_data || []).filter(c => c && c.checked === false).map(c => c.item).join(', ');
+    const meta = parseNotesMetadata(f.notes);
+    return `
+      <div class="glass-card rounded-2xl p-3.5 shadow-sm border border-rose-200 bg-rose-50/40 space-y-2 soft-fade-in">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <span class="text-[9.5px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-rose-100 text-rose-800">Temuan Ceklis Petugas</span>
+            <h4 class="text-xs font-extrabold text-slate-900 mt-1">${escapeHtml(f.unit_name)}</h4>
+            <p class="text-[11px] text-rose-800 font-semibold mt-0.5">Item belum sesuai: ${escapeHtml(failedItems)}</p>
+            ${meta.cleanNotes ? `<p class="text-[10.5px] text-slate-600 mt-0.5">Catatan: ${escapeHtml(meta.cleanNotes)}</p>` : ''}
+          </div>
+          <button type="button" onclick="prefillRepairFromFinding('${escapeHtml(f.unit_id || '')}', '${escapeHtml(failedItems)}')" class="shrink-0 task-action-btn bg-purple-600 hover:bg-purple-700 text-white shadow-sm">
+            <i data-lucide="wrench" class="w-3.5 h-3.5"></i> Buat Tiket
+          </button>
+        </div>
+      </div>`;
+  }).join('');
+
   // ===== TAB AKTIF: Perlu Perbaikan / Sedang Dikerjakan =====
-  if (activeRepairs.length === 0) {
+  if (activeRepairs.length === 0 && !findingsHtml) {
     activeEl.innerHTML = '<div class="text-center py-6 text-xs text-slate-400 bg-white/70 rounded-2xl border border-slate-200/70">Tidak ada tugas perbaikan yang berjalan saat ini.</div>';
   } else {
-    activeEl.innerHTML = activeRepairs.map(r => {
+    activeEl.innerHTML = findingsHtml + activeRepairs.map(r => {
       const status = getRepairTaskStatus(r);
       const meta = parseNotesMetadata(r.notes);
       let actionButtons = '';
@@ -3128,7 +3231,7 @@ function triggerPersistentNurseNotification(unit) {
     body,
     icon: './192x192.png',
     badge: './192x192.png',
-    vibrate: [400, 150, 400, 150, 400],
+    vibrate: [300, 100, 300, 100, 500],
     tag: 'nurse-req-' + unit.id,
     renotify: true,
     requireInteraction: true,
@@ -3167,7 +3270,7 @@ function startNurseReminder() {
       if (!document.hidden) {
         speakIndonesianAlert(`Perhatian teknisi, ada ${waitingRepairs.length} panggilan perbaikan baru yang menunggu respons. Segera cek kamar ${roomLabel}.`);
       }
-      if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400]);
+      if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 500]);
       return;
     }
 
@@ -3183,7 +3286,7 @@ function startNurseReminder() {
     if (!document.hidden) {
       speakIndonesianAlert(pending.length > 1 ? `${pending.length} permintaan kamar menunggu. ${baseText}` : baseText);
     }
-    if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400]);
+    if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 500]);
   };
   tick();
   nurseReminderTimer = setInterval(tick, NURSE_REMINDER_INTERVAL_MS);
@@ -3227,9 +3330,10 @@ function setCleaningMode(mode) {
   const label = document.getElementById('checklist-section-label');
   if (label) {
     label.textContent = activeCleaningMode === 'pulang'
-      ? 'Checklist Setelah Pembersihan Pasien Pulang'
-      : 'Checklist Kebersihan Rutin / Standar (Ceklis Sudah Dibersihkan)';
+      ? 'Pasien Pulang (Ceklis Setelah Pasien Pulang)'
+      : 'Rutin / Standar (Ceklis Sudah Dibersihkan)';
   }
+  renderInspectChecklistOnly();
 }
 
 function renderCleaningModeBox() {
@@ -3403,6 +3507,14 @@ function syncOfficerInspectLanding(forceOpen) {
     if (emptyState) emptyState.classList.add('hidden');
     return;
   }
+  // Jika Mode Alur Kerja Perawat OFF: tampilkan langsung Form Ceklis Pembersihan secara penuh tanpa menunggu instruksi Perawat
+  if (!requireApprovalMode) {
+    officerTaskOpen = true;
+    if (board) board.classList.remove('hidden');
+    if (formCard) formCard.classList.remove('hidden');
+    if (emptyState) emptyState.classList.add('hidden');
+    return;
+  }
   if (board) board.classList.remove('hidden');
   const pending = getPendingNurseTaskUnits();
   const revisions = getRoomChecklistReports().filter(r => isRevisionRequested(r));
@@ -3417,24 +3529,29 @@ function updateNotificationPermissionUI() {
   const bar = document.getElementById('notif-permission-bar');
   const label = document.getElementById('notif-status-label');
   const btnSettings = document.getElementById('btn-enable-notif-settings');
+  const permDot = document.getElementById('notif-perm-dot');
   if (!('Notification' in window)) {
     if (bar) bar.classList.add('hidden');
     if (label) label.textContent = 'Browser tidak mendukung notifikasi sistem';
     if (btnSettings) btnSettings.classList.add('hidden');
+    if (permDot) permDot.className = 'absolute bottom-0.5 right-0.5 w-2 h-2 rounded-full bg-slate-400 ring-1 ring-white';
     return;
   }
   if (Notification.permission === 'granted') {
     if (bar) bar.classList.add('hidden');
     if (label) label.textContent = 'Status Notifikasi HP & Luar Aplikasi: Aktif ✅';
     if (btnSettings) btnSettings.classList.add('hidden');
+    if (permDot) permDot.className = 'absolute bottom-0.5 right-0.5 w-2 h-2 rounded-full bg-emerald-500 ring-1 ring-white';
   } else if (Notification.permission === 'denied') {
     if (bar) bar.classList.add('hidden');
     if (label) label.textContent = 'Status Notifikasi HP: Diblokir di Pengaturan Browser';
     if (btnSettings) btnSettings.classList.add('hidden');
+    if (permDot) permDot.className = 'absolute bottom-0.5 right-0.5 w-2 h-2 rounded-full bg-rose-500 ring-1 ring-white';
   } else {
     if (bar) bar.classList.remove('hidden');
     if (label) label.textContent = 'Status Notifikasi HP: Belum Diaktifkan';
     if (btnSettings) btnSettings.classList.remove('hidden');
+    if (permDot) permDot.className = 'absolute bottom-0.5 right-0.5 w-2 h-2 rounded-full bg-amber-400 ring-1 ring-white animate-ping';
   }
 }
 
@@ -3455,7 +3572,7 @@ async function triggerNativePhoneNotification(title, body, reportId, tagPrefix =
     body,
     icon: './192x192.png',
     badge: './192x192.png',
-    vibrate: [400, 150, 400, 150, 400],
+    vibrate: [300, 100, 300, 100, 500],
     tag: tagPrefix + (reportId || Date.now()),
     renotify: true,
     requireInteraction: true,
@@ -3496,15 +3613,22 @@ function urlBase64ToUint8Array(base64String) {
 async function savePushSubscription(sub) {
   if (!sub) return false;
   const json = sub.toJSON();
+  const payload = {
+    endpoint: sub.endpoint,
+    p256dh: json.keys?.p256dh || '',
+    auth: json.keys?.auth || '',
+    user_id: currentUser?.id ? String(currentUser.id) : (currentUser?.username || ''),
+    user_name: currentUser?.full_name || currentUser?.username || '',
+    role: (currentUser?.role || '').toLowerCase(),
+    updated_at: new Date().toISOString()
+  };
   try {
-    const { error } = await db.from('push_subscriptions').upsert({
-      endpoint: sub.endpoint,
-      p256dh: json.keys?.p256dh || '',
-      auth: json.keys?.auth || '',
-      user_name: currentUser?.full_name || currentUser?.username || '',
-      role: currentUser?.role || '',
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'endpoint' });
+    let { error } = await db.from('push_subscriptions').upsert(payload, { onConflict: 'endpoint' });
+    if (error && String(error.message || '').includes('user_id')) {
+      delete payload.user_id;
+      const retry = await db.from('push_subscriptions').upsert(payload, { onConflict: 'endpoint' });
+      error = retry.error;
+    }
     return !error;
   } catch (e) {
     return false;
@@ -3662,7 +3786,7 @@ function handleIncomingNewReport(report) {
     if (!document.hidden) {
       speakIndonesianAlert(spokenText);
     }
-    if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400]);
+    if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 500]);
     showInAppBanner(report);
 
     const meta = parseNotesMetadata(report.notes);
@@ -4105,7 +4229,7 @@ function populateOfficerDropdown() {
   if (btnSubmit && !activeReviewReportId) {
     btnSubmit.textContent = ((isPetugasRole() || isTeknisiRole()) && requireApprovalMode)
       ? 'Simpan & Minta Approve Perawat'
-      : 'Simpan Laporan';
+      : 'Simpan & Selesai Dibersihkan / Siap';
   }
 }
 
@@ -4166,7 +4290,7 @@ function clearBottomFormReviewBar() {
     btnSubmit.classList.remove('hidden');
     btnSubmit.textContent = ((isPetugasRole() || isTeknisiRole()) && requireApprovalMode)
       ? 'Simpan & Minta Approve Perawat'
-      : 'Simpan Laporan';
+      : 'Simpan & Selesai Dibersihkan / Siap';
   }
   if (btnWa) {
     btnWa.classList.remove('hidden');
@@ -4260,6 +4384,8 @@ function populateFormWithReport(latestRep) {
   const notesEl = document.getElementById('inspect-notes');
   if (notesEl) notesEl.value = meta.cleanNotes || '';
 
+  const savedMode = getCleaningRecordMode(latestRep);
+  setCleaningMode(savedMode);
   const savedChecklist = Array.isArray(latestRep.checklist_data) ? latestRep.checklist_data : [];
   document.querySelectorAll('.inspect-chk').forEach(chk => {
     const chkNorm = normalizeText(chk.dataset.name);
@@ -4628,6 +4754,7 @@ async function loadAllData() {
 
   syncApprovalConfigFromItems();
   await ensureDefaultShiftsInDb();
+  await ensureDefaultChecklistItemsInDb();
   await ensureDefaultRepairCategoriesInDb();
   rebuildShiftsFromItems();
   populateOfficerDropdown();
@@ -4663,6 +4790,15 @@ async function loadAllData() {
 function applyNurseDashboardVisibility() {
   const dashSection = document.getElementById('tab-dashboard');
   if (!dashSection) return;
+
+  const nurseDisabledNotice = document.getElementById('nurse-disabled-notice');
+  const unitGrid = document.getElementById('dashboard-unit-grid');
+  if (nurseDisabledNotice) {
+    nurseDisabledNotice.classList.toggle('hidden', !(isPerawatRole() && !requireApprovalMode));
+  }
+  if (unitGrid) {
+    unitGrid.classList.toggle('hidden', isPerawatRole() && !requireApprovalMode);
+  }
 
   const statSiapEl = document.getElementById('stat-siap');
   const statsRow = statSiapEl ? statSiapEl.closest('.grid') : null;
@@ -4970,26 +5106,45 @@ function startTimer() {
   }, 1000);
 }
 
+function renderInspectChecklistOnly() {
+  const box = document.getElementById('checklist-container');
+  if (!box) return;
+  const targetMode = activeCleaningMode === 'pulang' ? 'pulang' : 'rutin';
+  const realChecklistItems = itemsData.filter(item => {
+    if (isSystemMetaCategory(item.category)) return false;
+    const meta = parseItemCategoryMeta(item.category);
+    return meta.processType === targetMode;
+  });
+
+  if (realChecklistItems.length === 0) {
+    box.innerHTML = `<p class="text-xs text-slate-400 p-3 bg-slate-50 rounded-xl border border-slate-200">Belum ada item ceklis untuk kategori <strong>${targetMode === 'pulang' ? 'Pasien Pulang' : 'Rutin / Standar'}</strong>. Tambahkan melalui menu Pengaturan Manajemen.</p>`;
+    updateScore();
+    return;
+  }
+
+  box.innerHTML = realChecklistItems.map(item => {
+    const meta = parseItemCategoryMeta(item.category);
+    return `
+      <label class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer active:scale-[0.99] transition">
+        <div>
+          <span class="text-xs font-bold text-slate-800">${escapeHtml(item.item_name)}</span>
+          <span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">${escapeHtml(meta.areaLabel)}</span>
+          ${item.is_critical ? '<span class="ml-1 text-[10px] font-bold text-rose-600">*Wajib</span>' : '<span class="ml-1 text-[10px] text-slate-400">(Opsional)</span>'}
+        </div>
+        <input type="checkbox" class="inspect-chk w-5 h-5 rounded text-teal-600" data-id="${escapeHtml(item.id)}" data-name="${escapeHtml(item.item_name)}" data-critical="${item.is_critical}" onchange="updateScore()" />
+      </label>
+    `;
+  }).join('');
+  updateScore();
+}
+
 function renderInspectForm() {
   const prevSelectedUnit = document.getElementById('inspect-unit')?.value;
   document.getElementById('inspect-unit').innerHTML = unitsData.map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.unit_code)} - ${escapeHtml(u.unit_name)}</option>`).join('');
   if (prevSelectedUnit && unitsData.some(u => String(u.id) === String(prevSelectedUnit))) {
     document.getElementById('inspect-unit').value = prevSelectedUnit;
   }
-  const box = document.getElementById('checklist-container');
-  const realChecklistItems = itemsData.filter(item => !isSystemMetaCategory(item.category));
-  if (realChecklistItems.length === 0) { box.innerHTML = '<p class="text-xs text-slate-400">Belum ada item kelengkapan. Tambahkan di Pengaturan.</p>'; return; }
-  box.innerHTML = realChecklistItems.map(item => `
-    <label class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer active:scale-[0.99] transition">
-      <div>
-        <span class="text-xs font-bold text-slate-800">${escapeHtml(item.item_name)}</span>
-        <span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">${escapeHtml(item.category)}</span>
-        ${item.is_critical ? '<span class="ml-1 text-[10px] font-bold text-rose-600">*Wajib</span>' : ''}
-      </div>
-      <input type="checkbox" class="inspect-chk w-5 h-5 rounded text-teal-600" data-id="${escapeHtml(item.id)}" data-name="${escapeHtml(item.item_name)}" data-critical="${item.is_critical}" onchange="updateScore()" />
-    </label>
-  `).join('');
-  updateScore();
+  renderInspectChecklistOnly();
   renderCleaningModeBox();
 }
 
@@ -5211,10 +5366,10 @@ async function processInspectionSubmit(alsoSendWa = false) {
       finalStatus = 'kotor';
       unitStamp = `Perlu Perbaikan: ${fbDetail || 'Ditinjau Perawat'}`;
     }
-  } else if (!requireApprovalMode && score === 100) {
+  } else if (!requireApprovalMode) {
     finalStatus = 'siap';
-    fbStatus = `Sesuai Standar (Otomatis Siap Pakai - ${executorName})`;
-    unitStamp = `Siap Pakai (${executorName})`;
+    fbStatus = `Selesai Dibersihkan / Siap (Mandiri - ${executorName})`;
+    unitStamp = `Selesai Dibersihkan / Siap (${executorName})`;
   } else {
     finalStatus = 'kotor';
     fbStatus = `Menunggu Approval Perawat (Disiapkan oleh ${executorName})`;
@@ -5903,30 +6058,61 @@ document.getElementById('form-add-unit')?.addEventListener('submit', async (e) =
 function renderMasterItems() {
   const list = document.getElementById('master-item-list');
   if (!list) return;
-  const realItems = itemsData.filter(i => !isSystemMetaCategory(i.category));
-  list.innerHTML = realItems.map(item => `
-    <div class="py-2.5 flex items-center justify-between gap-2">
-      <div>
-        <p class="text-xs font-extrabold text-slate-900">${escapeHtml(item.item_name)}</p>
-        <p class="text-[11px] text-slate-500">${escapeHtml(item.category)} ${item.is_critical ? '• *Wajib' : ''}</p>
+  const realItems = itemsData.filter(i => {
+    if (isSystemMetaCategory(i.category)) return false;
+    if (activeMasterItemFilter === 'all') return true;
+    return parseItemCategoryMeta(i.category).processType === activeMasterItemFilter;
+  });
+  if (realItems.length === 0) {
+    list.innerHTML = '<p class="py-4 text-center text-[11px] text-slate-400">Belum ada item ceklis pada filter ini.</p>';
+    return;
+  }
+  list.innerHTML = realItems.map(item => {
+    const meta = parseItemCategoryMeta(item.category);
+    const typeBadge = meta.processType === 'pulang'
+      ? '<span class="text-[9.5px] font-extrabold px-1.5 py-0.5 rounded bg-orange-100 text-orange-800">Pasien Pulang</span>'
+      : '<span class="text-[9.5px] font-extrabold px-1.5 py-0.5 rounded bg-teal-100 text-teal-800">Rutin / Standar</span>';
+    return `
+      <div class="py-2.5 flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <p class="text-xs font-extrabold text-slate-900 truncate">${escapeHtml(item.item_name)}</p>
+          <div class="flex flex-wrap items-center gap-1.5 mt-0.5">
+            ${typeBadge}
+            <span class="text-[10.5px] text-slate-500">Area: <strong>${escapeHtml(meta.areaLabel)}</strong></span>
+            <span class="text-[10.5px] font-bold ${item.is_critical ? 'text-rose-600' : 'text-slate-400'}">${item.is_critical ? '• *Wajib' : '• Opsional'}</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button type="button" onclick="editItem('${escapeHtml(item.id)}')" class="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold">Edit</button>
+          <button type="button" onclick="deleteItem('${escapeHtml(item.id)}')" class="px-2.5 py-1 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>
+        </div>
       </div>
-      <div class="flex items-center gap-1.5">
-        <button type="button" onclick="editItem('${escapeHtml(item.id)}')" class="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold">Edit</button>
-        <button type="button" onclick="deleteItem('${escapeHtml(item.id)}')" class="px-2.5 py-1 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold">Hapus</button>
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 function editItem(id) {
   if (!requireManagerAction('mengubah item checklist')) return;
   const item = itemsData.find(x => String(x.id) === String(id));
   if (!item) return;
+  const meta = parseItemCategoryMeta(item.category);
   document.getElementById('edit-item-id').value = item.id;
   document.getElementById('item-name').value = item.item_name;
-  document.getElementById('item-category').value = item.category;
+  const typeSel = document.getElementById('item-cleaning-type');
+  if (typeSel) typeSel.value = meta.processType;
+  const catSel = document.getElementById('item-category');
+  if (catSel) {
+    if (!Array.from(catSel.options).some(o => o.value === meta.areaLabel)) {
+      const opt = document.createElement('option');
+      opt.value = meta.areaLabel;
+      opt.textContent = `Area: ${meta.areaLabel}`;
+      catSel.appendChild(opt);
+    }
+    catSel.value = meta.areaLabel;
+  }
   document.getElementById('item-critical').checked = Boolean(item.is_critical);
   document.getElementById('btn-save-item').textContent = 'Perbarui Item Checklist';
+  document.getElementById('item-name').focus();
 }
 
 async function deleteItem(id) {
@@ -5941,7 +6127,9 @@ document.getElementById('form-add-item')?.addEventListener('submit', async (e) =
   if (!requireManagerAction('menyimpan item checklist')) return;
   const id = document.getElementById('edit-item-id').value;
   const item_name = document.getElementById('item-name').value.trim();
-  const category = document.getElementById('item-category').value;
+  const processType = document.getElementById('item-cleaning-type')?.value || 'rutin';
+  const areaLabel = document.getElementById('item-category').value;
+  const category = encodeItemCategoryMeta(processType, areaLabel);
   const is_critical = document.getElementById('item-critical').checked;
 
   if (id) {
