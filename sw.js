@@ -1,8 +1,8 @@
-const CACHE_NAME = 'cek-kamar-v6.9';
-const ASSETS = [
+const CACHE_NAME = 'cek-kamar-v7.0';
+const CORE_ASSETS = [
   './',
   './index.html',
-  './app.js?v=6.8',
+  './app.js?v=7.0',
   './manifest.json',
   './192x192.png'
 ];
@@ -10,7 +10,7 @@ const ASSETS = [
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)).catch(() => {})
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS).catch(() => {}))
   );
 });
 
@@ -24,7 +24,9 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  if (event.request.url.includes('supabase.co')) return;
+  const url = new URL(event.request.url);
+  if (url.hostname.includes('supabase.co')) return;
+
   event.respondWith(
     fetch(event.request)
       .then((res) => {
@@ -36,32 +38,13 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Menangani pesan notifikasi dari halaman utama agar tetap bunyi & bergetar saat di luar aplikasi
-self.addEventListener('message', (event) => {
-  const data = event.data || {};
-  if (data.type === 'SHOW_ALERT') {
-    event.waitUntil(
-      self.registration.showNotification(data.title || 'Notifikasi Cek Kamar', {
-        body: data.body || 'Ada pembaruan tugas kamar.',
-        icon: './192x192.png',
-        badge: './192x192.png',
-        vibrate: [400, 150, 400, 150, 400],
-        tag: data.tag || 'cek-kamar-alert',
-        renotify: true,
-        requireInteraction: true,
-        silent: false,
-        data: { url: data.url || './' }
-      })
-    );
-  }
-});
-
-// Menangani Web Push saat aplikasi tertutup sepenuhnya
+// Menerima Background Web Push saat aplikasi ditutup / layar HP terkunci
 self.addEventListener('push', (event) => {
   let payload = {
     title: 'Cek Kesiapan Kamar',
-    body: 'Ada tugas / permintaan kamar baru masuk.',
-    url: './'
+    body: 'Ada tugas / pembaruan status kamar baru.',
+    url: './',
+    tag: 'cek-kamar-push-' + Date.now()
   };
   try {
     if (event.data) {
@@ -77,23 +60,47 @@ self.addEventListener('push', (event) => {
       body: payload.body,
       icon: './192x192.png',
       badge: './192x192.png',
-      vibrate: [450, 150, 450, 150, 450],
-      tag: 'cek-kamar-push-' + Date.now(),
+      tag: payload.tag,
       renotify: true,
       requireInteraction: true,
       silent: false,
+      vibrate: [300, 100, 300, 100, 500],
       data: { url: payload.url || './' }
     })
   );
 });
 
+// Pesan langsung dari halaman foreground ke Service Worker
+self.addEventListener('message', (event) => {
+  const data = event.data || {};
+  if (data.type === 'SHOW_ALERT') {
+    event.waitUntil(
+      self.registration.showNotification(data.title || 'Cek Kesiapan Kamar', {
+        body: data.body || '',
+        icon: './192x192.png',
+        badge: './192x192.png',
+        tag: data.tag || 'cek-kamar-alert',
+        renotify: true,
+        requireInteraction: true,
+        silent: false,
+        vibrate: [300, 100, 300, 100, 500],
+        data: { url: data.url || './' }
+      })
+    );
+  }
+});
+
+// Membuka atau memfokuskan tab aplikasi saat notifikasi diketuk
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = (event.notification.data && event.notification.data.url) || './';
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if ('focus' in client) return client.focus();
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if ('focus' in client) {
+          client.navigate(targetUrl).catch(() => {});
+          return client.focus();
+        }
       }
       if (clients.openWindow) return clients.openWindow(targetUrl);
     })
