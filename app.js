@@ -3602,7 +3602,7 @@ function postSwAlert(msg) {
   } catch (e) {}
 }
 
-const VAPID_PUBLIC_KEY = 'BErtNbHPSc18-dLetchODkv575Kkn39Se7js0oyrMofrIWaXkjoPw1oULwLW-rIA9OyWztdhhlhkH3_coNzwT8g';
+const VAPID_PUBLIC_KEY = 'BOiHAYDLSYy4v_TqqbA73hMPA-bGLV7KnRSf3WpYLotrqusCUg8l0-DWP9_eR_LWmXq2EeKvp0cpQ7sPmb3q0RE';
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
