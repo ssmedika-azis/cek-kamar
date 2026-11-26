@@ -2,7 +2,7 @@ const CACHE_NAME = 'cek-kamar-v7.0';
 const CORE_ASSETS = [
   './',
   './index.html',
-  './app.js?v=7.0',
+  './app.js?v=8.0',
   './manifest.json',
   './192x192.png'
 ];
